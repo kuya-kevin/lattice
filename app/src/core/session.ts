@@ -45,6 +45,9 @@ export interface Track {
   soloed: boolean;
   /** Record-armed (Logic's R button): the next take goes here. Optional for older sessions. */
   armed?: boolean;
+  /** Lane height relative to the global track height (Height −/+), set by dragging the lane's
+   *  bottom edge. Absent = 1. A view setting: no undo, not shown to Muse. */
+  heightScale?: number;
   clips: Clip[];
   devices: DeviceInstance[]; // insert chain, in signal order (fx/chain.ts edits it)
 }
@@ -117,6 +120,45 @@ export function addTrack(s: Session, name?: string): [Session, Track] {
   return [{ ...s1, tracks: [...s1.tracks, track] }, track];
 }
 
+/** Rename a track (surrounding whitespace trimmed; an empty name is refused). */
+export function renameTrack(s: Session, trackId: string, name: string): Session {
+  const n = name.trim();
+  if (!n) throw new SessionError('track name cannot be empty');
+  return mapTrack(s, trackId, (t) => ({ ...t, name: n }));
+}
+
+/** Per-track lane height (px per channel) limits. */
+export const LANE_HEIGHT = [24, 384] as const;
+
+/** Lane height for a track: the global height times the track's own scale, or undefined to
+ *  use the global one. */
+export function laneHeight(scale: number | undefined, waveHeight: number): number | undefined {
+  if (!scale || scale === 1) return undefined;
+  return Math.round(Math.min(LANE_HEIGHT[1], Math.max(LANE_HEIGHT[0], waveHeight * scale)));
+}
+
+/** Scale a track's lane height (relative to the global track height); null resets it. */
+export function setTrackHeight(s: Session, trackId: string, scale: number | null): Session {
+  if (scale !== null && !(scale > 0 && Number.isFinite(scale))) throw new SessionError('height scale must be > 0');
+  return mapTrack(s, trackId, (t) => {
+    const { heightScale: _, ...rest } = t;
+    return scale === null || Math.abs(scale - 1) < 0.01 ? rest : { ...rest, heightScale: Math.round(scale * 1000) / 1000 };
+  });
+}
+
+/** Remove a track and its clips. Sources stay (undo brings the clips back with their audio);
+ *  a selection or punch-in on the track is cleared. */
+export function deleteTrack(s: Session, trackId: string): Session {
+  const track = getTrack(s, trackId);
+  const onTrack = s.selection.trackId === trackId || track.clips.some((c) => c.id === s.selection.clipId);
+  return {
+    ...s,
+    tracks: s.tracks.filter((t) => t.id !== trackId),
+    selection: onTrack ? { trackId: null, clipId: null } : s.selection,
+    punchIn: s.punchIn?.trackId === trackId ? null : s.punchIn,
+  };
+}
+
 export function addSource(s: Session, src: Source): Session {
   if (!(src.duration > 0)) throw new SessionError('source duration must be > 0');
   return { ...s, sources: { ...s.sources, [src.id]: src } };
@@ -185,6 +227,17 @@ export function moveClip(s: Session, clipId: string, start: number, trackId?: st
     ),
     selection: s.selection.clipId === clipId ? { trackId, clipId } : s.selection,
   };
+}
+
+/** Copy a clip (same source, trim and MIDI notes, so it sounds the same) to `start` on a
+ *  track, by default the clip's own track. The copy gets a new id. */
+export function duplicateClip(s: Session, clipId: string, start: number, trackId?: string): [Session, Clip] {
+  const { track, clip } = findClip(s, clipId);
+  const to = trackId ?? track.id;
+  getTrack(s, to);
+  const [s1, id] = nextId(s, 'c');
+  const copy: Clip = { ...clip, id, start: round(Math.max(0, start)) };
+  return [mapTrack(s1, to, (t) => ({ ...t, clips: [...t.clips, copy] })), copy];
 }
 
 /** Record-arm one track (or none). Like a single-input setup in Logic, one track is armed at a time. */

@@ -1,6 +1,7 @@
 // Muse on the canvas: the conversation floats on the left (collapsible) and the prompt bar sits
-// at the bottom centre, always there. Sending opens the conversation.
-import { useRef, useState } from 'react';
+// at the bottom centre. The prompt bar can be tucked away into a small "Ask Muse" pill (the
+// choice is remembered); sending opens the conversation.
+import { useEffect, useRef, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import type { StepRecord } from '../core/agent';
 import { Icon } from './icons';
@@ -19,11 +20,34 @@ interface Props {
   context?: string | null;
 }
 
+const PROMPT_HIDDEN_KEY = 'lattice.promptHidden';
+
+function loadPromptHidden(): boolean {
+  try {
+    return localStorage.getItem(PROMPT_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
 export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
+  const [promptHidden, setPromptHidden] = useState(loadPromptHidden);
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    try {
+      localStorage.setItem(PROMPT_HIDDEN_KEY, promptHidden ? '1' : '0');
+    } catch {
+      // private window or blocked storage: the choice just isn't remembered
+    }
+  }, [promptHidden]);
+  const showPrompt = () => {
+    setPromptHidden(false);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
 
   const send = async () => {
     const msg = text.trim();
@@ -76,14 +100,21 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
         </div>
       </aside>
 
+      {promptHidden && (
+        <button type="button" className="prompt-pill island" onClick={showPrompt} title="Show the Muse prompt bar" aria-label="Show Muse prompt">
+          <Icon name="spark" size={14} className="spark" />Ask Muse
+        </button>
+      )}
       <form
         className="prompt island"
+        hidden={promptHidden}
         onSubmit={(ev) => {
           ev.preventDefault();
           send();
         }}
       >
         <textarea
+          ref={inputRef}
           aria-label="Message Muse"
           rows={1}
           value={text}
@@ -102,6 +133,7 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
           )}
           {context && <span className="chip ctx" title="Muse sees this selection">{context}</span>}
           <span className="spacer" />
+          <button type="button" className="ibtn sm hide-prompt" onClick={() => setPromptHidden(true)} title="Hide the prompt bar" aria-label="Hide Muse prompt"><Icon name="chev" size={14} /></button>
           <button type="submit" className="send" disabled={busy || !text.trim()}><Icon name="send" size={16} />Send</button>
         </div>
       </form>

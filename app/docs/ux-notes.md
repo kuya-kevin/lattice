@@ -117,8 +117,38 @@ These add to the transport commands above.
 | ⌘Z / ⇧⌘Z (Ctrl on Linux/Windows; Ctrl-Y also redoes) | Undo / redo | Logic, GarageBand |
 | Delete / Backspace | Delete the selected region | Logic, GarageBand |
 | ⌘G | Snap to grid on/off (goes back to the last grid, Bar or Beat) | GarageBand main-window shortcuts |
+| ⌘K | Musical Typing on/off (see below) | Logic: ⌘K = Show/Hide Musical Typing |
 
 The same typing and modifier rules apply as for the transport keys.
+
+## Musical Typing (⌘K)
+
+A toggle, like Logic's Musical Typing window: the keyboard button in the tool rail or ⌘K
+(Ctrl-K elsewhere) turns it on and shows a small keyboard at the bottom. While it is on, the letter
+keys play the built-in piano live (sound on key down, damper on key up, auto-repeat ignored),
+through the selected track's device chain.
+
+| Key | Action |
+|---|---|
+| A S D F G H J K L ; ' | White keys C D E F G A B C D E F |
+| W E · T Y U · O P | Black keys C# D# · F# G# A# · C# D# |
+| Z / X | Octave down / up (A plays C0 to C8) |
+| C / V | Velocity down / up (1, 20, 40, 60, 80, 100, 120, 127; starts at 100) |
+| Tab (hold) | Sustain |
+
+- Keys are matched by physical position (`KeyboardEvent.code`), so the layout works on AZERTY or
+  Dvorak keyboards and with Shift held.
+- A plays MIDI 60 at first. Lattice names it **C4** (scientific pitch, the same names Muse sees);
+  Logic calls the same note C3.
+- While it is on, single-letter commands pause (K, ⇧K, C, O, B). R stays Record (it plays no
+  note), and Space, Return, , and ., Delete and the ⌘ commands keep working. Text fields (the
+  chat box, tempo, key) type normally and play nothing.
+- **Recording MIDI:** with Musical Typing on, Record (R or the button) records a MIDI take instead
+  of the mic, on the same track the mic would use (punch-in, armed, selected, else a new "Keys"
+  track). The transport rolls from the playhead (after the count-in, if on) and the LCD shows
+  "REC MIDI". R or Space ends the take; the notes played become a "MIDI take N" region
+  (`record_midi`, undoable) that plays back with the built-in piano. Notes still held at the end
+  are cut there. Not yet: a region that grows while you play, and latency compensation.
 
 ## Sound library (Loop Browser conventions)
 

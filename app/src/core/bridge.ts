@@ -20,6 +20,10 @@ export interface Bridge {
   /** [S3 midi] Hand a source's audio (mono WAV) to the sidecar side, so tools such as
    *  extract_midi (called by the user or Muse) can read it. */
   putSourceAudio(sourceId: string, wav: ArrayBuffer): Promise<void>;
+  /** Electron only: zoom the whole window (Chromium page zoom, like ⌘+ / ⌘−). Every layout
+   *  scales together, so timeline pixel math is unaffected. 1 = 100 %. */
+  setZoom?(factor: number): void;
+  getZoom?(): number;
 }
 
 declare global {

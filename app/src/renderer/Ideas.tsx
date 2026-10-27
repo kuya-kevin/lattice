@@ -65,26 +65,32 @@ function MiniWave({ sourceId, version }: { sourceId: string; version: number }) 
     const c = ref.current;
     const b = buffers.get(sourceId);
     if (!c || !b) return;
-    const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
-    c.width = w * dpr;
-    c.height = h * dpr;
-    const g = c.getContext('2d')!;
-    g.scale(dpr, dpr);
-    g.fillStyle = getComputedStyle(c).color;
-    const data = b.getChannelData(0);
-    const bars = Math.floor(w / 3);
-    const per = Math.max(1, Math.floor(data.length / bars));
-    let max = 1e-6;
-    const peaks = Array.from({ length: bars }, (_, i) => {
-      let p = 0;
-      for (let j = i * per; j < Math.min(data.length, (i + 1) * per); j += 8) p = Math.max(p, Math.abs(data[j]));
-      max = Math.max(max, p);
-      return p;
-    });
-    peaks.forEach((p, i) => {
-      const a = Math.max(1, (p / max) * (h / 2 - 1));
-      g.fillRect(i * 3, h / 2 - a, 2, a * 2);
-    });
+    const draw = () => {
+      const w = c.clientWidth, h = c.clientHeight, dpr = window.devicePixelRatio || 1;
+      c.width = w * dpr;
+      c.height = h * dpr;
+      const g = c.getContext('2d')!;
+      g.scale(dpr, dpr);
+      g.fillStyle = getComputedStyle(c).color;
+      const data = b.getChannelData(0);
+      const bars = Math.floor(w / 3);
+      const per = Math.max(1, Math.floor(data.length / bars));
+      let max = 1e-6;
+      const peaks = Array.from({ length: bars }, (_, i) => {
+        let p = 0;
+        for (let j = i * per; j < Math.min(data.length, (i + 1) * per); j += 8) p = Math.max(p, Math.abs(data[j]));
+        max = Math.max(max, p);
+        return p;
+      });
+      peaks.forEach((p, i) => {
+        const a = Math.max(1, (p / max) * (h / 2 - 1));
+        g.fillRect(i * 3, h / 2 - a, 2, a * 2);
+      });
+    };
+    draw();
+    const ro = new ResizeObserver(draw); // redraw when the Ideas column is resized
+    ro.observe(c);
+    return () => ro.disconnect();
   }, [sourceId, version]);
   return <canvas ref={ref} className="idea-wave" aria-hidden />;
 }
@@ -109,8 +115,12 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
           const head = world.querySelector(`[data-testid="track-${id}"]`);
           if (!head) continue;
           const hr = head.getBoundingClientRect();
+          // a header scrolled out of a short board: end the wire at the board's visible edge
+          const ar = head.closest('.arrange')?.getBoundingClientRect();
+          const hy = hr.top + hr.height / 2;
+          const y = ar ? Math.min(ar.bottom - 6, Math.max(ar.top + 6, hy)) : hy;
           const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
-          const x1 = hr.left - wr.left, y1 = hr.top + hr.height / 2 - wr.top;
+          const x1 = hr.left - wr.left, y1 = y - wr.top;
           const dx = Math.max(30, (x1 - x0) / 2);
           out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(i), x0, y0, x1, y1 });
         }
@@ -120,9 +130,20 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(world);
+    // resizing the Ideas column, the board or the lanes moves the ends without resizing the world
+    world.querySelectorAll('.ideas, .board, .board-col, .arrange-interaction').forEach((el) => ro.observe(el));
+    let raf = 0;
+    const onScroll = (e: Event) => {
+      if (!(e.target as Element).closest?.('.arrange')) return; // the board scrolling its lanes
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(measure);
+    };
+    world.addEventListener('scroll', onScroll, true);
     const t = setTimeout(measure, 300); // the playlist lays its rows out a moment after the session changes
     return () => {
       ro.disconnect();
+      world.removeEventListener('scroll', onScroll, true);
+      cancelAnimationFrame(raf);
       clearTimeout(t);
     };
   }, [session, worldRef]);

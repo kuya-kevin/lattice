@@ -12,22 +12,24 @@ import { BeatsAndBarsProvider, darkTheme } from '@waveform-playlist/ui-component
 import type { Bridge } from '../core/bridge';
 import { attribution, needsAttribution } from '../core/library';
 import type { Session } from '../core/session';
-import type { SnapMode } from '../core/snap';
+import { SNAP_LABELS, SNAP_MODES, type SnapMode } from '../core/snap';
 import { ArrangeInteraction, type DropTarget } from './Arrange';
 import { buffers, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTracks } from './audio';
 import { clicks } from './click';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
 import { Icon } from './icons';
-import { IdeaWires, Ideas } from './Ideas';
+import { IdeaWires, Ideas, ideaSources } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
 import { libraryBuffer } from './libraryAudio';
+import { ColumnHandles, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
 import { editShortcutFor, type EditAction } from './shortcuts';
 import { SmartControls } from './SmartControls';
 import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
 import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
+import { MusicalTypingButton, MusicalTypingKeyboard, musicalTyping } from './MusicalTyping'; // letter keys play notes
 
 // Canvas theme on top of the library's dark theme: blue-black islands, regions tinted by track
 // colour (see trackColorCss), white bar waveforms that styles.css tints to the track colour.
@@ -101,6 +103,7 @@ export function App({ bridge }: { bridge: Bridge }) {
   const [museOpen, setMuseOpen] = useState(() => window.innerWidth >= 1440); // the conversation panel
   const [smartOpen, setSmartOpen] = useState(true);
   const pan = usePan();
+  const layout = useLayoutSizes(); // resizable ideas / board / device chain + lane height
   const worldRef = useRef<HTMLDivElement>(null);
   const [snap, setSnap] = useState<SnapMode>('beat');
   const lastSnap = useRef<SnapMode>('beat');
@@ -117,9 +120,9 @@ export function App({ bridge }: { bridge: Bridge }) {
   // session (+ audio) -> playlist tracks; keep the engine's array if nothing changed
   useEffect(() => {
     if (!session) return;
-    const derived = withTrackFx(toClipTracks(session)); // [S1 fx] per-track effects hook
+    const derived = withTrackFx(toClipTracks(session, layout.sizes.waveHeight)); // [S1 fx] per-track effects hook
     setTracks((cur) => (sameLayout(cur, derived) ? cur : derived));
-  }, [session, audioVersion]);
+  }, [session, audioVersion, layout.sizes.waveHeight]);
 
   const run = useCallback(
     async (tool: string, args: Record<string, unknown> = {}) => {
@@ -200,8 +203,10 @@ export function App({ bridge }: { bridge: Bridge }) {
   );
   // ─── end region ───
 
-  // ─── region: edit / window key commands (undo, delete, O, B, Cmd-G) ───
+  // ─── region: edit / window key commands (undo, delete, copy/paste, O, B, Cmd-G) ───
   const editActions = useRef<Record<EditAction, () => void>>(null!);
+  const copiedClip = useRef<string | null>(null); // clip id; a paste copies it as it is now
+  const playheadRef = useRef<() => number>(() => sessionRef.current?.transport.position ?? 0); // set by TransportSync
   editActions.current = {
     undo: () => run('undo'),
     redo: () => run('redo'),
@@ -209,14 +214,26 @@ export function App({ bridge }: { bridge: Bridge }) {
       const c = sessionRef.current?.selection.clipId;
       if (c) run('delete_clip', { clip_id: c });
     },
+    copyClip: () => {
+      const c = sessionRef.current?.selection.clipId;
+      if (c) copiedClip.current = c;
+    },
+    // Logic: paste at the playhead on the selected track (else the copied clip's own track)
+    pasteClip: () => {
+      const c = copiedClip.current;
+      const trackId = sessionRef.current?.selection.trackId;
+      if (c) run('duplicate_clip', { clip_id: c, start: playheadRef.current(), ...(trackId ? { track_id: trackId } : {}) });
+    },
     toggleLibrary: () => setLibraryOpen((o) => !o),
     toggleSmartControls: () => setSmartOpen((o) => !o),
     toggleSnap: () => setSnap((s) => (s === 'off' ? lastSnap.current : 'off')),
+    musicalTyping: () => musicalTyping.toggle(),
   };
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const a = editShortcutFor(e);
       if (!a) return;
+      if (a === 'copyClip' && document.getSelection()?.toString()) return; // copying text (e.g. from the chat)
       e.preventDefault();
       if (!e.repeat) editActions.current[a]();
     };
@@ -232,7 +249,7 @@ export function App({ bridge }: { bridge: Bridge }) {
   const museContext = selTrack ? (selClip && selClip.name !== selTrack.name ? `${selTrack.name} · ${selClip.name}` : selTrack.name) : null;
 
   return (
-    <WaveformPlaylistProvider theme={theme} tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} zoomLevels={ZOOM_LEVELS} waveHeight={84} barWidth={2} barGap={1} controls={{ show: true, width: 210 }} fillViewport indefinitePlayback>
+    <WaveformPlaylistProvider theme={theme} tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} zoomLevels={ZOOM_LEVELS} waveHeight={layout.sizes.waveHeight} barWidth={2} barGap={1} controls={{ show: true, width: 210 }} fillViewport indefinitePlayback>
       <div
         className={`app${museOpen ? ' muse-open' : ''}${libraryOpen ? ' library-open' : ''}`}
         onDragOver={(e) => e.preventDefault()}
@@ -241,17 +258,19 @@ export function App({ bridge }: { bridge: Bridge }) {
           if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
         }}
       >
-        <TransportSync session={session} run={run} />
+        <TransportSync session={session} run={run} playheadRef={playheadRef} />
         <SelectionSync session={session} run={run} getSession={bridge.getSession} />
         <style>{trackColorCss(session)}</style>
 
         {/* ─── region: the canvas (dot grid; ideas, arrangement board and device chain float on it) ─── */}
         <div className="canvas" ref={pan.ref} onPointerDown={pan.onPointerDown}>
-          <div className="world" ref={worldRef}>
+          <div className="world" ref={worldRef} style={layout.worldStyle}>
             <IdeaWires session={session} worldRef={worldRef} />
             <Ideas session={session} run={run} audioVersion={audioVersion} />
 
-            <div className="board-col">
+            {/* split: the board and device chain share the window height (see Resizable.tsx) */}
+            <div className={`board-col${layout.sizes.boardW !== null ? ' fixed-w' : ''}${smartOpen && session.tracks.length > 0 ? ' split' : ''}`}>
+              <ColumnHandles layout={layout} ideas={ideaSources(session).length > 0} />
               <div className="frame-title">
                 <b>Arrangement</b>
                 {session.tempo} BPM · {session.timeSignature.join('/')}{session.key ? ` · ${session.key}` : ''}
@@ -262,13 +281,15 @@ export function App({ bridge }: { bridge: Bridge }) {
                   <div className="group">
                     <span className="tb-label">Snap</span>
                     <div className="seg" role="radiogroup" aria-label="Snap">
-                      {(['off', 'bar', 'beat'] as SnapMode[]).map((m) => (
-                        <button key={m} role="radio" aria-checked={snap === m} className={snap === m ? 'on' : ''} onClick={() => setSnap(m)} title={`Snap: ${m} (⌘G toggles)`}>
-                          {m === 'off' ? 'Off' : m === 'bar' ? 'Bar' : 'Beat'}
+                      {SNAP_MODES.map((m) => (
+                        <button key={m} role="radio" aria-checked={snap === m} className={snap === m ? 'on' : ''} onClick={() => setSnap(m)} title={`Snap: ${SNAP_LABELS[m]} (⌘G toggles)`}>
+                          {SNAP_LABELS[m]}
                         </button>
                       ))}
                     </div>
                   </div>
+                  <LaneHeightControl layout={layout} />
+                  <TimelineZoom />
                   <div className="spacer" />
                   {/* ─── region: [S3 midi] Extract MIDI (source-prep sidecar) ─── */}
                   <ExtractMidiControl session={session} bridge={bridge} run={run} />
@@ -288,7 +309,7 @@ export function App({ bridge }: { bridge: Bridge }) {
                         Drop a voice note or any WAV/MP3 here, drag one in from the Library (O), use Import, or record from the mic (R).
                       </div>
                     ) : (
-                      <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap}>
+                      <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap === 'sixteenth' ? 'beat' : snap}>
                         <Waveform showClipHeaders interactiveClips renderTrackControls={(i) => <TrackHeader session={session} index={i} run={run} />} />
                       </BeatsAndBarsProvider>
                     )}
@@ -303,6 +324,7 @@ export function App({ bridge }: { bridge: Bridge }) {
               </section>
 
               {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
+              {smartOpen && session.tracks.length > 0 && <SplitHandle layout={layout} />}
               {smartOpen && session.tracks.length > 0 && (
                 <SmartControls session={session} onClose={() => setSmartOpen(false)}>
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
@@ -324,28 +346,93 @@ export function App({ bridge }: { bridge: Bridge }) {
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
           <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (O)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
           <button className={`ibtn${smartOpen ? ' on' : ''}`} aria-pressed={smartOpen} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
+          <MusicalTypingButton className="ibtn"><Icon name="keys" /></MusicalTypingButton>
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
         </nav>
-        <ZoomBar run={run} />
+        <ZoomBar run={run} bridge={bridge} />
+        <MusicalTypingKeyboard session={session} />
         {/* ─── end region: floating chrome ─── */}
       </div>
     </WaveformPlaylistProvider>
   );
 }
 
-/** Bottom-right island: undo / redo and the timeline zoom. */
-function ZoomBar({ run }: { run: Run }) {
-  const { zoomIn, zoomOut } = usePlaylistControls();
-  const { samplesPerPixel, canZoomIn, canZoomOut } = usePlaylistData();
+/** Bottom-right island: undo / redo and the window zoom (Electron page zoom: everything on the
+ *  canvas and the floating chrome scales together, like ⌘+ / ⌘− in the View menu). */
+function ZoomBar({ run, bridge }: { run: Run; bridge: Bridge }) {
+  const zoom = useWindowZoom(bridge);
   return (
     <div className="zoombar island" role="toolbar" aria-label="Edit and zoom">
       <button className="ibtn" title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}><Icon name="undo" /></button>
       <button className="ibtn" title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}><Icon name="redo" /></button>
-      <span className="sep" />
-      <button className="ibtn" title="Zoom out" aria-label="Zoom out" disabled={!canZoomOut} onClick={zoomOut}><Icon name="minus" /></button>
-      <span className="zoom-pct" title="Timeline zoom">{Math.round((1024 / samplesPerPixel) * 100)}%</span>
-      <button className="ibtn" title="Zoom in" aria-label="Zoom in" disabled={!canZoomIn} onClick={zoomIn}><Icon name="plus" /></button>
+      {zoom && (
+        <>
+          <span className="sep" />
+          <button className="ibtn" title="Zoom out the window (⌘−)" aria-label="Zoom out window" disabled={!zoom.canOut} onClick={zoom.out}><Icon name="minus" /></button>
+          <button className="zoom-pct" title="Window zoom: click for 100 % (⌘0)" aria-label="Window zoom" data-testid="window-zoom" onClick={zoom.reset}>{Math.round(zoom.factor * 100)}%</button>
+          <button className="ibtn" title="Zoom in the window (⌘+)" aria-label="Zoom in window" disabled={!zoom.canIn} onClick={zoom.in}><Icon name="plus" /></button>
+        </>
+      )}
+    </div>
+  );
+}
+
+const WINDOW_ZOOMS = [0.5, 0.67, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2];
+const WINDOW_ZOOM_KEY = 'lattice.windowZoom';
+
+/** The window zoom (null in the web build, which has no page zoom). Remembered across launches;
+ *  follows ⌘+ / ⌘− / ⌘0 from the View menu too (a zoom change resizes the CSS viewport). */
+function useWindowZoom(bridge: Bridge) {
+  const { setZoom, getZoom } = bridge;
+  const [factor, setFactor] = useState(() => getZoom?.() ?? 1);
+  useEffect(() => {
+    if (!setZoom || !getZoom) return;
+    try {
+      const saved = Number(localStorage.getItem(WINDOW_ZOOM_KEY));
+      if (saved >= WINDOW_ZOOMS[0] && saved <= WINDOW_ZOOMS[WINDOW_ZOOMS.length - 1]) setZoom(saved);
+    } catch {
+      // storage blocked: start at whatever Chromium remembers
+    }
+    const sync = () => setFactor(getZoom());
+    sync();
+    window.addEventListener('resize', sync);
+    return () => window.removeEventListener('resize', sync);
+  }, [setZoom, getZoom]);
+  if (!setZoom || !getZoom) return null;
+  const apply = (f: number) => {
+    setZoom(f);
+    setFactor(f);
+    try {
+      localStorage.setItem(WINDOW_ZOOM_KEY, String(f));
+    } catch {
+      // not remembered
+    }
+  };
+  const lower = [...WINDOW_ZOOMS].reverse().find((z) => z < factor - 0.001);
+  const higher = WINDOW_ZOOMS.find((z) => z > factor + 0.001);
+  return {
+    factor,
+    canOut: lower !== undefined,
+    canIn: higher !== undefined,
+    out: () => lower !== undefined && apply(lower),
+    in: () => higher !== undefined && apply(higher),
+    reset: () => apply(1),
+  };
+}
+
+/** Tracks toolbar: the timeline's horizontal zoom (samples per pixel; 100 % = 1024). */
+function TimelineZoom() {
+  const { zoomIn, zoomOut } = usePlaylistControls();
+  const { samplesPerPixel, canZoomIn, canZoomOut } = usePlaylistData();
+  return (
+    <div className="group" role="group" aria-label="Timeline zoom">
+      <span className="tb-label" title="Timeline zoom (horizontal)">Zoom</span>
+      <div className="seg lane-h">
+        <button aria-label="Zoom out" title="Zoom the timeline out" disabled={!canZoomOut} onClick={zoomOut}><Icon name="minus" size={14} /></button>
+        <span className="zoom-pct" title="Timeline zoom">{Math.round((1024 / samplesPerPixel) * 100)}%</span>
+        <button aria-label="Zoom in" title="Zoom the timeline in" disabled={!canZoomIn} onClick={zoomIn}><Icon name="plus" size={14} /></button>
+      </div>
     </div>
   );
 }
@@ -353,10 +440,12 @@ function ZoomBar({ run }: { run: Run }) {
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
 /** Keeps the engine in step with session.transport (set by the play/stop/go_to tools, from
- *  the UI or from Muse), and runs the click while playing. */
-function TransportSync({ session, run }: { session: Session; run: Run }) {
+ *  the UI or from Muse), and runs the click while playing. Also lends App the engine's
+ *  playhead (a timeline click moves it without touching the session) for paste. */
+function TransportSync({ session, run, playheadRef }: { session: Session; run: Run; playheadRef: React.MutableRefObject<() => number> }) {
   const { play, pause, seekTo } = usePlaylistControls();
   const { isPlaying, getPlaybackTime, getLookAhead, currentTimeRef } = usePlaybackAnimation();
+  playheadRef.current = () => currentTimeRef.current ?? session.transport.position;
   const playingRef = useRef(isPlaying);
   playingRef.current = isPlaying;
   const { command, position, rev, playing } = session.transport;

@@ -64,8 +64,8 @@ export class SessionStore {
     return this.future.length > 0;
   }
 
-  /** Step back one edit. Transport, selection and the id counter are kept as they are now
-   *  (undo restores the arrangement and mix, not where the playhead is). Returns the label
+  /** Step back one edit. Transport, selection, track heights and the id counter are kept as
+   *  they are now (undo restores the arrangement and mix, not the view). Returns the label
    *  of the undone edit, or null if there was nothing to undo. */
   undo(): string | null {
     const snap = this.past.pop();
@@ -87,8 +87,10 @@ export class SessionStore {
     const cur = this.session;
     const ids = new Set(target.tracks.flatMap((t) => [t.id, ...t.clips.map((c) => c.id)]));
     const keep = (id: string | null) => (id && ids.has(id) ? id : null);
+    const heights = new Map(cur.tracks.map((t) => [t.id, t.heightScale]));
     return {
       ...target,
+      tracks: target.tracks.map(({ heightScale: _, ...t }) => (heights.get(t.id) ? { ...t, heightScale: heights.get(t.id) } : t)), // view setting
       sources: { ...target.sources, ...cur.sources }, // audio stays loaded either way
       transport: cur.transport,
       selection: { trackId: keep(cur.selection.trackId), clipId: keep(cur.selection.clipId) },

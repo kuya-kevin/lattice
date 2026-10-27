@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webFrame } from 'electron';
 import type { Bridge } from '../src/core/bridge';
 
 const bridge: Bridge = {
@@ -17,6 +17,8 @@ const bridge: Bridge = {
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   },
   putSourceAudio: (id, wav) => ipcRenderer.invoke('source:put', id, new Uint8Array(wav)), // [S3 midi]
+  setZoom: (factor) => webFrame.setZoomFactor(factor),
+  getZoom: () => webFrame.getZoomFactor(),
 };
 
 contextBridge.exposeInMainWorld('lattice', bridge);

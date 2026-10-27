@@ -97,7 +97,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .world {
   position: relative; display: flex; align-items: flex-start; gap: 56px;
   width: 100%; min-height: 100%;
-  padding: calc(var(--top-h) + 30px) 96px 220px 72px;
+  padding: calc(var(--top-h) + 30px) 96px 280px 72px; /* the bottom clears the prompt bar and the keyboard */
 }
 .muse-open .world { padding-left: calc(var(--muse-w) + 64px); }
 .library-open .world { padding-right: calc(var(--lib-w) + 96px); }
@@ -106,7 +106,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .frame-title b { color: var(--text); font-weight: 600; }
 
 /* ideas (sources) */
-.ideas { display: flex; flex-direction: column; gap: 14px; width: 264px; flex: none; position: relative; }
+.ideas { display: flex; flex-direction: column; gap: 14px; width: var(--ideas-w, 264px); flex: none; position: relative; }
 .ideas .frame-title { margin-bottom: -4px; }
 .idea-card {
   display: grid; gap: 6px; text-align: left; padding: 12px; width: 100%;
@@ -201,6 +201,16 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .track-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; }
 .track-controls.muted .track-name { color: var(--muted); }
 .track-id { color: var(--faint); font: 10px var(--font-data); flex: none; }
+.track-name-edit {
+  flex: 1; min-width: 0; font: inherit; font-weight: 600; padding: 0 3px; height: 17px;
+  background: var(--island-2); color: var(--text); border: 1px solid var(--accent); border-radius: 3px;
+}
+.track-top button.track-delete {
+  flex: none; width: 16px; height: 16px; padding: 0; line-height: 14px; font-size: 13px; align-self: center;
+  background: none; border: none; color: var(--faint); opacity: 0.6;
+}
+.track-controls:hover button.track-delete { opacity: 1; }
+.track-top button.track-delete:hover { color: var(--rec); }
 .track-row { display: flex; gap: 4px; align-items: center; }
 .track-row button.ms {
   width: 24px; height: 20px; padding: 0; font-size: 10px; font-weight: 700; border-radius: 6px;
@@ -307,6 +317,17 @@ select.lcd-field option { background: var(--island); }
   background: var(--accent); color: var(--accent-ink); border: 0; font-weight: 600;
 }
 .prompt .send:disabled { opacity: 1; background: var(--island-3); color: var(--muted); }
+.prompt .hide-prompt { color: var(--muted); }
+.prompt .hide-prompt:hover { color: var(--text); }
+/* the prompt bar tucked away: a small pill in the same spot */
+.prompt-pill {
+  --pl: 32px; --pr: 200px;
+  position: fixed; bottom: 16px; z-index: 18; left: var(--pl); right: var(--pr); margin: 0 auto; width: max-content;
+  display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 16px; border-radius: 999px; color: var(--text);
+}
+.prompt-pill .spark { color: var(--accent); }
+.muse-open .prompt-pill { --pl: calc(var(--muse-w) + 32px); }
+.library-open .prompt-pill { --pr: calc(var(--lib-w) + 200px); }
 
 /* ---------- right side: tool rail, library panel, zoom ---------- */
 .rail {
@@ -323,6 +344,9 @@ select.lcd-field option { background: var(--island); }
 .library-open .zoombar { right: calc(var(--lib-w) + 28px); }
 .zoombar .sep { width: 1px; height: 20px; background: var(--line); margin: 0 4px; }
 .zoom-pct { min-width: 46px; text-align: center; font: 12px var(--font-data); color: var(--muted); }
+button.zoom-pct { background: none; border: 0; padding: 0; cursor: pointer; }
+button.zoom-pct:hover { color: var(--text); }
+.seg .zoom-pct { min-width: 40px; align-self: center; }
 
 /* library */
 .library { display: flex; flex-direction: column; min-height: 0; flex: 1; }
@@ -379,6 +403,59 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .sc-body { min-width: 0; }
 .sc-body > .hint { padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-card); }
 
+/* ---------- resizable layout (Resizable.tsx): panel handles, board / chain split, lane height ---------- */
+.board-col.fixed-w { flex: none; width: var(--board-w); min-width: 0; max-width: none; }
+/* split: the board fits its tracks (or keeps the dragged height, scrolling its lanes) and the
+   device chain below always shows in full; the canvas grows and scrolls to fit both */
+.board-col.split .board { flex: none; height: var(--board-h, auto); min-height: 180px; }
+.board-col.split .arrange { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.board-col.split .smart-controls { flex: none; margin-top: 0; }
+.board .tracks-toolbar { flex: none; }
+.rz { position: absolute; z-index: 3; touch-action: none; }
+.rz::after {
+  content: ''; position: absolute; border-radius: 999px; background: var(--accent);
+  opacity: 0.12; transition: opacity 0.12s ease; /* faintly there, so the handles can be found */
+}
+.rz:hover::after { opacity: 0.45; }
+.rz.active::after { opacity: 0.7; }
+.rz-x { top: 0; bottom: 0; width: 24px; cursor: col-resize; }
+.rz-x::after { left: 11px; width: 2px; top: 36px; bottom: 12px; }
+.rz-ideas { left: -40px; }      /* centred in the 56px gap between the Ideas column and the board */
+.rz-board-w { right: -18px; }
+.rz-y { position: relative; flex: none; height: 28px; cursor: row-resize; }
+.rz-y::after { left: 30%; right: 30%; height: 2px; top: 13px; }
+html.rz-drag-x, html.rz-drag-x * { cursor: col-resize !important; user-select: none; }
+html.rz-drag-y, html.rz-drag-y * { cursor: row-resize !important; user-select: none; }
+.seg.lane-h button { padding: 3px 8px; display: inline-grid; place-items: center; }
+.seg.lane-h button:hover:not(:disabled) { color: var(--text); }
+
+/* per-track height: the header's bottom edge (TrackHeader.tsx) and the guide shown while dragging */
+.track-controls { position: relative; }
+.lane-h-handle { position: absolute; left: 0; right: 0; bottom: 0; height: 7px; z-index: 2; cursor: row-resize; touch-action: none; }
+.lane-h-handle::after { content: ''; position: absolute; left: 30%; right: 30%; top: 3px; height: 2px; border-radius: 999px; background: var(--accent); opacity: 0; transition: opacity 0.12s ease; }
+.lane-h-handle:hover::after, .lane-h-handle:focus-visible::after { opacity: 0.6; }
+.lane-h-guide { position: fixed; height: 2px; margin-top: -1px; background: var(--accent); pointer-events: none; z-index: 40; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3); }
+
+/* track headers compact with the lane height (the playlist sizes each header slot) */
+.track-controls { container-type: size; }
+@container (max-height: 100px) {
+  .track-main { padding-top: 6px; padding-bottom: 6px; gap: 4px; }
+  .track-strip { margin: 8px 0 8px 10px; }
+}
+@container (max-height: 80px) { .track-row.vol { display: none; } }
+@container (max-height: 62px) {
+  .track-main { flex-direction: row; align-items: center; gap: 6px; padding-top: 0; padding-bottom: 0; }
+  .track-top { flex: 1; }
+  .track-id { display: none; }
+  .track-row button.ms { width: 20px; height: 18px; }
+  .track-strip { margin: 6px 0 6px 10px; }
+}
+
+/* narrow windows (or a zoomed-in one): Import / Track / Enable mic shrink to icons so they clear
+   the centred transport (the text stays as the accessible name) */
+@media (max-width: 1320px) {
+  .controlbar .actions .btn { font-size: 0; gap: 0; padding: 0 11px; }
+}
 @media (max-width: 1100px) {
   :root { --muse-w: 290px; --lib-w: 290px; }
   .controlbar .actions .btn { padding: 0 11px; }

@@ -90,6 +90,28 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'rename_track',
+    description: 'Rename a track.',
+    parameters: obj({ track_id: str('Track id, e.g. "t1"'), name: str('New name') }, ['track_id', 'name']),
+    run: (ctx, a) => {
+      const from = S.getTrack(ctx.store.get(), a.track_id).name;
+      const s = edit(ctx, (s) => S.renameTrack(s, a.track_id, a.name));
+      return { track_id: a.track_id, from, name: S.getTrack(s, a.track_id).name };
+    },
+    logText: (_a, r) => `renamed track ${r.track_id} from "${r.from}" to "${r.name}"`,
+  },
+  {
+    name: 'delete_track',
+    description: 'Delete a track and all its clips (undoable).',
+    parameters: obj({ track_id: str('Track id') }, ['track_id']),
+    run: (ctx, a) => {
+      const t = S.getTrack(ctx.store.get(), a.track_id);
+      edit(ctx, (s) => S.deleteTrack(s, a.track_id));
+      return { deleted: a.track_id, name: t.name, clips: t.clips.length };
+    },
+    logText: (_a, r) => `deleted track ${r.deleted} "${r.name}" (${r.clips} clip${r.clips === 1 ? '' : 's'})`,
+  },
+  {
     name: 'trim_clip',
     description:
       'Trim a clip so it plays only from start to end (timeline seconds). The audio stays in place; ' +
@@ -196,6 +218,35 @@ export const TOOLS: ToolDef[] = [
     run: (ctx, a) => {
       edit(ctx, (s) => S.deleteClip(s, a.clip_id));
       return { deleted: a.clip_id };
+    },
+  },
+  {
+    name: 'duplicate_clip',
+    description:
+      'Copy a clip (same audio or MIDI notes, same trim) to a timeline start (seconds), optionally on another track. ' +
+      'The copy gets a new id and becomes the selected clip. The user\'s copy/paste (Cmd-C, Cmd-V) uses this.',
+    parameters: obj({ clip_id: str('Clip to copy, e.g. "c2"'), start: num('Start of the copy, timeline seconds'), track_id: str('Destination track id; omit for the same track') }, ['clip_id', 'start']),
+    run: (ctx, a) => {
+      let out!: { clip_id: string; track_id: string; start: number };
+      edit(ctx, (s) => {
+        const [s1, c] = S.duplicateClip(s, a.clip_id, a.start, a.track_id);
+        const trackId = S.findClip(s1, c.id).track.id;
+        out = { clip_id: c.id, track_id: trackId, start: c.start };
+        return S.select(s1, trackId, c.id);
+      });
+      return { ...out, from_clip: a.clip_id };
+    },
+    logText: (_a, r) => `copied clip ${r.from_clip} to ${r.track_id} @${r.start}s as clip ${r.clip_id}`,
+  },
+  {
+    name: 'set_track_height',
+    description: 'Lane height of one track, relative to the global track height (view only).',
+    userOnly: true,
+    quiet: true,
+    parameters: obj({ track_id: str('Track id'), scale: num('Height multiplier; omit to reset') }, ['track_id']),
+    run: (ctx, a) => {
+      edit(ctx, (s) => S.setTrackHeight(s, a.track_id, a.scale ?? null));
+      return { track_id: a.track_id, scale: a.scale ?? 1 };
     },
   },
   {

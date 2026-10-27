@@ -10,6 +10,8 @@ import { newSourceId } from './audio';
 import { clicks } from './click';
 import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
+import { musicalTyping } from './MusicalTyping';
+import { takeToNotes, type PlayedNote, type TypingSample } from '../core/musicalTyping';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -80,7 +82,7 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
           <button onClick={rec.toggle} title={tip('record', 'Record')} aria-label="Record" className={`ibtn rec${rec.isRecording || rec.countingIn ? ' on' : ''}`}><Icon name="rec" /></button>
         </div>
 
-        <Lcd session={session} run={run} meter={meter} recordingFor={rec.isRecording ? rec.duration : null} countingIn={rec.countingIn} />
+        <Lcd session={session} run={run} meter={meter} recordingFor={rec.isRecording ? rec.duration : null} recordingMidi={rec.midi} countingIn={rec.countingIn} />
 
         <div className="group">
           <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={`ibtn cycle${isLoopEnabled ? ' on' : ''}`}><Icon name="cycle" /></button>
@@ -103,7 +105,7 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   );
 }
 
-function Lcd({ session, run, meter, recordingFor, countingIn }: { session: Session; run: Run; meter: Meter; recordingFor: number | null; countingIn: boolean }) {
+function Lcd({ session, run, meter, recordingFor, recordingMidi, countingIn }: { session: Session; run: Run; meter: Meter; recordingFor: number | null; recordingMidi: boolean; countingIn: boolean }) {
   const { currentTime, registerFrameCallback, unregisterFrameCallback } = usePlaybackAnimation();
   const barsRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
@@ -123,7 +125,7 @@ function Lcd({ session, run, meter, recordingFor, countingIn }: { session: Sessi
     <div className="lcd" data-testid="lcd">
       <div className="cell pos">
         <span className="big" ref={barsRef} data-testid="lcd-bars">{formatBarsBeats(currentTime, meter)}</span>
-        <span className="label">{countingIn ? 'COUNT-IN' : recordingFor != null ? `REC ${recordingFor.toFixed(1)}s` : 'BAR BEAT'}</span>
+        <span className="label">{countingIn ? 'COUNT-IN' : recordingFor != null ? `REC${recordingMidi ? ' MIDI' : ''} ${recordingFor.toFixed(1)}s` : 'BAR BEAT'}</span>
       </div>
       <div className="cell">
         <span className="mid" ref={timeRef} data-testid="lcd-time">{formatTime(currentTime)}</span>
@@ -229,23 +231,46 @@ function KeyField({ value, onCommit }: { value: string | null; onCommit: (key: s
   );
 }
 
-/** Mic recording: onto the punch-in track if armed, else the record-armed track, else the
- *  selected track, else a new one.
+/** A MIDI take from the Musical Typing keyboard: the notes heard so far, and whether the
+ *  transport has started rolling (so a stop ends the take). */
+interface MidiTake {
+  played: PlayedNote[];
+  unsubscribe: () => void;
+  rolling: boolean;
+  instrument: TypingSample | null;
+}
+
+/** Recording: onto the punch-in track if armed, else the record-armed track, else the
+ *  selected track, else a new one. With Musical Typing on, the take is MIDI: the transport
+ *  rolls and the notes played become a MIDI clip (record_midi); otherwise it is the mic.
  *  With count-in on, one bar of clicks plays first; with the click on, it plays during the take. */
 function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: AudioBuffer) => void, meter: Meter) {
   const mic = useMicrophoneAccess();
   const rec = useRecording(mic.stream);
-  const { currentTimeRef } = usePlaybackAnimation();
+  const { isPlaying, currentTimeRef } = usePlaybackAnimation();
   const { setRecordingActive } = usePlaylistControls();
   const [countingIn, setCountingIn] = useState(false);
-  const take = useRef<{ trackId: string; start: number; ownClick: boolean } | null>(null);
+  const [midiFor, setMidiFor] = useState<number | null>(null); // seconds into a MIDI take
+  const take = useRef<{ trackId: string; start: number; ownClick: boolean; midi?: MidiTake } | null>(null);
   const latest = useRef({ session, meter });
   latest.current = { session, meter };
+
+  const finishMidi = async (t: { trackId: string; start: number; midi?: MidiTake }) => {
+    t.midi!.unsubscribe();
+    setMidiFor(null);
+    const end = Math.max(t.start, currentTimeRef.current ?? t.start);
+    run('stop', { at: end });
+    const notes = takeToNotes(t.midi!.played, t.start, end);
+    const inst = t.midi!.instrument;
+    const sample = inst && { instrument: inst.name, sample: { source_id: inst.sample.sourceId, offset: inst.sample.offset, duration: inst.sample.duration, root: inst.sample.root } };
+    if (notes.length) await run('record_midi', { track_id: t.trackId, start: t.start, duration: end - t.start, notes, ...sample });
+  };
 
   const finish = async () => {
     const t = take.current;
     if (!t) return;
     take.current = null;
+    if (t.midi) return finishMidi(t);
     const b = await rec.stopRecording();
     if (t.ownClick) clicks.stop();
     setRecordingActive(false);
@@ -258,7 +283,51 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
   const finishRef = useRef(finish);
   finishRef.current = finish;
 
+  // a MIDI take ends when the transport stops (Space), like in Logic
+  useEffect(() => {
+    const m = take.current?.midi;
+    if (!m) return;
+    if (isPlaying) m.rolling = true;
+    else if (m.rolling) finishRef.current();
+  }, [isPlaying]);
+  useEffect(() => {
+    if (midiFor === null) return;
+    const id = setInterval(() => take.current?.midi && setMidiFor(Math.max(0, (currentTimeRef.current ?? 0) - take.current.start)), 100);
+    return () => clearInterval(id);
+  }, [midiFor === null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const startMidi = async () => {
+    const { session: s, meter: m } = latest.current;
+    let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
+    if (!trackId) trackId = (await run('add_track', { name: 'Keys' })).result?.track_id ?? null;
+    if (!trackId) return;
+    const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;
+    if (s.metronome.countIn) {
+      setCountingIn(true);
+      await clicks.countIn(m);
+      setCountingIn(false);
+    }
+    const played: PlayedNote[] = [];
+    const unsubscribe = musicalTyping.onNote((e) => {
+      if (e.type === 'on') played.push({ pitch: e.pitch, velocity: e.velocity, start: e.time, end: null });
+      else {
+        for (let i = played.length - 1; i >= 0; i--) {
+          if (played[i].pitch === e.pitch && played[i].end === null) {
+            played[i].end = e.time;
+            break;
+          }
+        }
+      }
+    });
+    // the take keeps the instrument it was played with (a sampled clip, or the piano)
+    take.current = { trackId, start: at, ownClick: false, midi: { played, unsubscribe, rolling: false, instrument: musicalTyping.instrument() } };
+    setMidiFor(0);
+    run('play', { from: at }); // the transport rolls (even past the last region) and is the take's clock
+    if (s.punchIn) setTimeout(() => finishRef.current(), (s.punchIn.end - s.punchIn.start) * 1000);
+  };
+
   const start = async () => {
+    if (musicalTyping.get().on) return startMidi();
     if (!mic.stream) {
       await mic.requestAccess();
       return; // the stream arrives on the next render; press record again
@@ -287,8 +356,9 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
   };
 
   return {
-    isRecording: rec.isRecording,
-    duration: rec.duration,
+    isRecording: rec.isRecording || midiFor !== null,
+    duration: midiFor ?? rec.duration,
+    midi: midiFor !== null,
     countingIn,
     micReady: !!mic.stream,
     micError: mic.error?.message,

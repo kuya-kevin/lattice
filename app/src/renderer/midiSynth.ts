@@ -1,32 +1,78 @@
 // [S3 midi] Playback for MIDI clips: the notes are rendered offline (OfflineAudioContext) into an
 // AudioBuffer that the playlist plays like any audio clip. One piano-like voice for every pitched
-// part and a small synthesized kit for drums; the user swaps in real sounds later.
-import { useEffect, useRef } from 'react';
+// part, a small synthesized kit for drums, and a sampler (an audio clip repitched per note) for
+// takes recorded on Musical Typing with a sample as the instrument.
+import { useEffect, useRef, useState } from 'react';
 import { getGlobalContext } from '@waveform-playlist/playout';
-import { midiSignature, type MidiData, type MidiNote } from '../core/midi';
+import { midiSignature, sampleRateFor, type MidiData, type MidiNote, type SampleRef } from '../core/midi';
 import type { Session } from '../core/session';
-import { midiBufferId } from './audio';
+import { buffers, midiBufferId } from './audio';
+
+/** A sounding note; release(t) starts its note-off. */
+export interface Voice {
+  release(t: number): void;
+}
+
+/** Note-off fade of a sampler voice (s). */
+export const SAMPLE_RELEASE = 0.08;
+
+/** One sampler voice: the sample's region from t0, repitched to `pitch` (root = unchanged).
+ *  Velocity scales the level; release(t) fades out over SAMPLE_RELEASE. A one-shot shorter
+ *  than the note just ends. Shared by the offline render and live playing. */
+export function sampleVoice(ctx: BaseAudioContext, out: AudioNode, buffer: AudioBuffer, smp: SampleRef, pitch: number, velocity: number, t0: number): Voice {
+  const level = Math.pow(velocity / 127, 1.2);
+  const env = ctx.createGain();
+  env.gain.setValueAtTime(0, t0);
+  env.gain.linearRampToValueAtTime(level, t0 + 0.003); // no click at the start
+  env.connect(out);
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  src.playbackRate.value = sampleRateFor(pitch, smp.root);
+  src.connect(env);
+  const offset = Math.min(Math.max(0, smp.offset), buffer.duration);
+  const length = Math.max(0, Math.min(smp.duration, buffer.duration - offset)); // buffer time
+  src.start(t0, offset, length);
+  src.onended = () => env.disconnect();
+  let released = false;
+  return {
+    release(t1: number) {
+      if (released) return;
+      released = true;
+      const g = env.gain;
+      if ('cancelAndHoldAtTime' in g && !(ctx instanceof OfflineAudioContext)) g.cancelAndHoldAtTime(t1);
+      else {
+        g.cancelScheduledValues(t1);
+        g.setValueAtTime(t1 >= t0 + 0.003 ? level : g.value, t1);
+      }
+      g.linearRampToValueAtTime(0, t1 + SAMPLE_RELEASE);
+      try {
+        src.stop(t1 + SAMPLE_RELEASE + 0.01);
+      } catch {
+        // already ended
+      }
+    },
+  };
+}
 
 const hz = (p: number) => 440 * Math.pow(2, (p - 69) / 12);
 
-function pianoNote(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
-  const t0 = n.start;
-  const t1 = n.start + Math.max(n.duration, 0.05);
-  const f = hz(n.pitch);
-  const peak = 0.4 * Math.pow(n.velocity / 127, 1.2);
+/** One piano voice from t0, ringing until release(t) (the damper). Shared by the offline
+ *  render and live playing (Musical Typing). */
+export function pianoVoice(ctx: BaseAudioContext, out: AudioNode, pitch: number, velocity: number, t0: number): Voice {
+  const f = hz(pitch);
+  const peak = 0.4 * Math.pow(velocity / 127, 1.2);
   const env = ctx.createGain();
   env.gain.setValueAtTime(0, t0);
   env.gain.linearRampToValueAtTime(peak, t0 + 0.004);
   // a struck string: fast initial drop, then a slower, pitch-dependent decay; damper at note-off
   env.gain.setTargetAtTime(peak * 0.45, t0 + 0.004, 0.08);
-  env.gain.setTargetAtTime(0.0001, t0 + 0.2, Math.max(0.4, 2.2 - (n.pitch - 40) * 0.03));
-  env.gain.cancelScheduledValues(t1);
-  env.gain.setTargetAtTime(0, t1, 0.06);
+  env.gain.setTargetAtTime(0.0001, t0 + 0.2, Math.max(0.4, 2.2 - (pitch - 40) * 0.03));
   const lp = ctx.createBiquadFilter();
   lp.type = 'lowpass';
   lp.frequency.setValueAtTime(Math.min(9000, f * 8), t0);
   lp.frequency.setTargetAtTime(Math.min(4000, f * 3), t0, 0.3);
   lp.connect(env).connect(out);
+  const oscs: OscillatorNode[] = [];
   for (const [mult, type, g] of [[1, 'triangle', 1], [2, 'sine', 0.35], [3, 'sine', 0.12]] as const) {
     const o = ctx.createOscillator();
     o.type = type;
@@ -35,8 +81,22 @@ function pianoNote(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
     gg.gain.value = g;
     o.connect(gg).connect(lp);
     o.start(t0);
-    o.stop(t1 + 0.5);
+    oscs.push(o);
   }
+  return {
+    release(t1: number) {
+      // live: hold the current level at t1 instead of jumping back to a scheduled value
+      if ('cancelAndHoldAtTime' in env.gain && !(ctx instanceof OfflineAudioContext)) env.gain.cancelAndHoldAtTime(t1);
+      else env.gain.cancelScheduledValues(t1);
+      env.gain.setTargetAtTime(0, t1, 0.06);
+      for (const o of oscs) o.stop(t1 + 0.5);
+      oscs[0].onended = () => env.disconnect();
+    },
+  };
+}
+
+function pianoNote(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
+  pianoVoice(ctx, out, n.pitch, n.velocity, n.start).release(n.start + Math.max(n.duration, 0.05));
 }
 
 let noise: AudioBuffer | null = null;
@@ -89,7 +149,8 @@ function drumHit(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
   }
 }
 
-export async function renderMidi(m: MidiData, seconds: number, sampleRate = 44100): Promise<AudioBuffer> {
+/** Render a clip's notes. A sampler clip (m.sample) needs its source's audio as `sample`. */
+export async function renderMidi(m: MidiData, seconds: number, sampleRate = 44100, sample?: AudioBuffer): Promise<AudioBuffer> {
   const length = Math.max(1, Math.ceil(seconds * sampleRate));
   const ctx = new OfflineAudioContext(1, length, sampleRate);
   const master = ctx.createGain();
@@ -99,14 +160,18 @@ export async function renderMidi(m: MidiData, seconds: number, sampleRate = 4410
   master.connect(comp).connect(ctx.destination);
   for (const n of m.notes) {
     if (n.start >= seconds) continue;
-    (m.drum ? drumHit : pianoNote)(ctx, master, n);
+    if (m.sample && sample) sampleVoice(ctx, master, sample, m.sample, n.pitch, n.velocity, n.start).release(n.start + Math.max(n.duration, 0.01));
+    else (m.drum ? drumHit : pianoNote)(ctx, master, n);
   }
   return ctx.startRendering();
 }
 
-/** Keeps a rendered buffer per MIDI clip, re-rendering when its notes change (edits, quantize, undo). */
+/** Keeps a rendered buffer per MIDI clip, re-rendering when its notes change (edits, quantize,
+ *  undo). A sampler clip waits for its sample's audio and renders once it arrives. */
 export function useMidiRenders(session: Session | null, setRendered: (bufferId: string, b: AudioBuffer) => void) {
   const sigs = useRef(new Map<string, string>());
+  const [loaded, setLoaded] = useState(0); // bumps when a source's audio arrives
+  useEffect(() => buffers.subscribe((id) => !id.startsWith(midiBufferId('')) && setLoaded((n) => n + 1)), []);
   useEffect(() => {
     if (!session) return;
     const sr = (getGlobalContext().rawContext as unknown as BaseAudioContext).sampleRate || 44100;
@@ -114,13 +179,15 @@ export function useMidiRenders(session: Session | null, setRendered: (bufferId: 
       for (const c of t.clips) {
         if (!c.midi) continue;
         const seconds = session.sources[c.sourceId]?.duration ?? c.offset + c.duration;
+        const sample = c.midi.sample ? buffers.get(c.midi.sample.sourceId) : undefined;
+        if (c.midi.sample && !sample) continue; // not loaded (yet): render when it arrives
         const sig = midiSignature(c.midi, seconds);
         if (sigs.current.get(c.id) === sig) continue;
         sigs.current.set(c.id, sig);
-        renderMidi(c.midi, seconds, sr).then((b) => {
+        renderMidi(c.midi, seconds, sr, sample).then((b) => {
           if (sigs.current.get(c.id) === sig) setRendered(midiBufferId(c.id), b);
         });
       }
     }
-  }, [session, setRendered]);
+  }, [session, setRendered, loaded]);
 }

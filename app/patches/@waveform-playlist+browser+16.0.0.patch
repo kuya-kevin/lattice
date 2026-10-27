@@ -1,0 +1,96 @@
+diff --git a/node_modules/@waveform-playlist/browser/dist/index.js b/node_modules/@waveform-playlist/browser/dist/index.js
+index 19830be..1806bc5 100644
+--- a/node_modules/@waveform-playlist/browser/dist/index.js
++++ b/node_modules/@waveform-playlist/browser/dist/index.js
+@@ -4198,6 +4198,14 @@ function useSpectrogramIntegration() {
+ // src/components/PlaylistVisualization.tsx
+ var import_jsx_runtime10 = require("react/jsx-runtime");
+ var DEFAULT_EMPTY_TRACK_DURATION = 60;
++// [lattice patch] per-track lane height: ClipTrack.height (px per channel) overrides the
++// playlist's waveHeight for that track (layout, hit-testing and drawing, via PlaylistInfoContext).
++var trackWaveHeight = (track, waveHeight) => track && track.height != null ? track.height : waveHeight;
++var TrackWithHeight = ({ waveHeightOverride, ...rest }) => {
++  const info = import_ui_components8.usePlaylistInfo();
++  const value = waveHeightOverride == null || waveHeightOverride === info.waveHeight ? info : { ...info, waveHeight: waveHeightOverride };
++  return (0, import_jsx_runtime10.jsx)(import_ui_components8.PlaylistInfoContext.Provider, { value, children: (0, import_jsx_runtime10.jsx)(import_ui_components8.Track, rest) });
++};
+ var DRAG_SOURCE_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.35)";
+ var TracksLayout = import_styled_components6.default.div.attrs((props) => ({
+   style: { height: `${props.$height}px` }
+@@ -4553,7 +4561,7 @@ var PlaylistVisualization = ({
+       const rawCh = getTrackChannelCount(trackClipPeaks, recordingState, (_a2 = tracks[i]) == null ? void 0 : _a2.id, mono);
+       const trackMode = (_f2 = (_e2 = (_c2 = spectrogram == null ? void 0 : spectrogram.trackSpectrogramOverrides.get((_b2 = tracks[i]) == null ? void 0 : _b2.id)) == null ? void 0 : _c2.renderMode) != null ? _e2 : (_d2 = tracks[i]) == null ? void 0 : _d2.renderMode) != null ? _f2 : "waveform";
+       const effectiveCh = trackMode === "both" ? rawCh * 2 : rawCh;
+-      const trackHeight = effectiveCh * waveHeight + (showClipHeaders ? 22 : 0);
++      const trackHeight = effectiveCh * trackWaveHeight(tracks[i], waveHeight) + (showClipHeaders ? 22 : 0);
+       if (trackY >= cumulativeHeight && trackY < cumulativeHeight + trackHeight) {
+         clickedTrackIndex = i;
+         break;
+@@ -4604,7 +4612,7 @@ var PlaylistVisualization = ({
+       const track = tracks[trackIndex];
+       if (!track) return;
+       const maxChannels = getTrackChannelCount(trackClipPeaks, recordingState, track.id, mono);
+-      m.set(track.id, waveHeight * maxChannels + (showClipHeaders ? import_ui_components8.CLIP_HEADER_HEIGHT : 0));
++      m.set(track.id, trackWaveHeight(track, waveHeight) * maxChannels + (showClipHeaders ? import_ui_components8.CLIP_HEADER_HEIGHT : 0));
+     });
+     return m;
+   }, [peaksDataArray, tracks, recordingState, mono, waveHeight, showClipHeaders]);
+@@ -4763,8 +4771,9 @@ var PlaylistVisualization = ({
+                     "data-track-id": track.id,
+                     "data-track-drag-source": (trackDragPreview == null ? void 0 : trackDragPreview.trackId) === track.id ? "true" : void 0,
+                     children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
+-                      import_ui_components8.Track,
++                      TrackWithHeight,
+                       {
++                        waveHeightOverride: trackWaveHeight(track, waveHeight),
+                         numChannels: maxChannels,
+                         backgroundColor: effectiveRenderMode === "piano-roll" ? theme.pianoRollBackgroundColor || "#1a1a2e" : (0, import_ui_components8.waveformColorToCss)(theme.waveOutlineColor),
+                         offset: 0,
+diff --git a/node_modules/@waveform-playlist/browser/dist/index.mjs b/node_modules/@waveform-playlist/browser/dist/index.mjs
+index 5fb8246..68fde0d 100644
+--- a/node_modules/@waveform-playlist/browser/dist/index.mjs
++++ b/node_modules/@waveform-playlist/browser/dist/index.mjs
+@@ -4168,6 +4168,14 @@ function useSpectrogramIntegration() {
+ // src/components/PlaylistVisualization.tsx
+ import { Fragment as Fragment3, jsx as jsx10, jsxs as jsxs2 } from "react/jsx-runtime";
+ var DEFAULT_EMPTY_TRACK_DURATION = 60;
++// [lattice patch] per-track lane height: ClipTrack.height (px per channel) overrides the
++// playlist's waveHeight for that track (layout, hit-testing and drawing, via PlaylistInfoContext).
++var trackWaveHeight = (track, waveHeight) => track && track.height != null ? track.height : waveHeight;
++var TrackWithHeight = ({ waveHeightOverride, ...rest }) => {
++  const info = usePlaylistInfo();
++  const value = waveHeightOverride == null || waveHeightOverride === info.waveHeight ? info : { ...info, waveHeight: waveHeightOverride };
++  return jsx10(PlaylistInfoContext.Provider, { value, children: jsx10(TrackComponent, rest) });
++};
+ var DRAG_SOURCE_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.35)";
+ var TracksLayout = styled4.div.attrs((props) => ({
+   style: { height: `${props.$height}px` }
+@@ -4523,7 +4531,7 @@ var PlaylistVisualization = ({
+       const rawCh = getTrackChannelCount(trackClipPeaks, recordingState, (_a2 = tracks[i]) == null ? void 0 : _a2.id, mono);
+       const trackMode = (_f2 = (_e2 = (_c2 = spectrogram == null ? void 0 : spectrogram.trackSpectrogramOverrides.get((_b2 = tracks[i]) == null ? void 0 : _b2.id)) == null ? void 0 : _c2.renderMode) != null ? _e2 : (_d2 = tracks[i]) == null ? void 0 : _d2.renderMode) != null ? _f2 : "waveform";
+       const effectiveCh = trackMode === "both" ? rawCh * 2 : rawCh;
+-      const trackHeight = effectiveCh * waveHeight + (showClipHeaders ? 22 : 0);
++      const trackHeight = effectiveCh * trackWaveHeight(tracks[i], waveHeight) + (showClipHeaders ? 22 : 0);
+       if (trackY >= cumulativeHeight && trackY < cumulativeHeight + trackHeight) {
+         clickedTrackIndex = i;
+         break;
+@@ -4574,7 +4582,7 @@ var PlaylistVisualization = ({
+       const track = tracks[trackIndex];
+       if (!track) return;
+       const maxChannels = getTrackChannelCount(trackClipPeaks, recordingState, track.id, mono);
+-      m.set(track.id, waveHeight * maxChannels + (showClipHeaders ? CLIP_HEADER_HEIGHT : 0));
++      m.set(track.id, trackWaveHeight(track, waveHeight) * maxChannels + (showClipHeaders ? CLIP_HEADER_HEIGHT : 0));
+     });
+     return m;
+   }, [peaksDataArray, tracks, recordingState, mono, waveHeight, showClipHeaders]);
+@@ -4733,8 +4741,9 @@ var PlaylistVisualization = ({
+                     "data-track-id": track.id,
+                     "data-track-drag-source": (trackDragPreview == null ? void 0 : trackDragPreview.trackId) === track.id ? "true" : void 0,
+                     children: /* @__PURE__ */ jsxs2(
+-                      TrackComponent,
++                      TrackWithHeight,
+                       {
++                        waveHeightOverride: trackWaveHeight(track, waveHeight),
+                         numChannels: maxChannels,
+                         backgroundColor: effectiveRenderMode === "piano-roll" ? theme.pianoRollBackgroundColor || "#1a1a2e" : waveformColorToCss2(theme.waveOutlineColor),
+                         offset: 0,

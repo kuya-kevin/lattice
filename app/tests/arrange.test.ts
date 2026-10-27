@@ -27,11 +27,15 @@ describe('snap math', () => {
     expect(gridSeconds('off', m44)).toBe(0);
     expect(gridSeconds('bar', { tempo: 90, timeSignature: [6, 8] })).toBeCloseTo(2); // 6 eighths at 90 BPM
     expect(gridSeconds('beat', { tempo: 90, timeSignature: [6, 8] })).toBeCloseTo(1 / 3);
+    expect(gridSeconds('sixteenth', m44)).toBe(0.125); // a quarter of a 120 BPM quarter note
+    expect(gridSeconds('sixteenth', { tempo: 90, timeSignature: [6, 8] })).toBeCloseTo(1 / 6); // half an eighth
   });
 
   it('snaps to the nearest line and never before zero', () => {
     expect(snapTime(1.26, 'beat', m44)).toBe(1.5);
     expect(snapTime(1.24, 'beat', m44)).toBe(1);
+    expect(snapTime(1.19, 'sixteenth', m44)).toBe(1.25);
+    expect(snapTime(1.06, 'sixteenth', m44)).toBe(1.0);
     expect(snapTime(2.9, 'bar', m44)).toBe(2);
     expect(snapTime(3.1, 'bar', m44)).toBe(4);
     expect(snapTime(-0.7, 'bar', m44)).toBe(0);

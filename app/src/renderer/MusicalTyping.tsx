@@ -1,0 +1,311 @@
+// Musical Typing (Logic's Cmd-K window): while on, the letter keys play notes live (note-on at
+// keydown, note-off at keyup) and a small on-screen keyboard lights the keys. The instrument is
+// the selected audio clip played as a sampler (A = its original pitch), else the piano voice.
+// Key map and octave/velocity rules: core/musicalTyping.ts.
+//
+// Every note goes through `musicalTyping.onNote`, with transport times, so a MIDI recorder can
+// subscribe to the same stream the sound comes from.
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { usePlaybackAnimation } from '@waveform-playlist/browser';
+import { getGlobalContext } from '@waveform-playlist/playout';
+import {
+  DEFAULT_BASE,
+  DEFAULT_VELOCITY,
+  KEY_LABELS,
+  keyAction,
+  pitchAt,
+  rangeLabel,
+  shiftOctave,
+  stepVelocity,
+  typingInstrument,
+  type TypingSample,
+} from '../core/musicalTyping';
+import { noteName } from '../core/midi';
+import type { Session } from '../core/session';
+import { trackEffects } from '../fx/engine/live';
+import { buffers } from './audio';
+import { pianoVoice, sampleVoice, type Voice } from './midiSynth';
+import { isTyping, setMusicalTypingKeys } from './shortcuts';
+import './MusicalTyping.css';
+
+/** time = transport seconds (the playhead) when the key went down / up. */
+export interface NoteEvent {
+  type: 'on' | 'off';
+  pitch: number;
+  velocity: number;
+  time: number;
+}
+
+// ─── audio: one bus on the playlist's context, through the selected track's effects ───
+
+const audioContext = () => getGlobalContext().rawContext as unknown as AudioContext;
+
+class LiveKeys {
+  private bus: GainNode | null = null;
+  private end: DynamicsCompressorNode | null = null;
+  private unroute: (() => void) | void = undefined;
+  private trackId: string | null | undefined = undefined;
+
+  private out(): AudioNode {
+    if (this.bus) return this.bus;
+    const ctx = audioContext();
+    this.bus = ctx.createGain();
+    this.bus.gain.value = 0.8;
+    this.end = ctx.createDynamicsCompressor(); // keeps chords from clipping (as renderMidi)
+    this.end.threshold.value = -12;
+    this.bus.connect(this.end);
+    this.route(this.trackId ?? null, true);
+    return this.bus;
+  }
+
+  /** Play through this track's device chain (null: straight to the output). */
+  route(trackId: string | null, force = false) {
+    if (trackId === this.trackId && !force) return;
+    this.trackId = trackId;
+    if (!this.end) return; // routed when the first note builds the bus
+    this.end.disconnect();
+    this.unroute?.();
+    const dest = audioContext().destination;
+    if (trackId) this.unroute = trackEffects(trackId)(this.end, dest, false);
+    else this.end.connect(dest);
+  }
+
+  /** A note on the piano, or on `inst` (a sampler) when given. */
+  play(pitch: number, velocity: number, inst: LiveInstrument | null): Voice {
+    const ctx = audioContext();
+    if (ctx.state === 'suspended') ctx.resume();
+    if (inst) return sampleVoice(ctx, this.out(), inst.buffer, inst.sample, pitch, velocity, ctx.currentTime);
+    return pianoVoice(ctx, this.out(), pitch, velocity, ctx.currentTime);
+  }
+}
+
+// ─── state shared by the button, the keyboard and the key handler ───
+
+/** A sampler whose audio is loaded. */
+export interface LiveInstrument extends TypingSample {
+  buffer: AudioBuffer;
+}
+interface Snapshot {
+  on: boolean;
+  instrument: string; // "Piano" or the sampled clip's name
+  base: number;
+  velocity: number;
+  sustain: boolean;
+  active: number[]; // sounding pitches
+}
+declare global {
+  interface Window {
+    __musicalTypingLog?: NoteEvent[]; // set by e2e tests to see note events
+  }
+}
+
+class MusicalTypingStore {
+  private snap: Snapshot = { on: false, instrument: 'Piano', base: DEFAULT_BASE, velocity: DEFAULT_VELOCITY, sustain: false, active: [] };
+  private listeners = new Set<() => void>();
+  private noteListeners = new Set<(e: NoteEvent) => void>();
+  private held = new Map<string, number>(); // key code (or "pointer") -> pitch
+  private sounding = new Map<number, { voice: Voice; velocity: number }>();
+  readonly keys = new LiveKeys();
+  private inst: LiveInstrument | null = null;
+  /** Transport position now; set by the mounted keyboard from usePlaybackAnimation. */
+  clock: () => number = () => 0;
+
+  get = () => this.snap;
+  subscribe = (fn: () => void) => {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  };
+  /** Subscribe to note-on/off (e.g. a MIDI recorder). Returns the unsubscribe function. */
+  onNote(fn: (e: NoteEvent) => void) {
+    this.noteListeners.add(fn);
+    return () => this.noteListeners.delete(fn);
+  }
+
+  private set(patch: Partial<Snapshot>) {
+    this.snap = { ...this.snap, ...patch, active: [...this.sounding.keys()].sort((a, b) => a - b) };
+    for (const fn of this.listeners) fn();
+  }
+  private emit(e: NoteEvent) {
+    window.__musicalTypingLog?.push(e);
+    for (const fn of this.noteListeners) fn(e);
+  }
+
+  /** Play the piano (null) or a loaded sample. Set by the mounted keyboard from the selection. */
+  setInstrument(inst: LiveInstrument | null) {
+    const same = inst === this.inst || (inst && this.inst && inst.buffer === this.inst.buffer && inst.name === this.inst.name &&
+      JSON.stringify(inst.sample) === JSON.stringify(this.inst.sample));
+    if (same) return;
+    this.inst = inst;
+    this.set({ instrument: inst?.name ?? 'Piano' });
+  }
+  /** The sampler notes play on right now (null: the piano); a MIDI take records it. */
+  instrument(): TypingSample | null {
+    return this.inst && { name: this.inst.name, sample: this.inst.sample };
+  }
+
+  toggle = (on = !this.snap.on) => {
+    if (!on) this.releaseAll();
+    setMusicalTypingKeys(on);
+    this.set({ on });
+  };
+  octave = (delta: number) => this.set({ base: shiftOctave(this.snap.base, delta) });
+  velocityStep = (delta: number) => this.set({ velocity: stepVelocity(this.snap.velocity, delta) });
+
+  noteOn(holder: string, offset: number) {
+    const pitch = pitchAt(this.snap.base, offset);
+    if (pitch == null || this.held.has(holder)) return;
+    this.held.set(holder, pitch);
+    if (this.sounding.has(pitch)) this.stop(pitch); // re-strike (sustained, or held by another holder)
+    const velocity = this.snap.velocity;
+    this.sounding.set(pitch, { voice: this.keys.play(pitch, velocity, this.inst), velocity });
+    this.emit({ type: 'on', pitch, velocity, time: this.clock() });
+    this.set({});
+  }
+  noteOff(holder: string) {
+    const pitch = this.held.get(holder);
+    if (pitch == null) return;
+    this.held.delete(holder);
+    if (this.snap.sustain || [...this.held.values()].includes(pitch)) return;
+    this.stop(pitch);
+    this.set({});
+  }
+  setSustain(sustain: boolean) {
+    if (sustain === this.snap.sustain) return;
+    if (!sustain) {
+      const keep = new Set(this.held.values());
+      for (const p of [...this.sounding.keys()]) if (!keep.has(p)) this.stop(p);
+    }
+    this.set({ sustain });
+  }
+  releaseAll() {
+    this.held.clear();
+    for (const p of [...this.sounding.keys()]) this.stop(p);
+    this.set({ sustain: false });
+  }
+  private stop(pitch: number) {
+    const v = this.sounding.get(pitch);
+    if (!v) return;
+    this.sounding.delete(pitch);
+    v.voice.release(audioContext().currentTime);
+    this.emit({ type: 'off', pitch, velocity: v.velocity, time: this.clock() });
+  }
+}
+
+export const musicalTyping = new MusicalTypingStore();
+
+const useMusicalTyping = () => useSyncExternalStore(musicalTyping.subscribe, musicalTyping.get);
+
+// ─── UI ───
+
+/** On/off toggle (⌘K); place it in any toolbar. */
+export function MusicalTypingButton({ className = '', children = '⌨ Keys' }: { className?: string; children?: ReactNode }) {
+  const { on } = useMusicalTyping();
+  return (
+    <button className={[className, on && 'on'].filter(Boolean).join(' ')} aria-pressed={on} aria-label="Musical Typing" title="Musical Typing: play notes with the letter keys (⌘K)" onClick={() => musicalTyping.toggle()}>
+      {children}
+    </button>
+  );
+}
+
+const WHITE = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17];
+const BLACK = [1, 3, 6, 8, 10, 13, 15];
+
+/** The key handler plus the floating keyboard (shown while on). Mount once, inside the
+ *  playlist provider. Notes play through the selected track's effects. */
+export function MusicalTypingKeyboard({ session }: { session: Session }) {
+  const s = useMusicalTyping();
+  const { currentTimeRef } = usePlaybackAnimation();
+  musicalTyping.clock = () => currentTimeRef.current ?? 0;
+  const trackId = session.selection.trackId ?? session.tracks[0]?.id ?? null;
+  useEffect(() => musicalTyping.keys.route(trackId), [trackId]);
+  // the instrument: the selected audio clip as a sampler once its audio is loaded, else the piano
+  const [loads, setLoads] = useState(0);
+  useEffect(() => buffers.subscribe(() => setLoads((n) => n + 1)), []);
+  const wanted = typingInstrument(session);
+  const sampleBuffer = wanted ? buffers.get(wanted.sample.sourceId) : undefined;
+  useEffect(() => {
+    musicalTyping.setInstrument(wanted && sampleBuffer ? { ...wanted, buffer: sampleBuffer } : null);
+  }, [wanted?.name, wanted?.sample.sourceId, wanted?.sample.offset, wanted?.sample.duration, wanted?.sample.root, sampleBuffer, loads]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (!musicalTyping.get().on || e.metaKey || e.ctrlKey || e.altKey || isTyping(e.target)) return;
+      const a = keyAction(e.code);
+      if (!a) return;
+      e.preventDefault(); // Tab would move focus
+      if (e.repeat) return;
+      if (a.type === 'note') musicalTyping.noteOn(e.code, a.offset);
+      else if (a.type === 'octave') musicalTyping.octave(a.delta);
+      else if (a.type === 'velocity') musicalTyping.velocityStep(a.delta);
+      else musicalTyping.setSustain(true);
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.code === 'Tab') musicalTyping.setSustain(false);
+      else musicalTyping.noteOff(e.code);
+    };
+    const blur = () => musicalTyping.releaseAll();
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('blur', blur);
+      musicalTyping.releaseAll();
+    };
+  }, []);
+
+  if (!s.on) return null;
+  const key = (off: number, black: boolean) => {
+    const pitch = s.base + off;
+    const active = s.active.includes(pitch);
+    return (
+      <div
+        key={off}
+        className={`mt-key ${black ? 'black' : 'white'}`}
+        style={black ? { left: `calc(${(WHITE.indexOf(off - 1) + 1) * (100 / WHITE.length)}% - 11px)` } : undefined}
+        data-key={KEY_LABELS[off]}
+        data-pitch={pitch}
+        data-active={active}
+        title={noteName(pitch)}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          musicalTyping.noteOn('pointer', off);
+        }}
+        onPointerUp={() => musicalTyping.noteOff('pointer')}
+        onPointerCancel={() => musicalTyping.noteOff('pointer')}
+      >
+        <span>{KEY_LABELS[off]}</span>
+      </div>
+    );
+  };
+  return (
+    <section className="musical-typing" data-testid="musical-typing" data-voices={s.active.length} data-instrument={s.instrument} aria-label="Musical Typing">
+      <header>
+        <strong>Musical Typing</strong>
+        <span
+          className="mt-info mt-instrument"
+          data-testid="mt-instrument"
+          title={s.instrument === 'Piano' ? 'Piano (select an audio clip to play it as a sampler)' : `Sampler: "${s.instrument}" (A plays it at its own pitch)`}
+        >
+          {s.instrument}
+        </span>
+        <span className="mt-info" title="Z / X: octave down / up">
+          <kbd>Z</kbd> {rangeLabel(s.base)} <kbd>X</kbd>
+        </span>
+        <span className="mt-info" title="C / V: velocity down / up">
+          <kbd>C</kbd> vel <b data-testid="mt-velocity">{s.velocity}</b> <kbd>V</kbd>
+        </span>
+        <span className={`mt-info${s.sustain ? ' on' : ''}`} title="Hold Tab to sustain">
+          <kbd>⇥</kbd> sustain
+        </span>
+        <button className="mt-close" aria-label="Close Musical Typing" title="Close (⌘K)" onClick={() => musicalTyping.toggle(false)}>×</button>
+      </header>
+      <div className="mt-keys">
+        {WHITE.map((o) => key(o, false))}
+        {BLACK.map((o) => key(o, true))}
+      </div>
+    </section>
+  );
+}

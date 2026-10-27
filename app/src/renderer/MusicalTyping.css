@@ -1,0 +1,30 @@
+/* Musical Typing keyboard. Own file so it merges cleanly with UI work on styles.css. */
+.musical-typing {
+  position: fixed; left: 50%; bottom: 112px; /* above the Muse prompt bar */ transform: translateX(-50%); z-index: 20;
+  width: min(460px, calc(100vw - 32px)); padding: 8px 10px 10px; border-radius: 10px;
+  background: var(--panel, #2a2b2f); border: 1px solid var(--line, #3a3b40); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  user-select: none;
+}
+.musical-typing header { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 8px; }
+.musical-typing .mt-info { color: var(--muted, #8e8f95); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.musical-typing .mt-info b { color: var(--text, #e6e6e8); font-weight: 600; }
+.musical-typing .mt-info.on { color: var(--accent, #4a9df0); }
+.musical-typing .mt-instrument {
+  color: var(--text, #e6e6e8); max-width: 140px; overflow: hidden; text-overflow: ellipsis;
+  padding: 0 6px; border-radius: 3px; background: var(--panel-2, #323338);
+}
+.musical-typing kbd {
+  font: 10px ui-monospace, monospace; padding: 0 4px; border-radius: 3px;
+  border: 1px solid var(--line, #3a3b40); background: var(--panel-2, #323338); color: var(--text, #e6e6e8);
+}
+.musical-typing .mt-close { margin-left: auto; padding: 0 7px; background: transparent; border-color: transparent; color: var(--muted, #8e8f95); }
+.mt-keys { position: relative; display: flex; height: 92px; }
+.mt-key { position: relative; display: flex; align-items: flex-end; justify-content: center; cursor: pointer; font: 10px ui-monospace, monospace; }
+.mt-key.white { flex: 1; margin-right: 2px; padding-bottom: 5px; border-radius: 0 0 4px 4px; background: #e9e9ec; color: #55575d; }
+.mt-key.white:last-of-type { margin-right: 0; }
+.mt-key.black {
+  position: absolute; top: 0; width: 22px; height: 56%; z-index: 1; padding-bottom: 4px;
+  border-radius: 0 0 3px 3px; background: #1b1c1f; color: #a7a9ae; border: 1px solid #000;
+}
+.mt-key[data-active='true'].white { background: var(--accent, #4a9df0); color: #0b1420; }
+.mt-key[data-active='true'].black { background: #2f6fb4; color: #e6e6e8; }

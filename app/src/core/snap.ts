@@ -1,15 +1,19 @@
 // Snap-to-grid math for clip moves, trims and library drops (pure, unit-tested).
 // Logic's "Snap" menu offers Bar / Beat / Division / ...; GarageBand has one Snap to Grid
-// toggle. We offer Off / Bar / Beat, on the session's tempo and time signature.
+// toggle. We offer Off / Bar / Beat / 1/16 (Logic's "Division" at its 1/16 default), on the
+// session's tempo and time signature.
 import { barLength, beatLength, type Meter } from './metronome';
 
-export type SnapMode = 'off' | 'bar' | 'beat';
-export const SNAP_MODES: SnapMode[] = ['off', 'bar', 'beat'];
+export type SnapMode = 'off' | 'bar' | 'beat' | 'sixteenth';
+export const SNAP_MODES: SnapMode[] = ['off', 'bar', 'beat', 'sixteenth'];
+export const SNAP_LABELS: Record<SnapMode, string> = { off: 'Off', bar: 'Bar', beat: 'Beat', sixteenth: '1/16' };
 
-/** Grid step in seconds, or 0 when snapping is off. */
+/** Grid step in seconds, or 0 when snapping is off. A 1/16 is a quarter of a quarter note
+ *  whatever the time signature (in 6/8 that is half an eighth-note beat). */
 export function gridSeconds(mode: SnapMode, m: Meter): number {
   if (mode === 'bar') return barLength(m);
   if (mode === 'beat') return beatLength(m);
+  if (mode === 'sixteenth') return 60 / m.tempo / 4;
   return 0;
 }
 

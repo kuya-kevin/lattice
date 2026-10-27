@@ -1,6 +1,7 @@
 // [S3 midi] Audio -> MIDI tools: extract_midi (runs the source-prep sidecar on an audio clip and
 // adds one MIDI track per stem, lined up with the audio) and quantize_midi (at the session tempo).
-import { GRIDS, quantizeNotes, stemToMidi, type PrepManifest } from './midi';
+// Also record_midi: a take played on the Musical Typing keyboard becomes a MIDI clip.
+import { GRIDS, quantizeNotes, stemToMidi, type MidiData, type MidiNote, type PrepManifest, type SampleRef } from './midi';
 import * as S from './session';
 import type { ExtractMode } from './sidecar';
 import type { ToolContext, ToolDef } from './tools';
@@ -67,7 +68,78 @@ export function importManifest(s: S.Session, clipId: string, m: PrepManifest, se
   return { session: next, added, skipped, applied };
 }
 
+/** Check a sampler instrument against the session: a region inside a real (audio) source. */
+export function checkSample(s: S.Session, x: SampleRef): SampleRef {
+  const src = s.sources[x.sourceId];
+  if (!src) throw new S.SessionError(`sample source ${x.sourceId} not found`);
+  if (s.tracks.some((t) => t.clips.some((c) => c.midi && c.sourceId === x.sourceId))) {
+    throw new S.SessionError(`sample source ${x.sourceId} is a MIDI clip, not audio`);
+  }
+  const ok = (v: unknown) => typeof v === 'number' && Number.isFinite(v);
+  if (!ok(x.offset) || !ok(x.duration) || !ok(x.root)) throw new S.SessionError('sample needs numeric offset, duration and root');
+  if (x.offset < 0 || !(x.duration > 0) || x.offset + x.duration > src.duration + 0.01) {
+    throw new S.SessionError(`sample region ${x.offset}+${x.duration}s is outside source ${x.sourceId} (${src.duration}s)`);
+  }
+  if (!Number.isInteger(x.root) || x.root < 0 || x.root > 127) throw new S.SessionError('sample root must be a MIDI note 0-127');
+  return { sourceId: x.sourceId, offset: x.offset, duration: x.duration, root: x.root };
+}
+
+/** Pure: add a recorded MIDI take (notes relative to the take start) to a track as a new
+ *  clip, select it and clear any punch-in. Notes outside the take are dropped or clipped.
+ *  With `instrument.sample`, the take plays back with that sample (as it was played live).
+ *  Exported for tests (record_midi wraps it). */
+export function recordMidiTake(
+  s: S.Session,
+  trackId: string,
+  start: number,
+  duration: number,
+  notes: MidiNote[],
+  instrument?: { name?: string; sample: SampleRef },
+) {
+  if (!(duration > 0)) throw new S.SessionError('a MIDI take needs a duration > 0');
+  const sample = instrument ? checkSample(s, instrument.sample) : undefined;
+  const kept = notes
+    .filter((n) => Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 && n.start >= 0 && n.start < duration && n.duration > 0)
+    .map((n) => ({ ...n, velocity: Math.min(127, Math.max(1, Math.round(n.velocity))), duration: Math.min(n.duration, duration - n.start) }));
+  const takes = s.tracks.reduce((k, t) => k + t.clips.filter((c) => c.midi).length, 0) + 1;
+  const name = `MIDI take ${takes}`;
+  const midi: MidiData = sample
+    ? { instrument: instrument!.name?.trim() || s.sources[sample.sourceId].name, sample, notes: kept }
+    : { instrument: 'piano', notes: kept };
+  const [s1, clip] = S.addMidiClip(s, trackId, { name, midi, sourceDuration: duration, start: Math.max(0, start) });
+  return { session: { ...S.select(s1, trackId, clip.id), punchIn: null }, clip, notes: kept.length };
+}
+
 export const MIDI_TOOLS: ToolDef[] = [
+  {
+    name: 'record_midi',
+    description: 'Add a MIDI take played on the Musical Typing keyboard to a track: notes are relative to the take start.',
+    userOnly: true,
+    parameters: obj(
+      {
+        track_id: str(''),
+        start: num('Take start, timeline seconds'),
+        duration: num('Take length, seconds'),
+        notes: { type: 'array', items: obj({ pitch: num(''), velocity: num(''), start: num(''), duration: num('') }, ['pitch', 'velocity', 'start', 'duration']) },
+        instrument: str('Label for the sampled sound (the clip name); with sample'),
+        sample: obj(
+          { source_id: str('Audio source played as the instrument'), offset: num('s into the source'), duration: num('s'), root: num('MIDI note that plays it unpitched') },
+          ['source_id', 'offset', 'duration', 'root'],
+        ),
+      },
+      ['track_id', 'start', 'duration', 'notes'],
+    ),
+    logText: (_a, r) => `recorded a MIDI take (${r.notes} notes) on ${r.track_id} @${r.start}s as clip ${r.clip_id}`,
+    run: (ctx: ToolContext, a) => {
+      const smp = a.sample
+        ? { name: a.instrument, sample: { sourceId: a.sample.source_id, offset: a.sample.offset, duration: a.sample.duration, root: a.sample.root } }
+        : undefined;
+      if (a.instrument !== undefined && !a.sample) throw new S.SessionError('instrument needs a sample');
+      const r = recordMidiTake(ctx.store.get(), a.track_id, a.start, a.duration, a.notes, smp);
+      ctx.store.set(r.session);
+      return { clip_id: r.clip.id, track_id: a.track_id, start: r.clip.start, notes: r.notes, instrument: r.clip.midi!.instrument };
+    },
+  },
   {
     name: 'extract_midi',
     description:

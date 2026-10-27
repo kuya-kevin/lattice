@@ -3,9 +3,23 @@
 // waveform-playlist tracks.
 import type { AudioClip, ClipTrack } from '@waveform-playlist/core';
 import { getGlobalContext } from '@waveform-playlist/playout';
-import type { Session } from '../core/session';
+import { laneHeight, type Session } from '../core/session';
 
-export const buffers = new Map<string, AudioBuffer>();
+/** A Map that tells subscribers when a buffer is added (e.g. so sampler MIDI clips re-render
+ *  once their sample's audio arrives). */
+class BufferStore extends Map<string, AudioBuffer> {
+  private listeners = new Set<(id: string) => void>();
+  override set(id: string, b: AudioBuffer) {
+    super.set(id, b);
+    for (const fn of this.listeners ?? []) fn(id); // listeners is unset while Map's constructor runs
+    return this;
+  }
+  subscribe(fn: (id: string) => void) {
+    this.listeners.add(fn);
+    return () => void this.listeners.delete(fn);
+  }
+}
+export const buffers = new BufferStore();
 
 /** [S3 midi] Key of a MIDI clip's rendered audio in `buffers` (renderer/midiSynth.ts). */
 export const midiBufferId = (clipId: string) => `midi:${clipId}`;
@@ -21,10 +35,11 @@ export async function decodeFile(file: File): Promise<AudioBuffer> {
 
 const dbToGain = (db: number) => Math.pow(10, db / 20);
 
-export function toClipTracks(s: Session): ClipTrack[] {
+export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {
   return s.tracks.map((t) => ({
     id: t.id,
     name: t.name,
+    height: laneHeight(t.heightScale, waveHeight), // the playlist is patched to honour this (patches/)
     muted: t.muted,
     soloed: t.soloed,
     volume: dbToGain(t.gainDb),
@@ -54,7 +69,7 @@ export function sameLayout(a: ClipTrack[], b: ClipTrack[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((t, i) => {
     const u = b[i];
-    if (t.id !== u.id || t.name !== u.name || t.muted !== u.muted || t.soloed !== u.soloed || Math.abs(t.volume - u.volume) > 1e-6) return false;
+    if (t.id !== u.id || t.name !== u.name || t.muted !== u.muted || t.soloed !== u.soloed || t.height !== u.height || Math.abs(t.volume - u.volume) > 1e-6) return false;
     if (t.clips.length !== u.clips.length) return false;
     return t.clips.every((c, j) => {
       const d = u.clips[j];

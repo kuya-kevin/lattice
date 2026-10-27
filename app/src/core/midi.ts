@@ -8,13 +8,27 @@ export interface MidiNote {
   velocity: number; // 1-127
 }
 
+/** A region of an audio source played as a sampler instrument: each note plays
+ *  [offset, offset + duration] of the source, repitched by 2^((pitch - root) / 12). */
+export interface SampleRef {
+  sourceId: string;
+  offset: number; // s into the source
+  duration: number; // s
+  root: number; // MIDI pitch that plays the sound at its original pitch
+}
+
 /** A clip's notes and the sound that plays them. Playback is one built-in piano-like voice for
- *  pitched parts and a small synthesized kit for drums (the user swaps sounds later). */
+ *  pitched parts, a small synthesized kit for drums, or (with `sample`) an audio clip played
+ *  as a sampler (a Musical Typing take recorded with a sample as the instrument). */
 export interface MidiData {
-  instrument: string; // label, e.g. "piano", "drums"
+  instrument: string; // label, e.g. "piano", "drums", or the sampled clip's name
   drum?: boolean; // GM drum notes: 36 kick, 38 snare, 42 hat
+  sample?: SampleRef;
   notes: MidiNote[];
 }
+
+/** Playback rate that makes a sample sound at `pitch` when it sounds at `root` unchanged. */
+export const sampleRateFor = (pitch: number, root: number) => Math.pow(2, (pitch - root) / 12);
 
 /** One stem in the sidecar manifest (prep.py, version 1). */
 export interface PrepStem {
@@ -84,19 +98,20 @@ export function quantizeNotes(notes: MidiNote[], bpm: number, grid: string, stre
 }
 
 export function describeMidi(m: MidiData): string {
-  if (!m.notes.length) return `MIDI ${m.instrument}, empty`;
+  if (!m.notes.length) return `MIDI ${m.sample ? `sampler "${m.instrument}"` : m.instrument}, empty`;
   if (m.drum) {
     const count = (p: number) => m.notes.filter((n) => n.pitch === p).length;
     return `MIDI drums, ${m.notes.length} hits (kick ${count(36)}, snare ${count(38)}, hat ${count(42)})`;
   }
   const ps = m.notes.map((n) => n.pitch);
-  return `MIDI ${m.instrument}, ${m.notes.length} notes ${noteName(Math.min(...ps))}-${noteName(Math.max(...ps))}`;
+  return `MIDI ${m.sample ? `sampler "${m.instrument}"` : m.instrument}, ${m.notes.length} notes ${noteName(Math.min(...ps))}-${noteName(Math.max(...ps))}`;
 }
 
 /** Short stable signature of a clip's MIDI (to know when a playback render is stale). */
 export function midiSignature(m: MidiData, duration: number): string {
   let h = 2166136261;
-  const s = `${m.instrument}|${m.drum ? 1 : 0}|${duration}|` + m.notes.map((n) => `${n.pitch},${n.start},${n.duration},${n.velocity}`).join(';');
+  const smp = m.sample ? `${m.sample.sourceId},${m.sample.offset},${m.sample.duration},${m.sample.root}` : '';
+  const s = `${m.instrument}|${m.drum ? 1 : 0}|${smp}|${duration}|` + m.notes.map((n) => `${n.pitch},${n.start},${n.duration},${n.velocity}`).join(';');
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0).toString(36);
 }
