@@ -2,12 +2,22 @@ import { emptySession, type Session } from './session';
 
 export type Actor = 'user' | 'muse';
 
+const HISTORY_LIMIT = 100;
+
+interface Snapshot {
+  session: Session;
+  label: string; // the edit that followed this snapshot, e.g. 'move_clip {"clip_id":"c2",...}'
+}
+
 /** Holds the session, notifies listeners, and keeps a log of the user's manual edits
- *  since Muse's last turn (Muse reads them as feedback, then the log is cleared). */
+ *  since Muse's last turn (Muse reads them as feedback, then the log is cleared).
+ *  Also keeps an undo/redo history of edits (by the user or Muse), like Logic's Undo. */
 export class SessionStore {
   private session: Session;
   private listeners = new Set<(s: Session) => void>();
   private userEdits: string[] = [];
+  private past: Snapshot[] = [];
+  private future: Snapshot[] = [];
 
   constructor(initial: Session = emptySession()) {
     this.session = initial;
@@ -37,5 +47,52 @@ export class SessionStore {
     const edits = this.userEdits;
     this.userEdits = [];
     return edits;
+  }
+
+  /** Record that `before` was replaced by an edit (call after the edit was applied). */
+  pushHistory(before: Session, label: string): void {
+    this.past.push({ session: before, label });
+    if (this.past.length > HISTORY_LIMIT) this.past.shift();
+    this.future = [];
+  }
+
+  canUndo(): boolean {
+    return this.past.length > 0;
+  }
+
+  canRedo(): boolean {
+    return this.future.length > 0;
+  }
+
+  /** Step back one edit. Transport, selection and the id counter are kept as they are now
+   *  (undo restores the arrangement and mix, not where the playhead is). Returns the label
+   *  of the undone edit, or null if there was nothing to undo. */
+  undo(): string | null {
+    const snap = this.past.pop();
+    if (!snap) return null;
+    this.future.push({ session: this.session, label: snap.label });
+    this.set(this.restore(snap.session));
+    return snap.label;
+  }
+
+  redo(): string | null {
+    const snap = this.future.pop();
+    if (!snap) return null;
+    this.past.push({ session: this.session, label: snap.label });
+    this.set(this.restore(snap.session));
+    return snap.label;
+  }
+
+  private restore(target: Session): Session {
+    const cur = this.session;
+    const ids = new Set(target.tracks.flatMap((t) => [t.id, ...t.clips.map((c) => c.id)]));
+    const keep = (id: string | null) => (id && ids.has(id) ? id : null);
+    return {
+      ...target,
+      sources: { ...target.sources, ...cur.sources }, // audio stays loaded either way
+      transport: cur.transport,
+      selection: { trackId: keep(cur.selection.trackId), clipId: keep(cur.selection.clipId) },
+      seq: Math.max(cur.seq, target.seq), // never reuse ids
+    };
   }
 }

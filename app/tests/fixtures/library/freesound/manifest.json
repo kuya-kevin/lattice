@@ -1,0 +1,74 @@
+[
+ {
+  "id": 101,
+  "category": "synth_lead",
+  "kind": "pitched",
+  "name": "Fixture Lead A",
+  "tags": [
+   "Lead",
+   "Synth",
+   "Note"
+  ],
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "license_name": "CC0-1.0",
+  "username": "fixture_user",
+  "url": "https://freesound.org/people/fixture_user/sounds/101/",
+  "duration": 0.8,
+  "fs_note_name": "A3",
+  "description": "Synthetic test fixture (synth_lead).",
+  "wav": "data/freesound/audio/synth_lead/101.wav"
+ },
+ {
+  "id": 102,
+  "category": "synth_bass",
+  "kind": "pitched",
+  "name": "Fixture Sub Bass",
+  "tags": [
+   "Bass",
+   "Synth"
+  ],
+  "license": "http://creativecommons.org/licenses/by/4.0/",
+  "license_name": "CC-BY-4.0",
+  "username": "bass_maker",
+  "url": "https://freesound.org/people/bass_maker/sounds/102/",
+  "duration": 1,
+  "fs_note_name": "E1",
+  "description": "Synthetic test fixture (synth_bass).",
+  "wav": "data/freesound/audio/synth_bass/102.wav"
+ },
+ {
+  "id": 103,
+  "category": "kick",
+  "kind": "drum",
+  "name": "Fixture Kick",
+  "tags": [
+   "kick",
+   "drums",
+   "one-shot"
+  ],
+  "license": "http://creativecommons.org/licenses/by/3.0/",
+  "license_name": "CC-BY-3.0",
+  "username": "drummer",
+  "url": "https://freesound.org/people/drummer/sounds/103/",
+  "duration": 0.4,
+  "description": "Synthetic test fixture (kick).",
+  "wav": "data/freesound/audio/kick/103.wav"
+ },
+ {
+  "id": 104,
+  "category": "closed_hat",
+  "kind": "drum",
+  "name": "Fixture Hat",
+  "tags": [
+   "hihat",
+   "drums"
+  ],
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "license_name": "CC0-1.0",
+  "username": "drummer",
+  "url": "https://freesound.org/people/drummer/sounds/104/",
+  "duration": 0.2,
+  "description": "Synthetic test fixture (closed_hat).",
+  "wav": "data/freesound/audio/closed_hat/104.wav"
+ }
+]

@@ -30,6 +30,16 @@ export function createMockBridge(): Bridge {
     getSession: async () => store.get(),
     onSession: (cb) => store.subscribe(cb),
     runTool: (name, args) => runTool(ctx, name, args, 'user'),
+    // dev:web: served by the Vite middleware in vite.config.ts (fixtures in tests)
+    listLibrary: async () => {
+      const r = await fetch('/api/library');
+      return r.ok ? r.json() : [];
+    },
+    loadLibraryAudio: async (id) => {
+      const r = await fetch(`/api/library/audio/${encodeURIComponent(id)}`);
+      if (!r.ok) throw new Error(`library audio ${id}: HTTP ${r.status}`);
+      return r.arrayBuffer();
+    },
     sendChat: async (text) => {
       try {
         return { ok: true, turn: await agent.send(text) };

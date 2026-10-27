@@ -54,3 +54,34 @@ export function shortcutFor(e: KeyLike): ShortcutAction | null {
       return null;
   }
 }
+
+// ---- edit and window key commands (handled in App; Logic Pro defaults unless noted) ----
+
+export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'toggleSnap';
+
+export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }[] = [
+  { keys: '⌘Z', action: 'undo', label: 'Undo' },
+  { keys: '⇧⌘Z', action: 'redo', label: 'Redo' },
+  { keys: 'Delete', action: 'deleteClip', label: 'Delete selected region' },
+  { keys: 'O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },
+  { keys: 'B', action: 'toggleSmartControls', label: 'Show/hide Smart Controls' },
+  { keys: '⌘G', action: 'toggleSnap', label: 'Snap to grid on/off (GarageBand)' },
+];
+
+/** Cmd (Mac) or Ctrl (elsewhere) for undo/redo/snap; plain letters only without modifiers. */
+export function editShortcutFor(e: KeyLike): EditAction | null {
+  if (isTyping(e.target) || e.altKey) return null;
+  const cmd = e.metaKey || e.ctrlKey;
+  const k = e.key.toLowerCase();
+  if (cmd) {
+    if (k === 'z') return e.shiftKey ? 'redo' : 'undo';
+    if (k === 'y' && e.ctrlKey) return 'redo'; // Windows/Linux habit
+    if (k === 'g') return 'toggleSnap';
+    return null;
+  }
+  if (e.key === 'Delete' || e.key === 'Backspace') return 'deleteClip';
+  if (e.shiftKey) return null;
+  if (k === 'o') return 'toggleLibrary';
+  if (k === 'b') return 'toggleSmartControls';
+  return null;
+}

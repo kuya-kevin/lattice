@@ -1,0 +1,25 @@
+[project]
+name = "j-evals-amt"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# basic-pitch (Apache-2.0, ONNX runtime), ByteDance piano_transcription_inference (MIT),
+# mir_eval (MIT); plus the synthetic phone-degraded set builder.
+dependencies = [
+    "basic-pitch[onnx]",
+    "onnxruntime",
+    "piano_transcription_inference",
+    "torch",
+    "mir_eval",
+    "pretty_midi",
+    "librosa",
+    "soundfile",
+    "scipy",
+    "av",
+    "tinysoundfont",
+    "pyloudnorm",
+    "setuptools<81",  # resampy (via basic-pitch) imports pkg_resources
+]
+
+[tool.uv]
+# basic-pitch pins tensorflow on Linux; we run its ONNX model instead.
+override-dependencies = ["tensorflow; sys_platform == 'never'", "pyaudio; sys_platform == 'never'"]  # pyaudio: tinysoundfont playback only

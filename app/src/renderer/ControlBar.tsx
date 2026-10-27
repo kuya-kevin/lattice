@@ -219,7 +219,8 @@ function KeyField({ value, onCommit }: { value: string | null; onCommit: (key: s
   );
 }
 
-/** Mic recording: onto the punch-in track if armed, else the selected track, else a new one.
+/** Mic recording: onto the punch-in track if armed, else the record-armed track, else the
+ *  selected track, else a new one.
  *  With count-in on, one bar of clicks plays first; with the click on, it plays during the take. */
 function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: AudioBuffer) => void, meter: Meter) {
   const mic = useMicrophoneAccess();
@@ -253,7 +254,7 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
       return; // the stream arrives on the next render; press record again
     }
     const { session: s, meter: m } = latest.current;
-    let trackId = s.punchIn?.trackId ?? s.selection.trackId;
+    let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
     if (!trackId) trackId = (await run('add_track', { name: 'Recording' })).result?.track_id ?? null;
     if (!trackId) return;
     const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;

@@ -6,6 +6,7 @@ import type { Sidecar } from './sidecar';
 import { SYNTH_KNOBS } from './sidecar';
 import type { Actor, SessionStore } from './store';
 import type { FreesoundFilters, FreesoundHit } from './freesound';
+import { FX_TOOLS } from '../fx/tools';
 
 export type JsonSchema = {
   type: 'object';
@@ -26,9 +27,13 @@ export interface ToolDef {
   parameters: JsonSchema;
   /** user-only tools are hidden from Muse (they need audio the renderer holds) */
   userOnly?: boolean;
-  /** quiet tools (transport, selection) aren't logged as user feedback */
+  /** quiet tools (transport, selection) aren't logged as user feedback or undo history */
   quiet?: boolean;
-  run(ctx: ToolContext, args: any): Promise<unknown> | unknown;
+  /** undo/redo themselves don't create history entries */
+  noHistory?: boolean;
+  /** readable text for the hand-edit log Muse sees (default: name + JSON args) */
+  logText?: (args: any, result: any) => string;
+  run(ctx: ToolContext, args: any, by?: Actor): Promise<unknown> | unknown;
 }
 
 const num = (description: string, extra: object = {}) => ({ type: 'number', description, ...extra });
@@ -167,6 +172,41 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'move_clip',
+    description:
+      'Move a clip to a new timeline start (seconds), optionally onto another track (track_id). ' +
+      'The clip keeps its trim and id. Use the session tempo to land on bars: bar n starts at (n-1) * beats_per_bar * 60/BPM s (for x/4).',
+    parameters: obj({ clip_id: str('Clip id, e.g. "c2"'), start: num('New start, timeline seconds'), track_id: str('Destination track id; omit to stay on the same track') }, ['clip_id', 'start']),
+    run: (ctx, a) => {
+      const from = S.findClip(ctx.store.get(), a.clip_id);
+      const s = edit(ctx, (s) => S.moveClip(s, a.clip_id, a.start, a.track_id));
+      const to = S.findClip(s, a.clip_id);
+      return { clip_id: a.clip_id, from_track: from.track.id, from_start: from.clip.start, track_id: to.track.id, start: to.clip.start };
+    },
+    logText: (a, r) =>
+      r.from_track === r.track_id
+        ? `moved clip ${r.clip_id} on ${r.track_id} from ${r.from_start}s to ${r.start}s`
+        : `moved clip ${r.clip_id} from ${r.from_track} @${r.from_start}s to ${r.track_id} @${r.start}s`,
+  },
+  {
+    name: 'delete_clip',
+    description: 'Delete a clip from the arrangement (its audio stays available for undo).',
+    parameters: obj({ clip_id: str('Clip id') }, ['clip_id']),
+    run: (ctx, a) => {
+      edit(ctx, (s) => S.deleteClip(s, a.clip_id));
+      return { deleted: a.clip_id };
+    },
+  },
+  {
+    name: 'arm_track',
+    description: 'Record-arm a track (the next recording goes onto it) or disarm it. One track is armed at a time.',
+    parameters: obj({ track_id: str('Track id'), armed: { type: 'boolean', description: 'true to arm (default), false to disarm' } }, ['track_id']),
+    run: (ctx, a) => {
+      edit(ctx, (s) => S.setArm(s, a.track_id, a.armed ?? true));
+      return { track_id: a.track_id, armed: a.armed ?? true };
+    },
+  },
+  {
     name: 'set_tempo',
     description: `Set the project tempo in BPM (${S.TEMPO_RANGE[0]}-${S.TEMPO_RANGE[1]}). Drives the click, the bar/beat grid and quantize.`,
     parameters: obj({ bpm: num('Beats per minute') }, ['bpm']),
@@ -299,6 +339,9 @@ export const TOOLS: ToolDef[] = [
     },
   },
 
+  // ---- effect chain tools (fx/tools.ts) ----
+  ...FX_TOOLS,
+
   // ---- user-only (UI) tools ----
   {
     name: 'import_audio',
@@ -338,14 +381,65 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
-    name: 'move_clip',
-    description: 'Move a clip to a new timeline start (s).',
+    name: 'place_audio',
+    description: 'Place decoded audio (e.g. a library sound) on a track at a position; without track_id it goes on a new track.',
     userOnly: true,
-    parameters: obj({ clip_id: str(''), start: num('') }, ['clip_id', 'start']),
+    parameters: obj(
+      {
+        source_id: str(''),
+        name: str(''),
+        duration: num(''),
+        origin: str('', { enum: ['import', 'record', 'freesound', 'generated'] }),
+        track_id: str('Existing track; omit for a new track'),
+        start: num('Timeline seconds (default 0)'),
+        credit: str('Attribution text for CC-BY sounds'),
+      },
+      ['source_id', 'name', 'duration'],
+    ),
     run: (ctx, a) => {
-      edit(ctx, (s) => S.moveClip(s, a.clip_id, a.start));
-      return { clip_id: a.clip_id, start: a.start };
+      let out!: { track_id: string; clip_id: string; start: number };
+      edit(ctx, (s) => {
+        const s1 = S.addSource(s, { id: a.source_id, name: a.name, duration: a.duration, origin: a.origin ?? 'import', ...(a.credit ? { credit: a.credit } : {}) });
+        let s2 = s1;
+        let trackId = a.track_id as string | undefined;
+        if (!trackId) {
+          const [sNew, t] = S.addTrack(s1, a.name);
+          s2 = sNew;
+          trackId = t.id;
+        }
+        const [s3, c] = S.addClip(s2, trackId, a.source_id, a.start ?? 0);
+        out = { track_id: trackId, clip_id: c.id, start: c.start };
+        return S.select(s3, trackId, c.id);
+      });
+      return out;
     },
+    logText: (a, r) => `placed "${a.name}" (${a.origin ?? 'import'}) on ${a.track_id ? r.track_id : `new track ${r.track_id}`} at ${r.start}s as clip ${r.clip_id}`,
+  },
+  {
+    name: 'undo',
+    description: 'Undo the last edit.',
+    userOnly: true,
+    noHistory: true,
+    parameters: obj({}),
+    run: (ctx) => {
+      const label = ctx.store.undo();
+      if (!label) throw new S.SessionError('nothing to undo');
+      return { undone: label };
+    },
+    logText: (_a, r) => `undo (${r.undone})`,
+  },
+  {
+    name: 'redo',
+    description: 'Redo the last undone edit.',
+    userOnly: true,
+    noHistory: true,
+    parameters: obj({}),
+    run: (ctx) => {
+      const label = ctx.store.redo();
+      if (!label) throw new S.SessionError('nothing to redo');
+      return { redone: label };
+    },
+    logText: (_a, r) => `redo (${r.redone})`,
   },
   {
     name: 'select',
@@ -408,8 +502,13 @@ export async function runTool(ctx: ToolContext, name: string, args: unknown, by:
   const problem = validateArgs(tool.parameters, args);
   if (problem) return { ok: false, error: problem };
   try {
-    const result = await tool.run(ctx, args);
-    if (by === 'user' && !tool.quiet) ctx.store.logUserEdit(`${name} ${JSON.stringify(args)}`);
+    const before = ctx.store.get();
+    const result = await tool.run(ctx, args, by);
+    const text = tool.logText ? tool.logText(args, result) : `${name} ${JSON.stringify(args)}`;
+    const after = ctx.store.get();
+    const changed = after !== before && JSON.stringify(after) !== JSON.stringify(before); // sessions are small
+    if (!tool.quiet && !tool.noHistory && changed) ctx.store.pushHistory(before, by === 'muse' ? `Muse: ${text}` : text);
+    if (by === 'user' && !tool.quiet) ctx.store.logUserEdit(text);
     return { ok: true, result };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };

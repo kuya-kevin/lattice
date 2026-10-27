@@ -1,0 +1,36 @@
+[
+ {
+  "id": 201,
+  "category": "dry_vocal",
+  "name": "Fixture Dry Vocal Phrase",
+  "tags": [
+   "vocal",
+   "singing",
+   "dry"
+  ],
+  "license": "http://creativecommons.org/licenses/by/4.0/",
+  "license_name": "CC-BY-4.0",
+  "username": "singer",
+  "url": "https://freesound.org/people/singer/sounds/201/",
+  "duration": 4,
+  "description": "Synthetic test fixture (dry_vocal).",
+  "wav": "data/freesound_material/audio/dry_vocal/201.wav"
+ },
+ {
+  "id": 202,
+  "category": "drum_loop_live",
+  "name": "Fixture Live Drum Loop",
+  "tags": [
+   "drums",
+   "loop"
+  ],
+  "license": "http://creativecommons.org/publicdomain/zero/1.0/",
+  "license_name": "CC0-1.0",
+  "username": "drummer",
+  "url": "https://freesound.org/people/drummer/sounds/202/",
+  "duration": 4,
+  "fs_bpm": 120,
+  "description": "Synthetic test fixture (drum_loop_live).",
+  "wav": "data/freesound_material/audio/drum_loop_live/202.wav"
+ }
+]

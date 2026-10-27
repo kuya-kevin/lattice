@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lattice/knob-catalog",
+  "type": "object",
+  "required": ["version", "devices"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "version": { "type": "integer" },
+    "devices": { "type": "array", "items": { "$ref": "#/$defs/device" } }
+  },
+  "$defs": {
+    "device": {
+      "type": "object",
+      "required": ["id", "label", "category", "impl", "params"],
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-z][a-z0-9_]*$" },
+        "label": { "type": "string" },
+        "category": { "enum": ["eq", "dynamics", "saturation", "filter", "delay", "reverb", "pitch", "modulation", "utility"] },
+        "logicRef": { "type": "string" },
+        "impl": {
+          "type": "object",
+          "required": ["kind", "module"],
+          "properties": {
+            "kind": { "enum": ["native", "tone", "faust", "worklet", "signalsmith", "wam"] },
+            "module": { "type": "string" },
+            "license": { "type": "string" },
+            "latencyParam": { "type": "string" }
+          }
+        },
+        "params": { "type": "array", "items": { "$ref": "#/$defs/param" } },
+        "meters": { "type": "array", "items": { "type": "string" } },
+        "words": { "type": "array", "items": { "type": "string" } },
+        "presetParam": { "type": "string", "description": "enum param whose value selects an entry of presets (applied on change)" },
+        "presets": { "type": "object", "additionalProperties": { "type": "object" } }
+      }
+    },
+    "param": {
+      "type": "object",
+      "required": ["id", "label", "type", "default"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "type": { "enum": ["float", "int", "enum", "bool"] },
+        "unit": { "enum": ["Hz", "dB", "dBFS", "ms", "s", "%", "st", "ct", "oct", ":1", "x", "deg", "bit", "dB/oct", ""] },
+        "min": { "type": "number" },
+        "max": { "type": "number" },
+        "default": {},
+        "curve": { "enum": ["lin", "log", "db"] },
+        "step": { "type": "number" },
+        "options": { "type": "array" },
+        "agentRange": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+        "nudge": { "type": "number", "description": "'a bit more': units for lin/db curves, octaves (log2 of the value) for log curves" },
+        "group": { "type": "string" },
+        "target": { "type": "string" },
+        "rebuild": { "type": "boolean", "description": "changing it rebuilds the device graph instead of moving a parameter" },
+        "smoothingMs": { "type": "number" },
+        "tempoSync": { "type": "boolean" },
+        "words": { "type": "array", "items": { "type": "string" } },
+        "help": { "type": "string" }
+      }
+    }
+  }
+}

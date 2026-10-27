@@ -1,12 +1,14 @@
 // Electron main process: owns the session store, runs the Muse agent loop and Freesound
 // search, so API keys never reach the renderer.
 import { app, BrowserWindow, ipcMain, session as electronSession } from 'electron';
+import { readFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { MuseAgent, type ChatFn } from '../src/core/agent';
 import { searchFreesound } from '../src/core/freesound';
 import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
 import { runTool, type ToolContext } from '../src/core/tools';
+import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 
 const appDir = app.getAppPath(); // .../lattice/app
@@ -32,6 +34,16 @@ function getAgent(): MuseAgent {
   }
   return agent;
 }
+
+// Sound library: manifests + voice notes under the repo's data/ (or $LATTICE_DATA_DIR).
+let library: Library | null = null;
+const getLibrary = () => (library ??= loadLibrary(process.env.LATTICE_DATA_DIR ?? resolve(appDir, '..', 'data')));
+ipcMain.handle('library:list', () => getLibrary().items.map(({ file: _f, ...rest }) => rest));
+ipcMain.handle('library:audio', async (_e, id: string) => {
+  const path = getLibrary().pathOf(String(id));
+  if (!path) throw new Error(`unknown library item ${id}`);
+  return new Uint8Array(await readFile(path));
+});
 
 let win: BrowserWindow | null = null;
 store.subscribe((s) => win?.webContents.send('session:changed', s));

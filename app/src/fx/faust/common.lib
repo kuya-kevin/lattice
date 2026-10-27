@@ -1,0 +1,17 @@
+// Shared helpers for Lattice's Faust devices. Written for Lattice (MIT).
+// Uses only basics/maths helpers (GRAME LGPL with the generated-code exception).
+ma = library("maths.lib");
+
+// One-pole coefficient for a time constant tau (s): the step response reaches 1 - 1/e at tau.
+// Giannoulis, Massberg & Reiss 2012, eq. (7): alpha = exp(-1 / (tau * fs)).
+coef(tau) = exp(-1.0 / (max(tau, 1e-6) * ma.SR));
+
+// Branching one-pole smoother (Giannoulis et al. 2012, "smooth branching" detector):
+// attack coefficient when the input rises above the state, release coefficient otherwise.
+branch(att, rel, x) = x : (step ~ _) with {
+  step(prev, in) = select2(in > prev, coef(rel) * prev + (1 - coef(rel)) * in,
+                                      coef(att) * prev + (1 - coef(att)) * in);
+};
+
+lin2db(x) = 20 * log10(max(x, 1e-10));
+db2lin(x) = pow(10, x / 20);

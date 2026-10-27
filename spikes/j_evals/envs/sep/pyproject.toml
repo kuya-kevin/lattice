@@ -1,0 +1,11 @@
+[project]
+name = "j-evals-sep"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# python-audio-separator (MIT): BS-RoFormer / Mel-RoFormer / htdemucs_6s behind one API.
+dependencies = [
+    "audio-separator[gpu]",
+    "soundfile",
+    "audioread",
+    "imageio-ffmpeg",  # static ffmpeg binary; separate.py puts it on PATH (no system ffmpeg)
+]

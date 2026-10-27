@@ -1,23 +1,18 @@
 # Lattice handoff (end of day 1, 2026-10-26)
 
-**Moving to:** the 3090 machine for evals. The direction and the full spike results are in `idea.md` §0 (§0.8 = day-1 results). The map of which model does which job is in `Lattice Model Map.md`.
+**Moving to:** the 3090 machine for evals. Direction: `idea.md`. Spike results: `docs/spike-results.md`. Which model does which job: `docs/model-map.md`.
 
-## Moving the repo
+## Environment (3090 machine, checked 2026-10-26)
 
-- **Nothing is committed** (rule: stage only, the owner reviews). 83 files are staged on the Mac. To move, either commit and push from the Mac yourself, or copy the folder.
-- **Git-ignored, so it doesn't travel with git:**
-  - `.env`: Meta, Freesound and HF keys. Copy it by hand over a secure channel.
-  - `data/` (39 MB): voice notes and the Freesound set.
-  - `out/` (98 MB): generated audio, ratings, separated stems. 53 MB of that is the Demucs model cache in `out/separate/models`, which can be re-downloaded.
-- **Copy command:**
-  ```
-  rsync -a --exclude .venv --exclude node_modules --exclude 'out/separate/models' lattice/ <3090>:lattice/
-  ```
-- **On the 3090:** run `uvx hf auth login` again. SAM Audio access is still awaiting Meta's approval.
+- Repo is on the 3090 (RTX 3090, 24 GB; 30 GB RAM). Git has one commit; the Mac working tree was never pushed with `.env`, `data/` or `out/`.
+- **Missing here (git-ignored, copy by hand):** `.env` (Meta, Freesound, HF keys), `data/` (39 MB voice notes + Freesound set; Freesound is rebuildable with `curate.py`), `out/` (98 MB generated audio + ratings; Demucs cache re-downloads).
+- **Disk is tight:** ~3.4 GB free (91% used). Large model downloads (PE-AV large, SAM Audio, Qwen3-Omni 30B) will not fit without freeing space.
+- Run `uvx hf auth login`. SAM Audio access is still awaiting Meta's approval.
+- Each Python env is its own uv project: `spikes/` and `envs/{mrt,ears,separate,basicpitch,denoise}`; `uv sync` in each one needed.
 
 ## Rules that still apply
 
-- Never `git commit`; stage only.
+- Never `git commit` unless asked; stage only.
 - Meta budget is **$150 for the whole hackathon**; about $0.03 spent so far. Use `muse-spark-1.3-contributor` (contributor mode approved). Test with a few calls before any batch.
 - **Muse can't hear music.** Its audio input is speech-to-text (verified). Don't pay for Muse audio calls on music.
 - Copyrighted reference snippets stay local and out of the repo and demo. The Freesound set is CC0/CC-BY only, with attribution in `data/freesound/README.md`.
@@ -38,8 +33,6 @@
 | Freesound reference set | 144 CC0/CC-BY one-shots, 18 categories, train/test split. Use `fs_note_name`, never `fs_pitch` (wrong 69/80). | `spikes/h_freesound/`, `data/freesound/` |
 | Piano separation | Working: Demucs htdemucs_6s (Meta) put 91% of note 146 in the piano stem. | `envs/separate/` (CLI), `out/separate/` |
 | Audio → MIDI + key | Acceptable ("good enough to edit"): basic-pitch, 132 notes, G minor; rare out-of-key notes snapped. | `spikes/i_to_midi/`, `envs/basicpitch/` |
-
-Each Python env is its own uv project: `spikes/` (main), `envs/{mrt,ears,separate,basicpitch,denoise}`. Run `uv sync` in each one you need on the new machine.
 
 ## Evals to run on the 3090
 
@@ -81,4 +74,4 @@ Each Python env is its own uv project: `spikes/` (main), `envs/{mrt,ears,separat
 
 - **Ears:** PE-AV size; whether to pair it with direct measurement for brightness and noise, which it misses.
 - **Self-grading:** whether any automatic score is good enough for the agent to grade its own attempts. The pair round decides; until then, human ears stay in the loop.
-- **Sidecar design:** how the app calls the Python tools (one long-running local HTTP/stdio process is the plan in `idea.md` §0.4).
+- **Sidecar design:** how the app calls the Python tools (one long-running local HTTP/stdio process is the plan in `idea.md` (Stack)).

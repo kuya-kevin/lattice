@@ -85,4 +85,4 @@ Connect the Python spikes to the app: quantize, cleanup, synth + optimizer, Mage
 
 Muse plans and runs everything; Meta's PE-AV, Demucs and SAM Audio cover the listening and separation. Magenta RT2 (Google) and basic-pitch (Spotify) are the non-Meta pieces.
 
-Meta spend so far: about $0.03 of the $150 budget. Source: `idea.md` §0.8 and the spike results in `spikes/`.
+Meta spend so far: about $0.03 of the $150 budget. Source: `spike-results.md` and `spikes/`.

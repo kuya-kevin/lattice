@@ -1,0 +1,264 @@
+{
+  "$schema": "./catalog.schema.json",
+  "version": 1,
+  "devices": [
+    {
+      "id": "utility",
+      "label": "Utility",
+      "category": "utility",
+      "logicRef": "Gain / Direction Mixer / Stereo Spread",
+      "impl": { "kind": "native", "module": "utility", "license": "MIT" },
+      "words": ["wider", "narrower", "mono", "centered", "louder", "quieter", "flip phase", "focus the low end"],
+      "params": [
+        { "id": "gain", "label": "Gain", "type": "float", "unit": "dB", "min": -48, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-24, 12], "nudge": 2, "target": "gain.gain", "words": ["louder", "quieter"], "help": "Static gain after the stereo matrix" },
+        { "id": "pan", "label": "Pan", "type": "float", "unit": "", "min": -1, "max": 1, "default": 0, "curve": "lin", "step": 0.01, "agentRange": [-1, 1], "nudge": 0.2, "target": "panner.pan", "help": "-1 = hard left, +1 = hard right (equal-power StereoPanner)" },
+        { "id": "width", "label": "Width", "type": "float", "unit": "%", "min": 0, "max": 200, "default": 100, "curve": "lin", "step": 1, "agentRange": [0, 160], "nudge": 20, "target": "matrix.side", "words": ["wider", "narrower", "mono"], "help": "Side gain of an M/S matrix: 0 = mono, 100 = unchanged, 200 = side doubled" },
+        { "id": "mono_below", "label": "Mono Below", "type": "float", "unit": "Hz", "min": 20, "max": 500, "default": 20, "curve": "log", "step": 1, "agentRange": [20, 250], "nudge": 0.333, "target": "xover.freq", "words": ["focus the low end"], "help": "Linkwitz-Riley crossover; everything below is summed to mono. 20 = off" },
+        { "id": "phase_l", "label": "Invert L", "type": "bool", "default": false, "target": "matrix.signL", "words": ["flip phase"] },
+        { "id": "phase_r", "label": "Invert R", "type": "bool", "default": false, "target": "matrix.signR", "words": ["flip phase"] },
+        { "id": "swap", "label": "Swap L/R", "type": "bool", "default": false, "target": "matrix.swap" }
+      ]
+    },
+    {
+      "id": "eq",
+      "label": "Channel EQ",
+      "category": "eq",
+      "logicRef": "Channel EQ",
+      "impl": { "kind": "native", "module": "eq", "license": "MIT" },
+      "words": ["bright", "airy", "dull", "muddy", "boxy", "harsh", "thin", "warm", "boomy", "nasal", "presence"],
+      "params": [
+        { "id": "hp_on", "label": "Low Cut", "type": "bool", "default": false, "group": "low cut", "rebuild": true, "target": "hp.on", "words": ["rumble", "muddy", "boomy"] },
+        { "id": "hp_freq", "label": "Low Cut Freq", "type": "float", "unit": "Hz", "min": 20, "max": 2000, "default": 80, "curve": "log", "step": 1, "agentRange": [20, 400], "nudge": 0.333, "group": "low cut", "target": "hp.frequency", "words": ["thin", "muddy"], "help": "Butterworth high-pass corner (-3 dB)" },
+        { "id": "hp_slope", "label": "Low Cut Slope", "type": "enum", "unit": "dB/oct", "options": [12, 24, 36, 48], "default": 24, "group": "low cut", "rebuild": true, "target": "hp.order" },
+        { "id": "ls_freq", "label": "Low Shelf Freq", "type": "float", "unit": "Hz", "min": 20, "max": 1000, "default": 100, "curve": "log", "step": 1, "agentRange": [40, 500], "nudge": 0.333, "group": "low shelf", "target": "ls.frequency" },
+        { "id": "ls_gain", "label": "Low Shelf Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-9, 9], "nudge": 2, "group": "low shelf", "target": "ls.gain", "words": ["warm", "boomy", "thin"] },
+        { "id": "b1_freq", "label": "Bell 1 Freq", "type": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 200, "curve": "log", "step": 1, "agentRange": [60, 600], "nudge": 0.333, "group": "bell 1", "target": "b1.frequency", "words": ["muddy", "warm"] },
+        { "id": "b1_gain", "label": "Bell 1 Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 9], "nudge": 2, "group": "bell 1", "target": "b1.gain" },
+        { "id": "b1_q", "label": "Bell 1 Q", "type": "float", "unit": "", "min": 0.1, "max": 18, "default": 1, "curve": "log", "step": 0.01, "agentRange": [0.3, 6], "nudge": 0.5, "group": "bell 1", "target": "b1.Q" },
+        { "id": "b2_freq", "label": "Bell 2 Freq", "type": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 500, "curve": "log", "step": 1, "agentRange": [200, 1500], "nudge": 0.333, "group": "bell 2", "target": "b2.frequency", "words": ["boxy", "nasal"] },
+        { "id": "b2_gain", "label": "Bell 2 Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 9], "nudge": 2, "group": "bell 2", "target": "b2.gain" },
+        { "id": "b2_q", "label": "Bell 2 Q", "type": "float", "unit": "", "min": 0.1, "max": 18, "default": 1, "curve": "log", "step": 0.01, "agentRange": [0.3, 6], "nudge": 0.5, "group": "bell 2", "target": "b2.Q" },
+        { "id": "b3_freq", "label": "Bell 3 Freq", "type": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 2500, "curve": "log", "step": 1, "agentRange": [1000, 6000], "nudge": 0.333, "group": "bell 3", "target": "b3.frequency", "words": ["presence", "harsh"] },
+        { "id": "b3_gain", "label": "Bell 3 Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 9], "nudge": 2, "group": "bell 3", "target": "b3.gain" },
+        { "id": "b3_q", "label": "Bell 3 Q", "type": "float", "unit": "", "min": 0.1, "max": 18, "default": 1, "curve": "log", "step": 0.01, "agentRange": [0.3, 6], "nudge": 0.5, "group": "bell 3", "target": "b3.Q" },
+        { "id": "b4_freq", "label": "Bell 4 Freq", "type": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 6000, "curve": "log", "step": 1, "agentRange": [3000, 12000], "nudge": 0.333, "group": "bell 4", "target": "b4.frequency", "words": ["harsh", "sibilant"] },
+        { "id": "b4_gain", "label": "Bell 4 Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 9], "nudge": 2, "group": "bell 4", "target": "b4.gain" },
+        { "id": "b4_q", "label": "Bell 4 Q", "type": "float", "unit": "", "min": 0.1, "max": 18, "default": 1, "curve": "log", "step": 0.01, "agentRange": [0.3, 6], "nudge": 0.5, "group": "bell 4", "target": "b4.Q" },
+        { "id": "hs_freq", "label": "High Shelf Freq", "type": "float", "unit": "Hz", "min": 1000, "max": 20000, "default": 10000, "curve": "log", "step": 1, "agentRange": [3000, 16000], "nudge": 0.333, "group": "high shelf", "target": "hs.frequency" },
+        { "id": "hs_gain", "label": "High Shelf Gain", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-9, 9], "nudge": 2, "group": "high shelf", "target": "hs.gain", "words": ["bright", "airy", "dull"] },
+        { "id": "lp_on", "label": "High Cut", "type": "bool", "default": false, "group": "high cut", "rebuild": true, "target": "lp.on", "words": ["dull", "dark", "harsh"] },
+        { "id": "lp_freq", "label": "High Cut Freq", "type": "float", "unit": "Hz", "min": 1000, "max": 20000, "default": 18000, "curve": "log", "step": 1, "agentRange": [4000, 20000], "nudge": 0.333, "group": "high cut", "target": "lp.frequency", "help": "Butterworth low-pass corner (-3 dB)" },
+        { "id": "lp_slope", "label": "High Cut Slope", "type": "enum", "unit": "dB/oct", "options": [12, 24, 36, 48], "default": 12, "group": "high cut", "rebuild": true, "target": "lp.order" },
+        { "id": "out", "label": "Output", "type": "float", "unit": "dB", "min": -24, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 12], "nudge": 1, "target": "out.gain" }
+      ]
+    },
+    {
+      "id": "comp",
+      "label": "Compressor",
+      "category": "dynamics",
+      "logicRef": "Compressor",
+      "impl": { "kind": "faust", "module": "comp", "license": "MIT" },
+      "meters": ["gr_db"],
+      "words": ["punchy", "tight", "glue", "squash", "smooth", "even", "controlled", "pumping", "stand out"],
+      "presetParam": "style",
+      "presets": {
+        "clean": { "attack": 10, "release": 120, "knee": 6, "detector": "peak" },
+        "vca": { "attack": 3, "release": 80, "knee": 0, "detector": "peak" },
+        "fet": { "attack": 0.3, "release": 50, "knee": 2, "detector": "peak" },
+        "opto": { "attack": 20, "release": 600, "knee": 12, "detector": "rms" }
+      },
+      "params": [
+        { "id": "style", "label": "Style", "type": "enum", "options": ["clean", "vca", "fet", "opto"], "default": "clean", "target": "preset", "help": "Sets attack, release, knee and detector to a character preset" },
+        { "id": "thresh", "label": "Threshold", "type": "float", "unit": "dB", "min": -60, "max": 0, "default": -18, "curve": "db", "step": 0.1, "agentRange": [-40, 0], "nudge": 3, "target": "/comp/thresh", "words": ["squash", "controlled", "even"] },
+        { "id": "ratio", "label": "Ratio", "type": "float", "unit": ":1", "min": 1, "max": 20, "default": 3, "curve": "log", "step": 0.1, "agentRange": [1, 10], "nudge": 0.25, "target": "/comp/ratio", "words": ["squash", "glue"] },
+        { "id": "knee", "label": "Knee", "type": "float", "unit": "dB", "min": 0, "max": 24, "default": 6, "curve": "lin", "step": 0.1, "agentRange": [0, 18], "nudge": 3, "target": "/comp/knee", "words": ["smooth"] },
+        { "id": "attack", "label": "Attack", "type": "float", "unit": "ms", "min": 0.1, "max": 200, "default": 10, "curve": "log", "step": 0.1, "agentRange": [0.3, 80], "nudge": 0.5, "target": "/comp/attack", "words": ["punchy", "tight"], "help": "Time constant (to 63%) of the gain smoother when gain reduction increases" },
+        { "id": "release", "label": "Release", "type": "float", "unit": "ms", "min": 10, "max": 2000, "default": 120, "curve": "log", "step": 1, "agentRange": [20, 1000], "nudge": 0.5, "target": "/comp/release", "words": ["pumping"] },
+        { "id": "auto_rel", "label": "Auto Release", "type": "bool", "default": false, "target": "/comp/auto_rel" },
+        { "id": "makeup", "label": "Makeup", "type": "float", "unit": "dB", "min": -12, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-6, 12], "nudge": 1, "target": "/comp/makeup" },
+        { "id": "auto_gain", "label": "Auto Gain", "type": "bool", "default": false, "target": "/comp/auto_gain" },
+        { "id": "sc_hpf", "label": "Sidechain HPF", "type": "float", "unit": "Hz", "min": 20, "max": 500, "default": 20, "curve": "log", "step": 1, "agentRange": [20, 250], "nudge": 0.5, "target": "/comp/sc_hpf", "help": "High-passes the detector so bass does not pump the gain" },
+        { "id": "detector", "label": "Detector", "type": "enum", "options": ["peak", "rms"], "default": "peak", "target": "/comp/detector" },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 100, "curve": "lin", "step": 1, "agentRange": [20, 100], "nudge": 10, "target": "/comp/mix", "words": ["parallel"] }
+      ]
+    },
+    {
+      "id": "deess",
+      "label": "De-Esser",
+      "category": "dynamics",
+      "logicRef": "DeEsser 2",
+      "impl": { "kind": "faust", "module": "deess", "license": "MIT" },
+      "meters": ["gr_db"],
+      "words": ["harsh s", "sibilant", "spitty", "sharp", "too much ess", "lisp"],
+      "params": [
+        { "id": "freq", "label": "Frequency", "type": "float", "unit": "Hz", "min": 2000, "max": 16000, "default": 6500, "curve": "log", "step": 10, "agentRange": [3500, 11000], "nudge": 0.25, "target": "/deess/freq" },
+        { "id": "thresh", "label": "Threshold", "type": "float", "unit": "dB", "min": -60, "max": 0, "default": -24, "curve": "db", "step": 0.1, "agentRange": [-50, -6], "nudge": 3, "target": "/deess/thresh", "words": ["sibilant", "too much ess", "lisp"], "help": "Relative mode: band level minus full-band level. Absolute: band level in dBFS" },
+        { "id": "range", "label": "Max Reduction", "type": "float", "unit": "dB", "min": 0, "max": 24, "default": 6, "curve": "lin", "step": 0.1, "agentRange": [2, 12], "nudge": 2, "target": "/deess/range" },
+        { "id": "mode", "label": "Detection", "type": "enum", "options": ["relative", "absolute"], "default": "relative", "target": "/deess/mode" },
+        { "id": "band", "label": "Range", "type": "enum", "options": ["split", "wide"], "default": "split", "target": "/deess/band", "help": "Split reduces only the sibilant band; wide turns the whole signal down" },
+        { "id": "shape", "label": "Filter", "type": "enum", "options": ["bandpass", "highshelf"], "default": "bandpass", "target": "/deess/shape" },
+        { "id": "listen", "label": "Listen", "type": "bool", "default": false, "target": "/deess/listen" }
+      ]
+    },
+    {
+      "id": "gate",
+      "label": "Noise Gate",
+      "category": "dynamics",
+      "logicRef": "Noise Gate",
+      "impl": { "kind": "faust", "module": "gate", "license": "MIT" },
+      "meters": ["gr_db"],
+      "words": ["noisy", "hiss", "bleed", "clean up", "tighten tails", "choppy"],
+      "params": [
+        { "id": "thresh", "label": "Threshold", "type": "float", "unit": "dB", "min": -90, "max": 0, "default": -50, "curve": "db", "step": 0.1, "agentRange": [-80, -20], "nudge": 3, "target": "/gate/thresh", "words": ["noisy", "bleed", "choppy"] },
+        { "id": "range", "label": "Reduction", "type": "float", "unit": "dB", "min": -90, "max": 0, "default": -40, "curve": "db", "step": 0.1, "agentRange": [-80, -6], "nudge": 6, "target": "/gate/range", "help": "Gain when closed" },
+        { "id": "hyst", "label": "Hysteresis", "type": "float", "unit": "dB", "min": 0, "max": 12, "default": 3, "curve": "lin", "step": 0.1, "agentRange": [0, 9], "nudge": 1, "target": "/gate/hyst", "help": "Closes at threshold minus hysteresis" },
+        { "id": "attack", "label": "Attack", "type": "float", "unit": "ms", "min": 0.1, "max": 50, "default": 1, "curve": "log", "step": 0.1, "agentRange": [0.1, 20], "nudge": 0.5, "target": "/gate/attack" },
+        { "id": "hold", "label": "Hold", "type": "float", "unit": "ms", "min": 0, "max": 500, "default": 30, "curve": "lin", "step": 1, "agentRange": [0, 300], "nudge": 20, "target": "/gate/hold" },
+        { "id": "release", "label": "Release", "type": "float", "unit": "ms", "min": 5, "max": 2000, "default": 100, "curve": "log", "step": 1, "agentRange": [10, 800], "nudge": 0.5, "target": "/gate/release", "words": ["tighten tails"] },
+        { "id": "key_hpf", "label": "Key Low Cut", "type": "float", "unit": "Hz", "min": 20, "max": 2000, "default": 20, "curve": "log", "step": 1, "agentRange": [20, 1000], "nudge": 0.5, "target": "/gate/key_hpf" },
+        { "id": "key_lpf", "label": "Key High Cut", "type": "float", "unit": "Hz", "min": 1000, "max": 20000, "default": 20000, "curve": "log", "step": 10, "agentRange": [2000, 20000], "nudge": 0.5, "target": "/gate/key_lpf" }
+      ]
+    },
+    {
+      "id": "limiter",
+      "label": "Limiter",
+      "category": "dynamics",
+      "logicRef": "Limiter / Adaptive Limiter",
+      "impl": { "kind": "faust", "module": "limiter", "license": "MIT", "latencyParam": "lookahead" },
+      "meters": ["gr_db"],
+      "words": ["louder", "loud", "maximize", "master", "don't clip", "ceiling", "punchy"],
+      "params": [
+        { "id": "gain", "label": "Input Gain", "type": "float", "unit": "dB", "min": 0, "max": 24, "default": 0, "curve": "db", "step": 0.1, "agentRange": [0, 12], "nudge": 1.5, "target": "/limiter/gain", "words": ["louder", "maximize"] },
+        { "id": "ceiling", "label": "Ceiling", "type": "float", "unit": "dBFS", "min": -12, "max": 0, "default": -1, "curve": "db", "step": 0.1, "agentRange": [-6, -0.1], "nudge": 0.5, "target": "/limiter/ceiling", "words": ["don't clip", "ceiling"] },
+        { "id": "release", "label": "Release", "type": "float", "unit": "ms", "min": 1, "max": 1000, "default": 60, "curve": "log", "step": 1, "agentRange": [10, 500], "nudge": 0.5, "target": "/limiter/release" },
+        { "id": "lookahead", "label": "Lookahead", "type": "float", "unit": "ms", "min": 0, "max": 10, "default": 5, "curve": "lin", "step": 0.1, "agentRange": [1, 10], "nudge": 1, "target": "/limiter/lookahead", "help": "Delays the audio by this much (reported as latency)" },
+        { "id": "true_peak", "label": "True Peak", "type": "bool", "default": false, "target": "/limiter/true_peak", "help": "v1.1: not implemented yet, sample-peak limiting only" }
+      ]
+    },
+    {
+      "id": "sat",
+      "label": "Saturator",
+      "category": "saturation",
+      "logicRef": "Overdrive / ChromaGlow / Decapitator",
+      "impl": { "kind": "native", "module": "sat", "license": "MIT" },
+      "words": ["gritty", "warm", "dirty", "crunchy", "fuzzy", "tape", "tube", "saturated", "aggressive", "analog", "more harmonics"],
+      "params": [
+        { "id": "model", "label": "Model", "type": "enum", "options": ["tape", "tube", "transistor", "fuzz"], "default": "tape", "target": "shaper.curve", "words": ["tape", "tube", "fuzzy"], "help": "tape = tanh, tube = asymmetric tanh, transistor = cubic hard knee, fuzz = sine fold" },
+        { "id": "drive", "label": "Drive", "type": "float", "unit": "dB", "min": 0, "max": 36, "default": 6, "curve": "lin", "step": 0.1, "agentRange": [0, 24], "nudge": 3, "target": "pre.gain", "words": ["gritty", "dirty", "crunchy", "saturated", "warm", "more harmonics"], "help": "Input gain into the saturator; more = more harmonics" },
+        { "id": "tone", "label": "Tone", "type": "float", "unit": "Hz", "min": 1000, "max": 20000, "default": 12000, "curve": "log", "step": 10, "agentRange": [2000, 20000], "nudge": 0.333, "target": "post.frequency", "words": ["dark", "bright"], "help": "Post low-pass" },
+        { "id": "low_cut", "label": "Low Cut (pre)", "type": "float", "unit": "Hz", "min": 20, "max": 500, "default": 20, "curve": "log", "step": 1, "agentRange": [20, 300], "nudge": 0.333, "target": "prehp.frequency" },
+        { "id": "bias", "label": "Bias / Asymmetry", "type": "float", "unit": "", "min": 0, "max": 1, "default": 0, "curve": "lin", "step": 0.01, "agentRange": [0, 0.6], "nudge": 0.1, "target": "shaper.curve", "help": "Adds even harmonics" },
+        { "id": "auto_gain", "label": "Auto Gain", "type": "bool", "default": true, "target": "comp.gain" },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 100, "curve": "lin", "step": 1, "agentRange": [10, 100], "nudge": 10, "target": "wet.gain" },
+        { "id": "out", "label": "Output", "type": "float", "unit": "dB", "min": -24, "max": 12, "default": 0, "curve": "db", "step": 0.1, "agentRange": [-12, 6], "nudge": 1, "target": "out.gain" }
+      ]
+    },
+    {
+      "id": "filter",
+      "label": "Auto Filter",
+      "category": "filter",
+      "logicRef": "AutoFilter",
+      "impl": { "kind": "native", "module": "filter", "license": "MIT" },
+      "words": ["dark", "muffled", "underwater", "telephone", "sweep", "wobble", "open up", "filtered", "radio"],
+      "params": [
+        { "id": "type", "label": "Type", "type": "enum", "options": ["lowpass", "highpass", "bandpass", "notch"], "default": "lowpass", "rebuild": true, "target": "biquad.type", "words": ["telephone", "radio"] },
+        { "id": "slope", "label": "Slope", "type": "enum", "unit": "dB/oct", "options": [12, 24, 48], "default": 24, "rebuild": true, "target": "order" },
+        { "id": "cutoff", "label": "Cutoff", "type": "float", "unit": "Hz", "min": 20, "max": 20000, "default": 20000, "curve": "log", "step": 1, "agentRange": [80, 20000], "nudge": 0.5, "target": "biquad.frequency", "words": ["dark", "muffled", "underwater", "open up"] },
+        { "id": "reso", "label": "Resonance (Q)", "type": "float", "unit": "", "min": 0.5, "max": 20, "default": 0.7071, "curve": "log", "step": 0.01, "agentRange": [0.5, 8], "nudge": 0.333, "target": "biquad.Q" },
+        { "id": "lfo_rate", "label": "LFO Rate", "type": "float", "unit": "Hz", "min": 0.05, "max": 20, "default": 1, "curve": "log", "step": 0.01, "agentRange": [0.1, 10], "nudge": 0.5, "tempoSync": true, "target": "lfo.frequency", "words": ["wobble"] },
+        { "id": "lfo_depth", "label": "LFO Depth", "type": "float", "unit": "oct", "min": 0, "max": 6, "default": 0, "curve": "lin", "step": 0.01, "agentRange": [0, 4], "nudge": 0.5, "target": "lfo.depth", "words": ["sweep", "wobble"] },
+        { "id": "lfo_shape", "label": "LFO Shape", "type": "enum", "options": ["sine", "triangle", "saw", "square", "random"], "default": "sine", "rebuild": true, "target": "lfo.type" },
+        { "id": "env_amt", "label": "Envelope Amount", "type": "float", "unit": "oct", "min": -6, "max": 6, "default": 0, "curve": "lin", "step": 0.01, "agentRange": [-4, 4], "nudge": 0.5, "target": "env.depth", "help": "Cutoff moves this many octaves at full-scale input level" },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 100, "curve": "lin", "step": 1, "agentRange": [0, 100], "nudge": 10, "target": "wet.gain" }
+      ]
+    },
+    {
+      "id": "delay",
+      "label": "Delay",
+      "category": "delay",
+      "logicRef": "Tape Delay / Stereo Delay",
+      "impl": { "kind": "native", "module": "delay", "license": "MIT" },
+      "words": ["echo", "slapback", "spacey", "dub", "ping-pong", "tape echo", "wide", "trailing"],
+      "params": [
+        { "id": "sync", "label": "Sync", "type": "bool", "default": true, "target": "time.sync" },
+        { "id": "time_note", "label": "Time (synced)", "type": "enum", "options": ["1/32", "1/16t", "1/16", "1/16d", "1/8t", "1/8", "1/8d", "1/4t", "1/4", "1/4d", "1/2", "1/1"], "default": "1/8", "target": "time.note", "words": ["slapback"] },
+        { "id": "time_ms", "label": "Time", "type": "float", "unit": "ms", "min": 1, "max": 2000, "default": 375, "curve": "log", "step": 1, "agentRange": [40, 1500], "nudge": 0.333, "target": "delayL.delayTime", "words": ["slapback"] },
+        { "id": "feedback", "label": "Feedback", "type": "float", "unit": "%", "min": 0, "max": 110, "default": 35, "curve": "lin", "step": 1, "agentRange": [0, 85], "nudge": 10, "target": "fb.gain", "words": ["trailing", "dub", "spacey"], "help": "Above 100 % the echoes grow until the loop saturation holds them" },
+        { "id": "pingpong", "label": "Ping-Pong", "type": "bool", "default": false, "rebuild": true, "target": "routing", "words": ["ping-pong", "wide"] },
+        { "id": "low_cut", "label": "Low Cut (loop)", "type": "float", "unit": "Hz", "min": 20, "max": 2000, "default": 150, "curve": "log", "step": 1, "agentRange": [20, 800], "nudge": 0.333, "target": "loopHp.frequency" },
+        { "id": "high_cut", "label": "High Cut (loop)", "type": "float", "unit": "Hz", "min": 500, "max": 20000, "default": 6000, "curve": "log", "step": 10, "agentRange": [1500, 20000], "nudge": 0.333, "target": "loopLp.frequency", "words": ["tape echo", "dub"] },
+        { "id": "sat", "label": "Tape Saturation", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 0, "curve": "lin", "step": 1, "agentRange": [0, 70], "nudge": 10, "target": "loopShaper.curve", "words": ["tape echo"] },
+        { "id": "wow", "label": "Wow / Flutter", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 0, "curve": "lin", "step": 1, "agentRange": [0, 60], "nudge": 10, "target": "wow.depth", "words": ["tape echo"] },
+        { "id": "width", "label": "Stereo Spread", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 50, "curve": "lin", "step": 1, "agentRange": [0, 100], "nudge": 15, "target": "delayR.offset", "words": ["wide"], "help": "Right echo is late by up to 15 ms (not used in ping-pong)" },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 25, "curve": "lin", "step": 1, "agentRange": [5, 60], "nudge": 5, "target": "wet.gain" }
+      ]
+    },
+    {
+      "id": "reverb",
+      "label": "Reverb",
+      "category": "reverb",
+      "logicRef": "ChromaVerb / Space Designer",
+      "impl": { "kind": "faust", "module": "reverb", "license": "MIT AND LicenseRef-STK-4.3" },
+      "words": ["spacious", "roomy", "distant", "wet", "lush", "ambient", "cathedral", "dry", "close", "intimate"],
+      "params": [
+        { "id": "predelay", "label": "Predelay", "type": "float", "unit": "ms", "min": 0, "max": 200, "default": 20, "curve": "lin", "step": 1, "agentRange": [0, 120], "nudge": 10, "target": "/reverb/predelay", "words": ["close", "distant"] },
+        { "id": "decay", "label": "Decay (mid T60)", "type": "float", "unit": "s", "min": 0.2, "max": 12, "default": 2, "curve": "log", "step": 0.01, "agentRange": [0.3, 6], "nudge": 0.333, "target": "/reverb/decay", "words": ["cathedral", "roomy", "spacious", "lush"] },
+        { "id": "low_ratio", "label": "Low Decay x", "type": "float", "unit": "x", "min": 0.5, "max": 2, "default": 1.2, "curve": "log", "step": 0.01, "agentRange": [0.6, 1.6], "nudge": 0.15, "target": "/reverb/low_ratio", "help": "Low-band T60 = decay x this" },
+        { "id": "xover", "label": "Low Crossover", "type": "float", "unit": "Hz", "min": 50, "max": 1000, "default": 200, "curve": "log", "step": 1, "agentRange": [80, 600], "nudge": 0.333, "target": "/reverb/xover" },
+        { "id": "damping", "label": "Damping (HF decay freq)", "type": "float", "unit": "Hz", "min": 1500, "max": 20000, "default": 6000, "curve": "log", "step": 10, "agentRange": [2000, 16000], "nudge": 0.333, "target": "/reverb/damping", "help": "Above this frequency the decay time is halved" },
+        { "id": "size", "label": "Size", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 50, "curve": "lin", "step": 1, "agentRange": [10, 90], "nudge": 10, "target": "/reverb/size", "help": "v1: scales decay by 2^((size-50)/50); 50 = unchanged" },
+        { "id": "low_cut", "label": "Wet Low Cut", "type": "float", "unit": "Hz", "min": 20, "max": 1000, "default": 200, "curve": "log", "step": 1, "agentRange": [20, 600], "nudge": 0.333, "target": "/reverb/low_cut", "words": ["muddy"] },
+        { "id": "high_cut", "label": "Wet High Cut", "type": "float", "unit": "Hz", "min": 1000, "max": 20000, "default": 12000, "curve": "log", "step": 10, "agentRange": [3000, 20000], "nudge": 0.333, "target": "/reverb/high_cut", "words": ["dark", "bright"] },
+        { "id": "width", "label": "Width", "type": "float", "unit": "%", "min": 0, "max": 150, "default": 100, "curve": "lin", "step": 1, "agentRange": [0, 150], "nudge": 20, "target": "/reverb/width", "words": ["wide"] },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 20, "curve": "lin", "step": 1, "agentRange": [3, 50], "nudge": 5, "target": "/reverb/mix", "words": ["wet", "dry", "distant", "intimate"] }
+      ]
+    },
+    {
+      "id": "pitch",
+      "label": "Pitch Shifter",
+      "category": "pitch",
+      "logicRef": "Pitch Shifter",
+      "impl": { "kind": "signalsmith", "module": "signalsmith-stretch", "license": "MIT" },
+      "words": ["higher", "lower", "octave up", "octave down", "chipmunk", "deep", "demonic", "detune", "thicken"],
+      "params": [
+        { "id": "semis", "label": "Semitones", "type": "int", "unit": "st", "min": -24, "max": 24, "default": 0, "curve": "lin", "step": 1, "agentRange": [-12, 12], "nudge": 1, "target": "schedule.semitones", "words": ["higher", "lower", "octave up", "octave down", "deep"] },
+        { "id": "cents", "label": "Cents", "type": "float", "unit": "ct", "min": -100, "max": 100, "default": 0, "curve": "lin", "step": 1, "agentRange": [-50, 50], "nudge": 5, "target": "schedule.semitones", "words": ["detune", "thicken"] },
+        { "id": "formant_keep", "label": "Keep Formants", "type": "bool", "default": true, "target": "schedule.formantCompensation", "words": ["chipmunk"] },
+        { "id": "formant", "label": "Formant Shift", "type": "float", "unit": "st", "min": -12, "max": 12, "default": 0, "curve": "lin", "step": 0.1, "agentRange": [-6, 6], "nudge": 1, "target": "schedule.formantSemitones", "words": ["demonic", "chipmunk"] },
+        { "id": "tonality", "label": "Tonality Limit", "type": "float", "unit": "Hz", "min": 2000, "max": 16000, "default": 8000, "curve": "log", "step": 10, "agentRange": [4000, 16000], "nudge": 0.333, "target": "schedule.tonalityHz" },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 100, "curve": "lin", "step": 1, "agentRange": [10, 100], "nudge": 10, "target": "wet.gain", "words": ["thicken"] }
+      ]
+    },
+    {
+      "id": "mod",
+      "label": "Modulation",
+      "category": "modulation",
+      "logicRef": "Chorus / Flanger / Phaser",
+      "impl": { "kind": "native", "module": "mod", "license": "MIT" },
+      "words": ["chorus", "shimmer", "wobbly", "swirly", "jet", "thick", "doubled", "80s", "vintage motion"],
+      "params": [
+        { "id": "mode", "label": "Mode", "type": "enum", "options": ["chorus", "flanger", "phaser"], "default": "chorus", "rebuild": true, "target": "mode", "words": ["chorus", "jet", "swirly"] },
+        { "id": "rate", "label": "Rate", "type": "float", "unit": "Hz", "min": 0.05, "max": 10, "default": 0.8, "curve": "log", "step": 0.01, "agentRange": [0.1, 5], "nudge": 0.5, "target": "lfo.frequency", "words": ["wobbly"] },
+        { "id": "depth", "label": "Depth", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 50, "curve": "lin", "step": 1, "agentRange": [10, 90], "nudge": 10, "target": "lfo.depth" },
+        { "id": "delay", "label": "Delay (chorus/flanger)", "type": "float", "unit": "ms", "min": 0.5, "max": 20, "default": 7, "curve": "log", "step": 0.1, "agentRange": [0.5, 15], "nudge": 0.333, "target": "delay.delayTime" },
+        { "id": "feedback", "label": "Feedback", "type": "float", "unit": "%", "min": -95, "max": 95, "default": 0, "curve": "lin", "step": 1, "agentRange": [-80, 80], "nudge": 10, "target": "fb.gain", "words": ["jet"], "help": "Chorus/flanger only in v1" },
+        { "id": "stages", "label": "Stages (phaser)", "type": "int", "unit": "", "min": 2, "max": 12, "default": 6, "curve": "lin", "step": 2, "agentRange": [2, 12], "nudge": 2, "rebuild": true, "target": "allpass.count" },
+        { "id": "spread", "label": "Stereo Phase", "type": "float", "unit": "deg", "min": 0, "max": 180, "default": 90, "curve": "lin", "step": 1, "agentRange": [0, 180], "nudge": 30, "rebuild": true, "target": "lfoR.phase", "words": ["wide"] },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 50, "curve": "lin", "step": 1, "agentRange": [10, 100], "nudge": 10, "target": "wet.gain" }
+      ]
+    },
+    {
+      "id": "crush",
+      "label": "Bitcrusher",
+      "category": "saturation",
+      "logicRef": "Bitcrusher",
+      "impl": { "kind": "worklet", "module": "crush", "license": "MIT" },
+      "words": ["lo-fi", "crunchy", "retro", "8-bit", "broken", "digital"],
+      "params": [
+        { "id": "bits", "label": "Resolution", "type": "int", "unit": "bit", "min": 1, "max": 16, "default": 12, "curve": "lin", "step": 1, "agentRange": [3, 16], "nudge": 2, "target": "bits", "words": ["8-bit", "lo-fi"] },
+        { "id": "downsample", "label": "Downsample", "type": "float", "unit": "x", "min": 1, "max": 50, "default": 1, "curve": "log", "step": 0.1, "agentRange": [1, 20], "nudge": 0.5, "target": "downsample", "words": ["retro", "digital"] },
+        { "id": "mix", "label": "Mix", "type": "float", "unit": "%", "min": 0, "max": 100, "default": 100, "curve": "lin", "step": 1, "agentRange": [10, 100], "nudge": 10, "target": "mix" }
+      ]
+    }
+  ]
+}

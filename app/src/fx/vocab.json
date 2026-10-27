@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "note": "Seed vocabulary for S2. Each move is applied with set_param: op 'set' sets the value, 'add' adds (dB, %, Hz...), 'mul' multiplies. Device/param ids are checked against catalog.json by tests/fx-catalog.test.ts.",
+  "entries": [
+    { "word": "bright", "sourceTypes": ["vocal", "pad", "drums"], "moves": [{ "device": "eq", "param": "hs_gain", "op": "add", "value": 3 }] },
+    { "word": "airy", "sourceTypes": ["vocal", "pad"], "moves": [{ "device": "eq", "param": "hs_freq", "op": "set", "value": 12000 }, { "device": "eq", "param": "hs_gain", "op": "add", "value": 3 }] },
+    { "word": "dull", "sourceTypes": ["any"], "moves": [{ "device": "eq", "param": "hs_gain", "op": "add", "value": -3 }] },
+    { "word": "muddy", "sourceTypes": ["vocal", "bass", "pad"], "moves": [{ "device": "eq", "param": "b1_freq", "op": "set", "value": 300 }, { "device": "eq", "param": "b1_gain", "op": "add", "value": -3 }] },
+    { "word": "boxy", "sourceTypes": ["vocal", "drums"], "moves": [{ "device": "eq", "param": "b2_freq", "op": "set", "value": 600 }, { "device": "eq", "param": "b2_gain", "op": "add", "value": -3 }] },
+    { "word": "warm", "sourceTypes": ["vocal", "bass", "pad"], "moves": [{ "device": "eq", "param": "ls_gain", "op": "add", "value": 2 }, { "device": "sat", "param": "model", "op": "set", "value": "tape" }, { "device": "sat", "param": "drive", "op": "set", "value": 6 }] },
+    { "word": "thin", "sourceTypes": ["vocal"], "moves": [{ "device": "eq", "param": "hp_on", "op": "set", "value": true }, { "device": "eq", "param": "hp_freq", "op": "set", "value": 150 }] },
+    { "word": "harsh", "sourceTypes": ["vocal", "guitar"], "moves": [{ "device": "eq", "param": "b3_freq", "op": "set", "value": 3500 }, { "device": "eq", "param": "b3_gain", "op": "add", "value": -3 }] },
+    { "word": "presence", "sourceTypes": ["vocal"], "moves": [{ "device": "eq", "param": "b3_freq", "op": "set", "value": 3000 }, { "device": "eq", "param": "b3_gain", "op": "add", "value": 2.5 }] },
+    { "word": "sibilant", "sourceTypes": ["vocal"], "moves": [{ "device": "deess", "param": "thresh", "op": "add", "value": -6 }] },
+    { "word": "gritty", "sourceTypes": ["any"], "moves": [{ "device": "sat", "param": "model", "op": "set", "value": "transistor" }, { "device": "sat", "param": "drive", "op": "add", "value": 6 }] },
+    { "word": "fuzzy", "sourceTypes": ["any"], "moves": [{ "device": "sat", "param": "model", "op": "set", "value": "fuzz" }, { "device": "sat", "param": "drive", "op": "set", "value": 18 }] },
+    { "word": "punchy", "sourceTypes": ["drums", "bass", "vocal"], "moves": [{ "device": "comp", "param": "attack", "op": "set", "value": 25 }, { "device": "comp", "param": "release", "op": "set", "value": 80 }, { "device": "comp", "param": "ratio", "op": "set", "value": 4 }] },
+    { "word": "glue", "sourceTypes": ["bus", "drums"], "moves": [{ "device": "comp", "param": "style", "op": "set", "value": "vca" }, { "device": "comp", "param": "ratio", "op": "set", "value": 2 }, { "device": "comp", "param": "thresh", "op": "add", "value": -3 }] },
+    { "word": "even", "sourceTypes": ["vocal", "bass"], "moves": [{ "device": "comp", "param": "thresh", "op": "add", "value": -4 }, { "device": "comp", "param": "auto_gain", "op": "set", "value": true }] },
+    { "word": "wide", "sourceTypes": ["pad", "guitar", "vocal"], "moves": [{ "device": "utility", "param": "width", "op": "add", "value": 30 }] },
+    { "word": "mono", "sourceTypes": ["bass", "any"], "moves": [{ "device": "utility", "param": "width", "op": "set", "value": 0 }] },
+    { "word": "spacious", "sourceTypes": ["vocal", "pad"], "moves": [{ "device": "reverb", "param": "decay", "op": "mul", "value": 1.4 }, { "device": "reverb", "param": "mix", "op": "add", "value": 8 }] },
+    { "word": "dry", "sourceTypes": ["any"], "moves": [{ "device": "reverb", "param": "mix", "op": "add", "value": -8 }] },
+    { "word": "slapback", "sourceTypes": ["vocal", "guitar"], "moves": [{ "device": "delay", "param": "sync", "op": "set", "value": false }, { "device": "delay", "param": "time_ms", "op": "set", "value": 110 }, { "device": "delay", "param": "feedback", "op": "set", "value": 5 }] },
+    { "word": "telephone", "sourceTypes": ["vocal"], "moves": [{ "device": "filter", "param": "type", "op": "set", "value": "bandpass" }, { "device": "filter", "param": "cutoff", "op": "set", "value": 1500 }, { "device": "filter", "param": "reso", "op": "set", "value": 1.2 }] },
+    { "word": "underwater", "sourceTypes": ["any"], "moves": [{ "device": "filter", "param": "type", "op": "set", "value": "lowpass" }, { "device": "filter", "param": "cutoff", "op": "set", "value": 400 }] },
+    { "word": "lo-fi", "sourceTypes": ["any"], "moves": [{ "device": "crush", "param": "bits", "op": "set", "value": 8 }, { "device": "crush", "param": "downsample", "op": "set", "value": 4 }] },
+    { "word": "octave up", "sourceTypes": ["any"], "moves": [{ "device": "pitch", "param": "semis", "op": "set", "value": 12 }] },
+    { "word": "louder", "sourceTypes": ["master", "any"], "moves": [{ "device": "limiter", "param": "gain", "op": "add", "value": 3 }] },
+    { "word": "stand out", "sourceTypes": ["vocal"], "moves": [{ "device": "comp", "param": "thresh", "op": "add", "value": -4 }, { "device": "eq", "param": "b3_freq", "op": "set", "value": 3000 }, { "device": "eq", "param": "b3_gain", "op": "add", "value": 2.5 }, { "device": "eq", "param": "hp_on", "op": "set", "value": true }] }
+  ]
+}

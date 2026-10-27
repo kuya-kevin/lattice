@@ -20,3 +20,15 @@ test('electron app imports audio through the main-process session', async () => 
   expect(session.tracks[0].clips[0]).toMatchObject({ id: 'c2', duration: 1 });
   await app.close();
 });
+
+test('electron serves the sound library over IPC (fixture data dir)', async () => {
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, LATTICE_DATA_DIR: 'tests/fixtures/library' } as Record<string, string> });
+  const page = await app.firstWindow();
+  const items = await page.evaluate(() => window.lattice!.listLibrary());
+  expect(items.map((i) => i.id)).toContain('fs:103');
+  expect(items[0]).not.toHaveProperty('file');
+  const bytes = await page.evaluate(async () => (await window.lattice!.loadLibraryAudio('fs:103')).byteLength);
+  expect(bytes).toBe(44 + 0.4 * 8000 * 2);
+  await expect(page.evaluate(() => window.lattice!.loadLibraryAudio('../../etc/passwd'))).rejects.toThrow();
+  await app.close();
+});

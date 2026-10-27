@@ -1,0 +1,274 @@
+{
+ "name": "reverb",
+ "filename": "reverb",
+ "version": "2.90.17",
+ "compile_options": "-lang wasm-i -fpga-mem-th 4 -ct 1 -es 1 -mcd 16 -mdd 1024 -mdy 33 -single -ftz 2",
+ "size": 2179620,
+ "inputs": 2,
+ "outputs": 2,
+ "meta": [
+  {
+   "author": "Lattice"
+  },
+  {
+   "basics.lib/name": "Faust Basic Element Library"
+  },
+  {
+   "basics.lib/version": "1.23.6"
+  },
+  {
+   "compile_options": "-lang wasm-i -fpga-mem-th 4 -ct 1 -es 1 -mcd 16 -mdd 1024 -mdy 33 -single -ftz 2"
+  },
+  {
+   "delays.lib/name": "Faust Delay Library"
+  },
+  {
+   "delays.lib/version": "1.3.3"
+  },
+  {
+   "filename": "reverb"
+  },
+  {
+   "filters.lib/_tanhalf:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/_tanhalf:license": "MIT"
+  },
+  {
+   "filters.lib/allpass_comb:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/allpass_comb:copyright": "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>"
+  },
+  {
+   "filters.lib/allpass_comb:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/highpass:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/highpass:copyright": "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>"
+  },
+  {
+   "filters.lib/highpass:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/lowpass0_highpass1:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/lowpass0_highpass1:copyright": "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>"
+  },
+  {
+   "filters.lib/lowpass0_highpass1:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/lowpass:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/lowpass:copyright": "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>"
+  },
+  {
+   "filters.lib/lowpass:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/name": "Faust Filters Library"
+  },
+  {
+   "filters.lib/svf:author": "Oleg Nesterov"
+  },
+  {
+   "filters.lib/svf:copyright": "Copyright (C) 2020 Oleg Nesterov <oleg@redhat.com>"
+  },
+  {
+   "filters.lib/svf:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/tf1s:author": "Julius O. Smith III"
+  },
+  {
+   "filters.lib/tf1s:copyright": "Copyright (C) 2003-2019 by Julius O. Smith III <jos@ccrma.stanford.edu>"
+  },
+  {
+   "filters.lib/tf1s:license": "LicenseRef-STK-4.3"
+  },
+  {
+   "filters.lib/version": "1.13.4"
+  },
+  {
+   "license": "MIT"
+  },
+  {
+   "maths.lib/author": "GRAME"
+  },
+  {
+   "maths.lib/copyright": "GRAME"
+  },
+  {
+   "maths.lib/license": "LicenseRef-LGPL-2.1-or-later-with-Faust-exception"
+  },
+  {
+   "maths.lib/name": "Faust Math Library"
+  },
+  {
+   "maths.lib/version": "2.9.3"
+  },
+  {
+   "name": "reverb"
+  },
+  {
+   "platform.lib/name": "Generic Platform Library"
+  },
+  {
+   "platform.lib/version": "1.3.1"
+  },
+  {
+   "reverbs.lib/name": "Faust Reverb Library"
+  },
+  {
+   "reverbs.lib/version": "1.6.0"
+  },
+  {
+   "routes.lib/hadamard:author": "Remy Muller, revised by Romain Michon"
+  },
+  {
+   "routes.lib/name": "Faust Signal Routing Library"
+  },
+  {
+   "routes.lib/version": "1.4.1"
+  },
+  {
+   "signals.lib/name": "Faust Routing Library"
+  },
+  {
+   "signals.lib/version": "1.8.0"
+  }
+ ],
+ "ui": [
+  {
+   "type": "vgroup",
+   "label": "reverb",
+   "items": [
+    {
+     "type": "hslider",
+     "label": "damping",
+     "varname": "fHslider5",
+     "shortname": "damping",
+     "address": "/reverb/damping",
+     "index": 262196,
+     "init": 6000,
+     "min": 1500,
+     "max": 20000,
+     "step": 1
+    },
+    {
+     "type": "hslider",
+     "label": "decay",
+     "varname": "fHslider2",
+     "shortname": "decay",
+     "address": "/reverb/decay",
+     "index": 262168,
+     "init": 2,
+     "min": 0.2,
+     "max": 12,
+     "step": 0.001
+    },
+    {
+     "type": "hslider",
+     "label": "high_cut",
+     "varname": "fHslider1",
+     "shortname": "high_cut",
+     "address": "/reverb/high_cut",
+     "index": 262164,
+     "init": 12000,
+     "min": 1000,
+     "max": 20000,
+     "step": 1
+    },
+    {
+     "type": "hslider",
+     "label": "low_cut",
+     "varname": "fHslider8",
+     "shortname": "low_cut",
+     "address": "/reverb/low_cut",
+     "index": 2179548,
+     "init": 200,
+     "min": 20,
+     "max": 1000,
+     "step": 1
+    },
+    {
+     "type": "hslider",
+     "label": "low_ratio",
+     "varname": "fHslider6",
+     "shortname": "low_ratio",
+     "address": "/reverb/low_ratio",
+     "index": 262208,
+     "init": 1.2,
+     "min": 0.5,
+     "max": 2,
+     "step": 0.001
+    },
+    {
+     "type": "hslider",
+     "label": "mix",
+     "varname": "fHslider0",
+     "shortname": "mix",
+     "address": "/reverb/mix",
+     "index": 0,
+     "init": 20,
+     "min": 0,
+     "max": 100,
+     "step": 0.01
+    },
+    {
+     "type": "hslider",
+     "label": "predelay",
+     "varname": "fHslider7",
+     "shortname": "predelay",
+     "address": "/reverb/predelay",
+     "index": 262224,
+     "init": 20,
+     "min": 0,
+     "max": 200,
+     "step": 0.1
+    },
+    {
+     "type": "hslider",
+     "label": "size",
+     "varname": "fHslider3",
+     "shortname": "size",
+     "address": "/reverb/size",
+     "index": 262172,
+     "init": 50,
+     "min": 0,
+     "max": 100,
+     "step": 0.1
+    },
+    {
+     "type": "hslider",
+     "label": "width",
+     "varname": "fHslider9",
+     "shortname": "width",
+     "address": "/reverb/width",
+     "index": 2179616,
+     "init": 100,
+     "min": 0,
+     "max": 150,
+     "step": 0.1
+    },
+    {
+     "type": "hslider",
+     "label": "xover",
+     "varname": "fHslider4",
+     "shortname": "xover",
+     "address": "/reverb/xover",
+     "index": 262176,
+     "init": 200,
+     "min": 50,
+     "max": 1000,
+     "step": 1
+    }
+   ]
+  }
+ ]
+}

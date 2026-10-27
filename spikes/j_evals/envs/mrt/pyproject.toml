@@ -1,0 +1,14 @@
+[project]
+name = "j-evals-mrt"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# Magenta RT2, JAX backend on CUDA. Code Apache-2.0, weights CC-BY-4.0.
+dependencies = [
+    "magenta-rt==2.0.3",
+    "jax[cuda13]",
+    "flax",
+    "optax",
+    "soundfile",
+    "scipy",
+    "pretty_midi",
+]

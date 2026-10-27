@@ -11,7 +11,7 @@ from openai import OpenAI
 
 load_dotenv(Path(__file__).resolve().parents[1] / ".env")
 
-# Muse's audio input is speech-to-text only (idea.md §0.8 A), so music reaches it as text
+# Muse's audio input is speech-to-text only (docs/spike-results.md, A), so music reaches it as text
 # from ears.py. Contributor mode: ~12x cheaper, Meta may train on inputs (approved 2026-10-26).
 MODEL = "muse-spark-1.3-contributor"
 VOICE = "muse-spark-1.2-contributor"  # for spoken instructions; 1.3's audio input is documented as degraded

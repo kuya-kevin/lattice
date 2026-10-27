@@ -2,6 +2,8 @@
 // (via tools) edit. Plain JSON, times in seconds, no audio data (audio lives in the
 // renderer's audio store, keyed by source id). Every op is pure: (session, ...) -> session.
 
+import { describeSettings, type ParamValues } from '../fx/catalog';
+
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated';
 
 export interface Source {
@@ -9,6 +11,8 @@ export interface Source {
   name: string;
   duration: number; // seconds
   origin: SourceOrigin;
+  /** Attribution for library sounds (CC-BY needs it), e.g. '"Kick" by x (url), CC-BY-4.0'. */
+  credit?: string;
 }
 
 export interface Clip {
@@ -20,13 +24,24 @@ export interface Clip {
   duration: number; // audible length (s)
 }
 
+/** One effect device on a track's insert chain (kind = catalog device id, e.g. "eq"). */
+export interface DeviceInstance {
+  id: string;
+  kind: string;
+  on: boolean;
+  params: ParamValues; // every catalog param, defaults filled in
+}
+
 export interface Track {
   id: string;
   name: string;
   gainDb: number;
   muted: boolean;
   soloed: boolean;
+  /** Record-armed (Logic's R button): the next take goes here. Optional for older sessions. */
+  armed?: boolean;
   clips: Clip[];
+  devices: DeviceInstance[]; // insert chain, in signal order (fx/chain.ts edits it)
 }
 
 export interface Session {
@@ -62,7 +77,7 @@ export function emptySession(): Session {
 
 const round = (x: number) => Math.round(x * 1000) / 1000;
 
-function nextId(s: Session, prefix: string): [Session, string] {
+export function nextId(s: Session, prefix: string): [Session, string] {
   const seq = s.seq + 1;
   return [{ ...s, seq }, `${prefix}${seq}`];
 }
@@ -81,7 +96,7 @@ export function findClip(s: Session, clipId: string): { track: Track; clip: Clip
   throw new SessionError(`no clip "${clipId}"`);
 }
 
-function mapTrack(s: Session, trackId: string, fn: (t: Track) => Track): Session {
+export function mapTrack(s: Session, trackId: string, fn: (t: Track) => Track): Session {
   getTrack(s, trackId);
   return { ...s, tracks: s.tracks.map((t) => (t.id === trackId ? fn(t) : t)) };
 }
@@ -93,7 +108,7 @@ function mapClip(s: Session, clipId: string, fn: (c: Clip) => Clip): Session {
 
 export function addTrack(s: Session, name?: string): [Session, Track] {
   const [s1, id] = nextId(s, 't');
-  const track: Track = { id, name: name || `Track ${s1.tracks.length + 1}`, gainDb: 0, muted: false, soloed: false, clips: [] };
+  const track: Track = { id, name: name || `Track ${s1.tracks.length + 1}`, gainDb: 0, muted: false, soloed: false, clips: [], devices: [] };
   return [{ ...s1, tracks: [...s1.tracks, track] }, track];
 }
 
@@ -126,8 +141,33 @@ export function trimClip(s: Session, clipId: string, start: number, end: number)
   return mapClip(s, clipId, (c) => ({ ...c, start: round(a), offset: round(a - sourceStart), duration: round(b - a) }));
 }
 
-export function moveClip(s: Session, clipId: string, start: number): Session {
-  return mapClip(s, clipId, (c) => ({ ...c, start: round(Math.max(0, start)) }));
+/** Move a clip in time and, with `trackId`, onto another track (it keeps its id). */
+export function moveClip(s: Session, clipId: string, start: number, trackId?: string): Session {
+  const { track, clip } = findClip(s, clipId);
+  const moved = { ...clip, start: round(Math.max(0, start)) };
+  if (!trackId || trackId === track.id) return mapClip(s, clipId, () => moved);
+  getTrack(s, trackId);
+  return {
+    ...s,
+    tracks: s.tracks.map((t) =>
+      t.id === track.id ? { ...t, clips: t.clips.filter((c) => c.id !== clipId) } : t.id === trackId ? { ...t, clips: [...t.clips, moved] } : t,
+    ),
+    selection: s.selection.clipId === clipId ? { trackId, clipId } : s.selection,
+  };
+}
+
+/** Record-arm one track (or none). Like a single-input setup in Logic, one track is armed at a time. */
+export function setArm(s: Session, trackId: string, armed: boolean): Session {
+  getTrack(s, trackId);
+  return { ...s, tracks: s.tracks.map((t) => ({ ...t, armed: t.id === trackId ? armed : armed ? false : t.armed })) };
+}
+
+export function deleteClip(s: Session, clipId: string): Session {
+  const { track } = findClip(s, clipId);
+  return {
+    ...mapTrack(s, track.id, (t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) })),
+    selection: s.selection.clipId === clipId ? { trackId: track.id, clipId: null } : s.selection,
+  };
 }
 
 export function setGain(s: Session, trackId: string, gainDb: number): Session {
@@ -212,13 +252,19 @@ export function summarize(s: Session): string {
   const header = `Tempo ${s.tempo} BPM, ${s.timeSignature.join('/')}, key ${s.key ?? 'not set'}, ${click}.`;
   if (!s.tracks.length) return `${header}\nSession is empty (no tracks).`;
   const lines = s.tracks.map((t) => {
-    const flags = [t.muted && 'muted', t.soloed && 'soloed'].filter(Boolean).join(', ');
+    const flags = [t.muted && 'muted', t.soloed && 'soloed', t.armed && 'record-armed'].filter(Boolean).join(', ');
     const clips = t.clips
       .map((c) => `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s`)
       .join('; ');
-    return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}`;
+    const fx = describeChain(t);
+    return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;
   });
   const sel = s.selection.clipId ? `selected clip ${s.selection.clipId}` : s.selection.trackId ? `selected track ${s.selection.trackId}` : 'nothing selected';
   const punch = s.punchIn ? `; punch-in armed on ${s.punchIn.trackId} ${s.punchIn.start}-${s.punchIn.end}s` : '';
   return `${header}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s${punch})`;
+}
+
+/** Text view of a track's insert chain for Muse, e.g. `d3 eq(b3_gain=3 dB) -> d4 comp[off](defaults)`. */
+export function describeChain(t: Track): string {
+  return (t.devices ?? []).map((d) => `${d.id} ${d.kind}${d.on ? '' : '[bypassed]'}(${describeSettings(d.kind, d.params)})`).join(' -> ');
 }
