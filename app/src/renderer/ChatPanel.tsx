@@ -1,6 +1,9 @@
+// Muse on the canvas: the conversation floats on the left (collapsible) and the prompt bar sits
+// at the bottom centre, always there. Sending opens the conversation.
 import { useRef, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import type { StepRecord } from '../core/agent';
+import { Icon } from './icons';
 
 interface Entry {
   role: 'user' | 'muse' | 'error';
@@ -8,7 +11,15 @@ interface Entry {
   steps?: StepRecord[];
 }
 
-export function ChatPanel({ bridge }: { bridge: Bridge }) {
+interface Props {
+  bridge: Bridge;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** what Muse is looking at, shown as a chip in the prompt bar (e.g. the selected track) */
+  context?: string | null;
+}
+
+export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -19,6 +30,7 @@ export function ChatPanel({ bridge }: { bridge: Bridge }) {
     if (!msg || busy) return;
     setText('');
     setBusy(true);
+    onOpenChange(true);
     setEntries((e) => [...e, { role: 'user', text: msg }]);
     const r = await bridge.sendChat(msg);
     setEntries((e) => [...e, r.ok ? { role: 'muse', text: r.turn.reply, steps: r.turn.steps } : { role: 'error', text: r.error }]);
@@ -27,35 +39,55 @@ export function ChatPanel({ bridge }: { bridge: Bridge }) {
   };
 
   return (
-    <aside className="chat" aria-label="Muse chat">
-      <header>Muse {bridge.mode === 'web' && <span className="badge">offline mock</span>}</header>
-      <div className="chat-list" ref={listRef} data-testid="chat-list">
-        {entries.length === 0 && <p className="hint">Ask Muse to trim, mix, punch in, or find a sound. Your own edits are passed to Muse as feedback.</p>}
-        {entries.map((e, i) => (
-          <div key={i} className={`msg ${e.role}`}>
-            {e.steps && e.steps.length > 0 && (
-              <ul className="steps">
-                {e.steps.map((s, j) => (
-                  <li key={j} className={s.outcome.ok ? 'ok' : 'fail'} title={JSON.stringify(s.outcome.ok ? s.outcome.result : s.outcome.error)}>
-                    {s.tool}({compact(s.args)}){s.outcome.ok ? '' : ` ✗ ${s.outcome.error}`}
-                  </li>
-                ))}
+    <>
+      <aside className="chat island" aria-label="Muse chat" hidden={!open}>
+        <header>
+          <Icon name="spark" size={15} className="spark" />
+          Muse {bridge.mode === 'web' && <span className="badge">offline mock</span>}
+          <button className="ibtn sm close" aria-label="Hide Muse" title="Hide Muse" onClick={() => onOpenChange(false)}><Icon name="close" size={14} /></button>
+        </header>
+        <div className="chat-list" ref={listRef} data-testid="chat-list">
+          {entries.length === 0 && (
+            <div className="hint">
+              <p>Ask for what you want to hear. Muse turns the knobs and tells you which ones it moved.</p>
+              <ul>
+                <li>“Make my vocal stand out in the mix”</li>
+                <li>“Turn the hum into a lead, keep it in key”</li>
+                <li>“Trim the vocal to 2–9 s and duck the drums 3 dB”</li>
               </ul>
-            )}
-            <div className="text">{linkify(e.text)}</div>
-          </div>
-        ))}
-        {busy && <div className="msg muse pending">Muse is working…</div>}
-      </div>
+              <p>Your own edits are passed to Muse as feedback.</p>
+            </div>
+          )}
+          {entries.map((e, i) => (
+            <div key={i} className={`msg ${e.role}`}>
+              <div className="text">{linkify(e.text)}</div>
+              {e.steps && e.steps.length > 0 && (
+                <ul className="steps">
+                  {e.steps.map((s, j) => (
+                    <li key={j} className={s.outcome.ok ? 'ok' : 'fail'} title={JSON.stringify(s.outcome.ok ? s.outcome.result : s.outcome.error)}>
+                      <b>{s.tool}</b>({compact(s.args)}){s.outcome.ok ? '' : ` ✗ ${s.outcome.error}`}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+          {busy && <div className="msg muse pending">Muse is working…</div>}
+        </div>
+      </aside>
+
       <form
+        className="prompt island"
         onSubmit={(ev) => {
           ev.preventDefault();
           send();
         }}
       >
         <textarea
+          aria-label="Message Muse"
+          rows={1}
           value={text}
-          placeholder="e.g. trim the vocal to 2–9 s and duck the drums 3 dB"
+          placeholder="Tell Muse what to change, e.g. trim the vocal to 2–9 s and duck the drums 3 dB"
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -64,9 +96,16 @@ export function ChatPanel({ bridge }: { bridge: Bridge }) {
             }
           }}
         />
-        <button type="submit" disabled={busy || !text.trim()}>Send</button>
+        <div className="prompt-row">
+          {!open && entries.length > 0 && (
+            <button type="button" className="chip" onClick={() => onOpenChange(true)}>{entries.length} messages</button>
+          )}
+          {context && <span className="chip ctx" title="Muse sees this selection">{context}</span>}
+          <span className="spacer" />
+          <button type="submit" className="send" disabled={busy || !text.trim()}><Icon name="send" size={16} />Send</button>
+        </div>
       </form>
-    </aside>
+    </>
   );
 }
 

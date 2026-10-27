@@ -8,6 +8,7 @@ import { barLength, formatBarsBeats, formatTime, type Meter } from '../core/metr
 import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, type Session } from '../core/session';
 import { newSourceId } from './audio';
 import { clicks } from './click';
+import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -61,33 +62,42 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
 
   const tip = (action: ShortcutAction, label: string) => `${label} (${SHORTCUTS.find((s) => s.action === action)?.keys})`;
 
+  // Floating islands over the canvas: session pill (left), transport + LCD (centre), file actions (right).
   return (
     <div className="controlbar" role="toolbar" aria-label="Transport">
-      <div className="group">
-        <button onClick={actions.goToStart} title={tip('goToStart', 'Go to beginning')} aria-label="Go to beginning">⏮</button>
-        <button onClick={actions.playStop} title={tip('playStop', isPlaying ? 'Stop' : 'Play')} aria-label={isPlaying ? 'Stop' : 'Play'} className={isPlaying ? 'on play' : ''} disabled={!session.tracks.length && !isPlaying}>
-          {isPlaying ? '■' : '▶'}
-        </button>
-        <button onClick={rec.toggle} title={tip('record', 'Record')} aria-label="Record" className={rec.isRecording || rec.countingIn ? 'on rec' : 'rec-idle'}>●</button>
-        <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={isLoopEnabled ? 'on cycle icon' : 'icon'}>⟲</button>
+      <div className="island pill session-pill">
+        <span className="logo" aria-hidden><Icon name="spark" size={14} /></span>
+        <b>Lattice</b>
+        <small>{session.tracks.length ? `${session.tracks.length} track${session.tracks.length > 1 ? 's' : ''}` : 'new session'}</small>
       </div>
 
-      <Lcd session={session} run={run} meter={meter} recordingFor={rec.isRecording ? rec.duration : null} countingIn={rec.countingIn} />
+      <div className="island transport">
+        <div className="group">
+          <button className="ibtn" onClick={actions.goToStart} title={tip('goToStart', 'Go to beginning')} aria-label="Go to beginning"><Icon name="start" /></button>
+          <button onClick={actions.playStop} title={tip('playStop', isPlaying ? 'Stop' : 'Play')} aria-label={isPlaying ? 'Stop' : 'Play'} className={`ibtn play${isPlaying ? ' on' : ''}`} disabled={!session.tracks.length && !isPlaying}>
+            <Icon name={isPlaying ? 'stop' : 'play'} />
+          </button>
+          <button onClick={rec.toggle} title={tip('record', 'Record')} aria-label="Record" className={`ibtn rec${rec.isRecording || rec.countingIn ? ' on' : ''}`}><Icon name="rec" /></button>
+        </div>
 
-      <div className="group">
-        <button onClick={actions.metronome} title={tip('metronome', 'Click')} aria-label="Click" aria-pressed={session.metronome.on} className={session.metronome.on ? 'on' : ''}>
-          ♩ Click
-        </button>
-        <button onClick={actions.countIn} title={tip('countIn', 'Count-in (1 bar)')} aria-label="Count-in" aria-pressed={session.metronome.countIn} className={session.metronome.countIn ? 'on' : ''}>
-          1234
-        </button>
+        <Lcd session={session} run={run} meter={meter} recordingFor={rec.isRecording ? rec.duration : null} countingIn={rec.countingIn} />
+
+        <div className="group">
+          <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={`ibtn cycle${isLoopEnabled ? ' on' : ''}`}><Icon name="cycle" /></button>
+          <button onClick={actions.metronome} title={tip('metronome', 'Click')} aria-label="Click" aria-pressed={session.metronome.on} className={`ibtn${session.metronome.on ? ' on' : ''}`}>
+            <Icon name="metro" />
+          </button>
+          <button onClick={actions.countIn} title={tip('countIn', 'Count-in (1 bar)')} aria-label="Count-in" aria-pressed={session.metronome.countIn} className={`count-in${session.metronome.countIn ? ' on' : ''}`}>
+            1234
+          </button>
+        </div>
       </div>
 
-      <div className="group">
-        <button onClick={() => fileRef.current?.click()}>Import…</button>
+      <div className="group actions">
+        <button className="island btn" onClick={() => fileRef.current?.click()}><Icon name="import" size={16} />Import…</button>
         <input ref={fileRef} type="file" accept="audio/*" multiple hidden data-testid="file-input" onChange={(e) => e.target.files && importFiles(e.target.files)} />
-        <button onClick={() => run('add_track', { name: `Track ${session.tracks.length + 1}` })}>+ Track</button>
-        {!rec.micReady && <button onClick={rec.enableMic} title={rec.micError}>🎙 Enable mic</button>}
+        <button className="island btn" onClick={() => run('add_track', { name: `Track ${session.tracks.length + 1}` })}><Icon name="plus" size={16} />Track</button>
+        {!rec.micReady && <button className="island btn" onClick={rec.enableMic} title={rec.micError}><Icon name="mic" size={16} />Enable mic</button>}
       </div>
     </div>
   );

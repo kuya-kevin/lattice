@@ -6,8 +6,8 @@ import type { Session } from '../core/session';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
-/** Logic-ish region colours, one per track in turn. */
-export const TRACK_COLORS = ['#3d8ee6', '#47b35f', '#e0b23a', '#e07a3a', '#a868e0', '#36b8c4', '#e0587d', '#8fa63a'];
+/** Region colours, one per track in turn: equal lightness, so no lane shouts. */
+export const TRACK_COLORS = ['#f08a6c', '#e9b85a', '#7fd39a', '#8fb3ff', '#c79cf0', '#6fcfc0', '#f08aa8', '#b9d36a'];
 export const trackColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
 
 export function TrackHeader({ session, index, run }: { session: Session; index: number; run: Run }) {

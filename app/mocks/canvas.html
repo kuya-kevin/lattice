@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lattice Canvas</title>
+<link rel="stylesheet" href="tokens.css">
+<style>
+/* Direction A: the session is an infinite canvas. The arrangement is one board on it;
+   voice notes, extractions and device chains sit beside it as cards joined by wires. */
+.viewport { position: fixed; inset: 0; cursor: grab; }
+.world { position: absolute; left: 0; top: 0; transform-origin: 0 0; width: 1700px; height: 960px; }
+.wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
+.frame-title { position: absolute; display: flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted); }
+.frame-title b { color: var(--text); font-weight: 600; }
+
+.card { position: absolute; background: var(--island); border: 1px solid var(--line); border-radius: var(--r-card); }
+.card header { display: flex; align-items: center; gap: 8px; padding: 10px 12px 6px; font-weight: 600; }
+.card header .dot { width: 8px; height: 8px; border-radius: 50%; }
+.card .meta { padding: 0 12px 10px; color: var(--muted); font-size: 12px; }
+.port { position: absolute; width: 10px; height: 10px; top: 50%; margin-top: -5px; }
+.port.out { right: -5px; } .port.in { left: -5px; }
+
+/* source cards */
+.src canvas.wave { display: block; width: calc(100% - 24px); height: 54px; margin: 0 12px 8px; }
+.src .row { display: flex; gap: 6px; padding: 0 12px 12px; flex-wrap: wrap; }
+.chip { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: var(--island-2); border: 1px solid var(--line); color: #c4c9d3; }
+.chip.ok { color: var(--t3); border-color: color-mix(in srgb, var(--t3) 35%, transparent); }
+
+/* arrangement board */
+.board { position: absolute; left: 440px; top: 40px; width: 1220px; height: 560px; background: var(--island); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.ruler { display: grid; grid-template-columns: 186px 1fr; height: 30px; border-bottom: 1px solid var(--line); }
+.ruler .bars { position: relative; font: 10.5px var(--font-data); color: var(--muted); }
+.ruler .bars span { position: absolute; top: 8px; }
+.ruler .loop { position: absolute; top: 3px; height: 6px; border-radius: 3px; background: color-mix(in srgb, var(--accent) 45%, transparent); }
+.lanes { position: relative; }
+.lane { display: grid; grid-template-columns: 186px 1fr; height: 104px; border-bottom: 1px solid var(--line); }
+.th { display: grid; grid-template-rows: auto auto 1fr; gap: 6px; padding: 10px 12px; border-right: 1px solid var(--line); position: relative; }
+.th .name { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.th .name i { width: 4px; height: 16px; border-radius: 2px; }
+.th .kind { font-size: 11px; color: var(--muted); }
+.th .ctl { display: flex; gap: 4px; align-self: end; }
+.th .ctl b { width: 22px; height: 20px; border-radius: 6px; display: grid; place-items: center; font: 600 10px var(--font-ui); background: var(--island-2); border: 1px solid var(--line); color: var(--muted); }
+.th .ctl b.m.on { background: var(--mute); color: #071326; border-color: transparent; }
+.th .ctl b.s.on { background: var(--solo); color: #2a1f00; border-color: transparent; }
+.th .ctl .vol { flex: 1; height: 4px; align-self: center; border-radius: 2px; background: linear-gradient(90deg, var(--text) var(--v), var(--line-strong) var(--v)); margin-left: 6px; }
+.track { position: relative; background-image: linear-gradient(90deg, var(--line) 1px, transparent 1px); background-size: calc(100% / 16) 100%; }
+.clip { position: absolute; top: 8px; bottom: 8px; border-radius: 9px; overflow: hidden; color: var(--c);
+  background: color-mix(in srgb, var(--c) 16%, var(--island)); border: 1px solid color-mix(in srgb, var(--c) 55%, transparent); }
+.clip .ct { position: absolute; left: 8px; top: 5px; font-size: 11px; font-weight: 600; color: var(--text); white-space: nowrap; }
+.clip canvas.wave { position: absolute; left: 0; right: 0; top: 22px; bottom: 4px; width: 100%; height: calc(100% - 26px); }
+.clip .midi { position: absolute; left: 8px; right: 8px; top: 24px; bottom: 8px; }
+.clip.sel { box-shadow: 0 0 0 2px var(--accent); }
+.playhead { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
+.playhead::before { content: ''; position: absolute; top: -1px; left: -5px; border: 6px solid transparent; border-top: 8px solid var(--accent); }
+.badge { position: absolute; right: 8px; top: 5px; font: 10px var(--font-data); color: var(--muted); }
+
+/* device chain */
+.dev { position: absolute; top: 700px; width: 238px; }
+.dev .knobs { display: flex; justify-content: space-between; padding: 4px 10px 12px; }
+.dev .on { margin-left: auto; width: 26px; height: 15px; border-radius: 999px; background: var(--accent); position: relative; }
+.dev .on::after { content: ''; position: absolute; right: 2px; top: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--accent-ink); }
+.dev .gr { margin: 0 12px 12px; height: 6px; border-radius: 3px; background: var(--island-2); position: relative; overflow: hidden; }
+.dev .gr i { position: absolute; right: 0; top: 0; bottom: 0; width: 22%; background: var(--t2); }
+.note { position: absolute; width: 250px; padding: 12px 14px; border-radius: 12px; background: color-mix(in srgb, var(--accent) 10%, var(--island)); border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent); font-size: 12.5px; }
+.note .who { display: flex; gap: 6px; align-items: center; color: var(--accent); font-weight: 600; font-size: 12px; margin-bottom: 4px; }
+.note .who svg { width: 13px; height: 13px; }
+
+/* fixed chrome */
+.top { position: fixed; left: 16px; right: 16px; top: 14px; display: flex; align-items: center; gap: 10px; pointer-events: none; }
+.top > * { pointer-events: auto; }
+.proj { font-weight: 600; font-size: 15px; } .proj small { color: var(--muted); font-weight: 400; margin-left: 6px; }
+.transport { margin: 0 auto; display: flex; align-items: center; gap: 4px; padding: 5px 6px 5px 6px; }
+.lcd { display: flex; gap: 16px; padding: 0 14px; margin: 0 4px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); }
+.lcd div { display: grid; line-height: 1.1; }
+.lcd b { font: 500 15px var(--font-data); }
+.lcd span { font-size: 9.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.avatar { width: 34px; height: 34px; border-radius: 50%; background: linear-gradient(135deg, var(--t1), var(--t5)); }
+
+.muse { position: fixed; left: 16px; top: 70px; bottom: 16px; width: 330px; display: flex; flex-direction: column; overflow: hidden; }
+.muse .head { display: flex; align-items: center; gap: 8px; padding: 14px 16px 10px; }
+.muse .head b { font-size: 14px; }
+.muse .head .model { margin-left: auto; font: 10.5px var(--font-data); color: var(--muted); }
+.thread { flex: 1; overflow: auto; padding: 4px 16px 16px; display: flex; flex-direction: column; gap: 14px; }
+.msg.you { align-self: flex-end; max-width: 85%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--island-3); }
+.msg.you .voice { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+.msg.you .voice svg { width: 12px; height: 12px; }
+.msg.muse-says { display: grid; gap: 8px; }
+.msg.muse-says .calls { display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
+.ab { display: flex; gap: 6px; }
+.ab .btn { height: 28px; padding: 0 12px; font-size: 12px; }
+.ab .btn.pri { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600; }
+.agentlog { border-top: 1px solid var(--line); padding: 12px 16px; display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.agentlog svg { width: 16px; height: 16px; margin-left: auto; }
+
+.rail { position: fixed; right: 16px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 4px; padding: 6px; border-radius: 999px; }
+.rail hr { width: 20px; border: 0; border-top: 1px solid var(--line); margin: 4px auto; }
+
+.prompt { position: fixed; left: calc(50% + 173px); bottom: 18px; transform: translateX(-50%); width: min(640px, calc(100vw - 420px)); }
+.suggest { display: flex; gap: 8px; justify-content: center; margin-bottom: 10px; }
+.suggest .pill { font-size: 12.5px; color: #cdd2db; cursor: pointer; }
+.suggest .pill kbd { font: 10.5px var(--font-data); color: var(--muted); margin-left: 6px; }
+.box { padding: 12px 12px 10px 16px; }
+.box .ph { color: var(--muted); font-size: 14px; padding: 2px 0 12px; }
+.box .bar { display: flex; align-items: center; gap: 6px; }
+.box .ctx { font-size: 11.5px; color: var(--muted); display: flex; gap: 6px; }
+.box .ptt { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; height: 36px; padding: 0 14px 0 10px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-weight: 600; border: 0; }
+.box .ptt svg { width: 18px; height: 18px; }
+.box .ptt kbd { font: 10.5px var(--font-data); opacity: .7; }
+
+.zoom { position: fixed; right: 16px; bottom: 18px; display: flex; align-items: center; gap: 2px; padding: 3px; }
+.zoom .z { padding: 0 10px; font: 12px var(--font-data); }
+.mini { position: fixed; right: 16px; bottom: 66px; width: 168px; height: 98px; border-radius: 12px; padding: 8px; }
+.mini div { position: absolute; border-radius: 3px; background: var(--line-strong); }
+.mini .vp { background: transparent; border: 1.5px solid var(--accent); border-radius: 4px; }
+</style>
+</head>
+<body>
+<div class="viewport dotgrid" id="vp">
+  <div class="world" id="world">
+    <svg class="wires" id="wires"></svg>
+
+    <!-- sources -->
+    <div class="frame-title" style="left:40px;top:10px"><b>Ideas</b> 3 voice notes</div>
+    <div class="card src" style="left:40px;top:40px;width:330px">
+      <header><span class="dot" style="background:var(--t1)"></span>Voice note 143 <span class="label" style="margin-left:auto">0:21</span></header>
+      <canvas class="wave" data-seed="143" style="color:var(--t1)"></canvas>
+      <div class="meta">Hum, melody around F♯4 · free time</div>
+      <div class="row"><span class="chip ok">✓ Melody · 41 notes</span><span class="chip">C♯4–A4</span><span class="chip">pyin</span></div>
+      <span class="port out" data-port="vn143"></span>
+    </div>
+    <div class="card src" style="left:40px;top:250px;width:330px">
+      <header><span class="dot" style="background:var(--t3)"></span>Voice note 146 <span class="label" style="margin-left:auto">0:34</span></header>
+      <canvas class="wave" data-seed="146" data-style="keys" style="color:var(--t3)"></canvas>
+      <div class="meta">Piano and voice · G minor</div>
+      <div class="row"><span class="chip ok">✓ Keys · 132 notes</span><span class="chip">Mel-RoFormer → basic-pitch</span></div>
+      <span class="port out" data-port="vn146"></span>
+    </div>
+    <div class="card src" style="left:40px;top:460px;width:330px">
+      <header><span class="dot" style="background:var(--t4)"></span>Beatbox loop <span class="label" style="margin-left:auto">0:08</span></header>
+      <canvas class="wave" data-seed="7" data-style="drums" style="color:var(--t4)"></canvas>
+      <div class="meta">Percussive · 92 BPM detected (conf. 0.81)</div>
+      <div class="row"><span class="chip ok">✓ Drums · kick / snare / hat</span><span class="chip">quantized 1/16</span></div>
+      <span class="port out" data-port="bb"></span>
+    </div>
+
+    <!-- arrangement -->
+    <div class="frame-title" style="left:440px;top:10px"><b>Arrangement</b> bars 1–17 · 92 BPM · 4/4 · G minor</div>
+    <div class="board" id="board">
+      <div class="ruler"><div></div><div class="bars" id="bars"><div class="loop" style="left:25%;width:25%"></div></div></div>
+      <div class="lanes">
+        <div class="lane"><div class="th"><div class="name"><i style="background:var(--t1)"></i>Hum 143</div><div class="kind">Audio · Mic</div><div class="ctl"><b class="m on">M</b><b class="s">S</b><span class="vol" style="--v:55%"></span></div></div>
+          <div class="track"><div class="clip" style="--c:var(--t1);left:0;width:50%"><span class="ct">Voice note 143</span><canvas class="wave" data-seed="143"></canvas></div></div></div>
+        <div class="lane"><div class="th"><div class="name"><i style="background:var(--t2)"></i>Lead</div><div class="kind">MIDI · Soft Lead</div><div class="ctl"><b class="m">M</b><b class="s">S</b><span class="vol" style="--v:70%"></span></div><span class="port in" data-port="lead"></span></div>
+          <div class="track"><div class="clip sel" style="--c:var(--t2);left:0;width:50%"><span class="ct">Hum → MIDI</span><span class="badge">1/16 · 80%</span><div class="midi" data-seed="9" data-count="34"></div></div>
+            <div class="clip" style="--c:var(--t2);left:50%;width:50%;opacity:.55;border-style:dashed"><span class="ct">Muse idea: answer phrase</span><div class="midi" data-seed="21" data-count="30"></div></div></div></div>
+        <div class="lane"><div class="th"><div class="name"><i style="background:var(--t3)"></i>Keys</div><div class="kind">MIDI · Electric Piano</div><div class="ctl"><b class="m">M</b><b class="s">S</b><span class="vol" style="--v:62%"></span></div><span class="port in" data-port="keys"></span></div>
+          <div class="track"><div class="clip" style="--c:var(--t3);left:25%;width:50%"><span class="ct">Keys from 146</span><div class="midi" data-seed="4" data-count="16" data-style="chords"></div></div></div></div>
+        <div class="lane"><div class="th"><div class="name"><i style="background:var(--t4)"></i>Drums</div><div class="kind">MIDI · Kit</div><div class="ctl"><b class="m">M</b><b class="s on">S</b><span class="vol" style="--v:78%"></span></div><span class="port in" data-port="drums"></span></div>
+          <div class="track"><div class="clip" style="--c:var(--t4);left:0;width:100%"><span class="ct">Beatbox → Drums</span><div class="midi" data-count="64" data-style="drums"></div></div></div></div>
+        <div class="lane" style="border-bottom:0"><div class="th"><div class="name"><i style="background:var(--t5)"></i>Vocal</div><div class="kind">Audio · 4 devices</div><div class="ctl"><b class="m">M</b><b class="s">S</b><span class="vol" style="--v:66%"></span></div></div>
+          <div class="track"><div class="clip" style="--c:var(--t5);left:50%;width:50%"><span class="ct">Take 3</span><canvas class="wave" data-seed="33" data-style="vocal"></canvas></div><span data-port="vox" style="position:absolute;right:-2px;top:50%;width:1px;height:1px"></span></div></div>
+        <div class="playhead" style="left:calc(186px + (100% - 186px) * 0.33)"></div>
+      </div>
+    </div>
+
+    <!-- vocal chain -->
+    <div class="frame-title" style="left:440px;top:668px"><b>Vocal chain</b> on track “Vocal”</div>
+    <div class="card dev" style="left:440px"><header>EQ<span class="on"></span></header>
+      <div class="knobs"><div class="knob" data-v=".2" data-name="Low cut" data-val="90 Hz" data-color="var(--t5)"></div><div class="knob" data-v=".62" data-name="Presence" data-val="+2.5 dB" data-color="var(--t5)"></div><div class="knob" data-v=".55" data-name="Air" data-val="+1.5 dB" data-color="var(--t5)"></div></div>
+      <span class="port in" data-port="eq-in"></span><span class="port out" data-port="eq"></span></div>
+    <div class="card dev" style="left:722px"><header>Compressor<span class="on"></span></header>
+      <div class="knobs"><div class="knob" data-v=".45" data-name="Thresh" data-val="−18 dB" data-color="var(--accent)"></div><div class="knob" data-v=".38" data-name="Ratio" data-val="4:1" data-color="var(--accent)"></div><div class="knob" data-v=".3" data-name="Attack" data-val="10 ms" data-color="var(--t5)"></div></div>
+      <div class="gr"><i></i></div>
+      <span class="port in" data-port="comp-in"></span><span class="port out" data-port="comp"></span></div>
+    <div class="card dev" style="left:1004px"><header>De-esser<span class="on"></span></header>
+      <div class="knobs"><div class="knob" data-v=".7" data-name="Freq" data-val="6.8 kHz" data-color="var(--accent)"></div><div class="knob" data-v=".4" data-name="Range" data-val="−4 dB" data-color="var(--accent)"></div><div class="knob" data-v=".5" data-name="Thresh" data-val="−24 dB" data-color="var(--t5)"></div></div>
+      <span class="port in" data-port="deess-in"></span><span class="port out" data-port="deess"></span></div>
+    <div class="card dev" style="left:1286px"><header>Reverb<span class="on"></span></header>
+      <div class="knobs"><div class="knob" data-v=".35" data-name="Decay" data-val="1.6 s" data-color="var(--t5)"></div><div class="knob" data-v=".25" data-name="Pre-delay" data-val="24 ms" data-color="var(--t5)"></div><div class="knob" data-v=".18" data-name="Mix" data-val="18%" data-color="var(--t5)"></div></div>
+      <span class="port in" data-port="rev-in"></span></div>
+    <div class="note" style="left:1100px;top:870px"><div class="who"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8z"/></svg>Muse changed 4 knobs</div>
+      Tighter compression and a softer “s” so the vocal sits on top of the keys. Highlighted knobs are the ones I moved.</div>
+  </div>
+</div>
+
+<!-- chrome -->
+<div class="top">
+  <div class="pill island" style="padding:4px 14px 4px 4px;gap:10px"><button class="ibtn" data-i="menu" aria-label="Menu"></button><span class="proj">Late-night idea <small>autosaved</small></span></div>
+  <div class="transport island" style="border-radius:999px">
+    <button class="ibtn" data-i="stop" aria-label="Stop"></button>
+    <button class="ibtn on" data-i="play" aria-label="Play"></button>
+    <button class="ibtn" data-i="rec" aria-label="Record"></button>
+    <div class="lcd"><div><b>6.1.3</b><span>Bar</span></div><div><b>92</b><span>BPM</span></div><div><b>G min</b><span>Key</span></div><div><b>4/4</b><span>Time</span></div></div>
+    <button class="ibtn" data-i="loop" aria-label="Cycle" style="color:var(--accent)"></button>
+    <button class="ibtn" data-i="metro" aria-label="Metronome"></button>
+  </div>
+  <button class="btn island" data-i="export" style="box-shadow:var(--shadow)"> Export</button>
+  <button class="btn island" data-i="share" style="box-shadow:var(--shadow)"> Share</button>
+  <span class="avatar"></span>
+</div>
+
+<aside class="muse island">
+  <div class="head"><span class="ibtn" data-i="spark" style="width:22px;height:22px;color:var(--accent)"></span><b>Muse</b><span class="model">muse-spark-1.3</span></div>
+  <div class="thread">
+    <div class="msg you"><div class="voice"><span data-i="mic"></span>voice · 0:03</div>Turn the hum into a lead and keep it in G minor.</div>
+    <div class="msg muse-says">I pulled 41 notes out of voice note 143, snapped 3 that were out of key, and put them on a new Lead track.
+      <div class="calls"><span class="call"><b>extract_midi</b> vn143 → melody</span><span class="call"><b>quantize_midi</b> 1/16 · 80%</span></div></div>
+    <div class="msg you"><div class="voice"><span data-i="mic"></span>voice · 0:02</div>How do I make my vocal stand out in the mix?</div>
+    <div class="msg muse-says">Three things: compress it a little harder so it stays level, tame the harsh “s” around 6.8 kHz, and add a touch of presence. Listen before and after:
+      <div class="calls"><span class="call"><b>set_param</b> comp.threshold −18 dB</span><span class="call"><b>set_param</b> comp.ratio 4:1</span><span class="call"><b>insert_device</b> deess @ 6.8 kHz</span><span class="call"><b>set_param</b> eq.presence +2.5 dB</span></div>
+      <div class="ab"><button class="btn">Before</button><button class="btn pri">After</button><button class="btn">Undo all</button></div></div>
+  </div>
+  <div class="agentlog"><span data-i="knob" style="width:16px;height:16px;display:inline-grid"></span>Agent log · 12 edits today<span data-i="chev"></span></div>
+</aside>
+
+<nav class="rail island" aria-label="Tools">
+  <button class="ibtn on" data-i="cursor" aria-label="Select"></button>
+  <button class="ibtn" data-i="marquee" aria-label="Marquee"></button>
+  <button class="ibtn" data-i="pencil" aria-label="Draw notes"></button>
+  <button class="ibtn" data-i="scissors" aria-label="Split"></button>
+  <button class="ibtn" data-i="hand" aria-label="Pan"></button>
+  <hr>
+  <button class="ibtn" data-i="library" aria-label="Sound library"></button>
+  <button class="ibtn" data-i="comment" aria-label="Notes"></button>
+</nav>
+
+<div class="prompt">
+  <div class="suggest"><span class="pill">Add a bass line under the keys <kbd>1</kbd></span><span class="pill">Make the drums punchier <kbd>2</kbd></span></div>
+  <div class="box island">
+    <div class="ph">Tell Muse what to change, or hold Space to talk…</div>
+    <div class="bar">
+      <button class="ibtn" data-i="plus" aria-label="Add"></button>
+      <span class="ctx"><span class="chip">Track: Vocal</span><span class="chip">Bars 5–9</span></span>
+      <button class="ptt" data-i="mic"> Hold to talk <kbd>Space</kbd></button>
+    </div>
+  </div>
+</div>
+
+<div class="mini island" aria-hidden="true">
+  <div style="left:8px;top:10px;width:30px;height:16px"></div><div style="left:8px;top:30px;width:30px;height:16px"></div><div style="left:8px;top:50px;width:30px;height:16px"></div>
+  <div style="left:44px;top:10px;width:110px;height:52px;background:var(--island-3)"></div>
+  <div style="left:44px;top:68px;width:110px;height:20px"></div>
+  <div class="vp" style="left:6px;top:6px;width:154px;height:84px"></div>
+</div>
+<div class="zoom island" style="border-radius:999px"><button class="ibtn" data-i="undo" aria-label="Undo"></button><button class="ibtn" data-i="redo" aria-label="Redo"></button><span class="z" id="zoom">72%</span></div>
+
+<script src="shared.js"></script>
+<script>
+  const bars = document.getElementById('bars');
+  for (let b = 1; b <= 17; b += 2) bars.insertAdjacentHTML('beforeend', `<span style="left:calc(${(b - 1) / 16 * 100}% + 4px)">${b}</span>`);
+  renderAll();
+  const vp = document.getElementById('vp'), world = document.getElementById('world');
+  panZoom(vp, world, document.getElementById('zoom'), { x: 372, y: 84, k: 0.68 });
+  drawWires(world, document.getElementById('wires'), [
+    ['vn143', 'lead', 'var(--t2)'], ['vn146', 'keys', 'var(--t3)'], ['bb', 'drums', 'var(--t4)'],
+    ['eq', 'comp-in', 'var(--t5)'], ['comp', 'deess-in', 'var(--t5)'], ['deess', 'rev-in', 'var(--t5)'],
+  ]);
+</script>
+</body>
+</html>

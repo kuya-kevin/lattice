@@ -85,14 +85,26 @@ tools.
 
 ## Layout
 
-The layout follows Logic's main window. The control bar runs along the top. The tracks area
-has its own small toolbar (snap, undo, view toggles). A browser pane sits on the right, and an
-editor / Smart Controls pane sits at the bottom of the tracks area.
-- **Right pane:** tabbed. **Library** is our version of Logic's Loop Browser; **Muse** is the
-  chat. Muse is the default tab. Both stay mounted, so switching tabs keeps the chat history
-  and the search.
-- **Bottom pane:** Smart Controls. It shows the selected track (and the selected region) and is
-  where the effects agent mounts `DevicePanel` (see the marked region in `App.tsx`).
+Updated 2026-10-27: canvas layout (mock: `app/mocks/canvas.html`). The session is a dot-grid
+canvas that scrolls both ways. Drag on empty ground to pan, or scroll with a trackpad or wheel.
+The chrome floats over the canvas as rounded islands. The musical conventions below stay
+Logic's.
+- **On the canvas, left to right:**
+  - **Ideas:** one card per recorded, imported or library sound, wired to the tracks that use it. A click selects its clip.
+  - **Arrangement board:** snap and Extract MIDI in the board's toolbar, then the tracks.
+  - **Device chain:** Logic's Smart Controls, under the board. B shows and hides it. The effects agent mounts `DevicePanel` there (see the marked region in `App.tsx`).
+- **Top bar:**
+  - Session pill on the left.
+  - Transport island with the LCD in the centre: position, time, tempo, signature, key, then cycle, click and count-in.
+  - Import, + Track and Enable mic on the right.
+- **Muse:**
+  - The conversation floats on the left. The ✦ button on the tool rail shows and hides it. It is open by default on screens 1440 px wide and up, and sending a message opens it.
+  - The prompt bar sits at the bottom centre and is always there. A chip in it shows the selection Muse sees.
+- **Library:** a floating panel on the right, toggled with O as before.
+- **Tool rail (right edge):** Muse, Library, Device chain, Snap.
+- **Bottom right:** undo / redo and the timeline zoom (`zoomLevels`, 1024 samples per pixel = 100 %).
+  Zooming the canvas itself (CSS scale) is not done yet: waveform-playlist's pointer maths
+  assumes an unscaled timeline.
 
 ## Key commands
 

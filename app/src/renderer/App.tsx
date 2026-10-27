@@ -4,6 +4,7 @@ import {
   WaveformPlaylistProvider,
   usePlaybackAnimation,
   usePlaylistControls,
+  usePlaylistData,
   usePlaylistState,
 } from '@waveform-playlist/browser';
 import type { ClipTrack } from '@waveform-playlist/core';
@@ -17,6 +18,8 @@ import { buffers, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTr
 import { clicks } from './click';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
+import { Icon } from './icons';
+import { IdeaWires, Ideas } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
 import { libraryBuffer } from './libraryAudio';
 import { editShortcutFor, type EditAction } from './shortcuts';
@@ -26,39 +29,61 @@ import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
 import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
 
-// Logic Pro-like dark theme on top of the library's dark theme: neutral greys, coloured
-// region headers (per track, see trackColorCss), light waveforms on a dark region body.
+// Canvas theme on top of the library's dark theme: blue-black islands, regions tinted by track
+// colour (see trackColorCss), white bar waveforms that styles.css tints to the track colour.
 const theme = {
   ...darkTheme,
   waveformDrawMode: 'normal' as const,
   // (in 'normal' mode the outline colour paints the lane and the fill colour draws the waveform)
   waveOutlineColor: 'rgba(0, 0, 0, 0)', // transparent: the region body colour comes from CSS
-  waveFillColor: '#9fc3ef',
+  waveFillColor: '#ffffff',
   selectedWaveOutlineColor: 'rgba(0, 0, 0, 0)',
-  selectedWaveFillColor: '#c4dcfa',
-  waveProgressColor: 'rgba(255, 255, 255, 0.10)',
-  selectedTrackBackground: '#26282c',
-  selectedTrackControlsBackground: '#3a3c42',
-  timescaleBackgroundColor: '#2a2b2f',
-  timeColor: '#a7a9ae',
-  playheadColor: '#f4f4f4',
-  clipHeaderBackgroundColor: '#3d8ee6',
-  clipHeaderTextColor: '#0b1420',
-  selectedClipHeaderBackgroundColor: '#5aa2f0',
-  playlistBackgroundColor: '#1d1e21',
-  loopRegionColor: 'rgba(224, 178, 58, 0.25)',
-  loopMarkerColor: '#e0b23a',
+  selectedWaveFillColor: '#ffffff',
+  waveProgressColor: 'rgba(255, 255, 255, 0.08)',
+  selectedTrackBackground: '#191b20',
+  selectedTrackControlsBackground: '#1c1f24',
+  timescaleBackgroundColor: '#15171b',
+  timeColor: '#8a909c',
+  playheadColor: '#5fd0e0',
+  clipHeaderBackgroundColor: '#252830',
+  clipHeaderTextColor: '#e7e9ee',
+  selectedClipHeaderBackgroundColor: '#2c3038',
+  playlistBackgroundColor: '#15171b',
+  loopRegionColor: 'rgba(95, 208, 224, 0.16)',
+  loopMarkerColor: '#5fd0e0',
 };
 
 /** Region colour per track, by track id (the library themes all clips alike). Regions on
  *  muted tracks turn grey, as in Logic. */
 function trackColorCss(session: Session): string {
   return session.tracks
-    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? '#6d6e73' : trackColor(i)}; }`)
+    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? '#5b616d' : trackColor(i)}; }`)
     .join('\n');
 }
 
-type RightTab = 'library' | 'muse';
+/** Timeline zoom steps (samples per pixel); 1024 is 100 %. */
+const ZOOM_LEVELS = [256, 512, 1024, 2048, 4096, 8192];
+
+/** Drag on empty canvas ground to pan (the canvas also scrolls with a trackpad or wheel). */
+function usePan() {
+  const ref = useRef<HTMLDivElement>(null);
+  const onPointerDown = (e: React.PointerEvent) => {
+    const el = ref.current;
+    const t = e.target as HTMLElement;
+    if (!el || e.button !== 0 || !(t === el || t.classList.contains('world'))) return;
+    const start = { x: e.clientX, y: e.clientY, l: el.scrollLeft, t: el.scrollTop };
+    el.classList.add('panning');
+    const move = (ev: PointerEvent) => el.scrollTo(start.l - (ev.clientX - start.x), start.t - (ev.clientY - start.y));
+    const up = () => {
+      el.classList.remove('panning');
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  return { ref, onPointerDown };
+}
 
 export function App({ bridge }: { bridge: Bridge }) {
   const [session, setSession] = useState<Session | null>(null);
@@ -71,10 +96,12 @@ export function App({ bridge }: { bridge: Bridge }) {
   tracksRef.current = tracks;
   const trimmingRef = useRef(false);
 
-  // ─── region: layout state (right pane tabs, Smart Controls, snap) ───
-  const [rightOpen, setRightOpen] = useState(true);
-  const [rightTab, setRightTab] = useState<RightTab>('muse');
+  // ─── region: layout state (floating panels, device chain, snap) ───
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [museOpen, setMuseOpen] = useState(() => window.innerWidth >= 1440); // the conversation panel
   const [smartOpen, setSmartOpen] = useState(true);
+  const pan = usePan();
+  const worldRef = useRef<HTMLDivElement>(null);
   const [snap, setSnap] = useState<SnapMode>('beat');
   const lastSnap = useRef<SnapMode>('beat');
   if (snap !== 'off') lastSnap.current = snap;
@@ -182,13 +209,7 @@ export function App({ bridge }: { bridge: Bridge }) {
       const c = sessionRef.current?.selection.clipId;
       if (c) run('delete_clip', { clip_id: c });
     },
-    toggleLibrary: () => {
-      if (rightOpen && rightTab === 'library') setRightOpen(false);
-      else {
-        setRightOpen(true);
-        setRightTab('library');
-      }
-    },
+    toggleLibrary: () => setLibraryOpen((o) => !o),
     toggleSmartControls: () => setSmartOpen((o) => !o),
     toggleSnap: () => setSnap((s) => (s === 'off' ? lastSnap.current : 'off')),
   };
@@ -206,99 +227,126 @@ export function App({ bridge }: { bridge: Bridge }) {
 
   if (!session) return <div className="loading">Loading…</div>;
 
+  const selTrack = session.tracks.find((t) => t.id === session.selection.trackId) ?? null;
+  const selClip = selTrack?.clips.find((c) => c.id === session.selection.clipId) ?? null;
+  const museContext = selTrack ? (selClip && selClip.name !== selTrack.name ? `${selTrack.name} · ${selClip.name}` : selTrack.name) : null;
+
   return (
-    <WaveformPlaylistProvider theme={theme} tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} waveHeight={84} controls={{ show: true, width: 220 }} fillViewport>
+    <WaveformPlaylistProvider theme={theme} tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} zoomLevels={ZOOM_LEVELS} waveHeight={84} barWidth={2} barGap={1} controls={{ show: true, width: 210 }} fillViewport indefinitePlayback>
       <div
-        className={`app${rightOpen ? '' : ' right-closed'}${smartOpen ? '' : ' smart-closed'}`}
+        className={`app${museOpen ? ' muse-open' : ''}${libraryOpen ? ' library-open' : ''}`}
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {
           e.preventDefault();
           if (e.dataTransfer.files.length) importFiles(e.dataTransfer.files);
         }}
       >
-        <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
         <TransportSync session={session} run={run} />
         <SelectionSync session={session} run={run} getSession={bridge.getSession} />
         <style>{trackColorCss(session)}</style>
 
-        {/* ─── region: tracks area (toolbar + arrange) ─── */}
-        <div className="tracks-toolbar" role="toolbar" aria-label="Tracks">
-          <div className="group">
-            <span className="tb-label">Snap</span>
-            <div className="seg" role="radiogroup" aria-label="Snap">
-              {(['off', 'bar', 'beat'] as SnapMode[]).map((m) => (
-                <button key={m} role="radio" aria-checked={snap === m} className={snap === m ? 'on' : ''} onClick={() => setSnap(m)} title={`Snap: ${m} (⌘G toggles)`}>
-                  {m === 'off' ? 'Off' : m === 'bar' ? 'Bar' : 'Beat'}
-                </button>
-              ))}
+        {/* ─── region: the canvas (dot grid; ideas, arrangement board and device chain float on it) ─── */}
+        <div className="canvas" ref={pan.ref} onPointerDown={pan.onPointerDown}>
+          <div className="world" ref={worldRef}>
+            <IdeaWires session={session} worldRef={worldRef} />
+            <Ideas session={session} run={run} audioVersion={audioVersion} />
+
+            <div className="board-col">
+              <div className="frame-title">
+                <b>Arrangement</b>
+                {session.tempo} BPM · {session.timeSignature.join('/')}{session.key ? ` · ${session.key}` : ''}
+              </div>
+              <section className="board island" aria-label="Arrangement">
+                {/* ─── region: tracks area (toolbar + arrange) ─── */}
+                <div className="tracks-toolbar" role="toolbar" aria-label="Tracks">
+                  <div className="group">
+                    <span className="tb-label">Snap</span>
+                    <div className="seg" role="radiogroup" aria-label="Snap">
+                      {(['off', 'bar', 'beat'] as SnapMode[]).map((m) => (
+                        <button key={m} role="radio" aria-checked={snap === m} className={snap === m ? 'on' : ''} onClick={() => setSnap(m)} title={`Snap: ${m} (⌘G toggles)`}>
+                          {m === 'off' ? 'Off' : m === 'bar' ? 'Bar' : 'Beat'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="spacer" />
+                  {/* ─── region: [S3 midi] Extract MIDI (source-prep sidecar) ─── */}
+                  <ExtractMidiControl session={session} bridge={bridge} run={run} />
+                  {/* ─── end region ─── */}
+                </div>
+
+                <main className="arrange">
+                  {error && (
+                    <div className="error" role="alert" onClick={() => setError(null)}>
+                      {error} <small>(click to dismiss)</small>
+                    </div>
+                  )}
+                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound}>
+                    {session.tracks.length === 0 ? (
+                      <div className="empty" data-testid="empty">
+                        <strong>Start with a sound</strong>
+                        Drop a voice note or any WAV/MP3 here, drag one in from the Library (O), use Import, or record from the mic (R).
+                      </div>
+                    ) : (
+                      <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap}>
+                        <Waveform showClipHeaders interactiveClips renderTrackControls={(i) => <TrackHeader session={session} index={i} run={run} />} />
+                      </BeatsAndBarsProvider>
+                    )}
+                  </ArrangeInteraction>
+                  {session.punchIn && (
+                    <div className="punch">
+                      Punch-in armed on {session.punchIn.trackId}: {session.punchIn.start}–{session.punchIn.end} s. Press Record.
+                    </div>
+                  )}
+                </main>
+                {/* ─── end region: tracks area ─── */}
+              </section>
+
+              {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
+              {smartOpen && session.tracks.length > 0 && (
+                <SmartControls session={session} onClose={() => setSmartOpen(false)}>
+                  <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
+                </SmartControls>
+              )}
+              {/* ─── end region: Smart Controls ─── */}
             </div>
-          </div>
-          <div className="group">
-            <button title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}>↶</button>
-            <button title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}>↷</button>
-          </div>
-          {/* ─── region: [S3 midi] Extract MIDI (source-prep sidecar) ─── */}
-          <ExtractMidiControl session={session} bridge={bridge} run={run} />
-          {/* ─── end region ─── */}
-          <div className="spacer" />
-          <div className="group">
-            <button className={smartOpen ? 'on' : ''} aria-pressed={smartOpen} title="Smart Controls (B)" onClick={() => editActions.current.toggleSmartControls()}>Smart Controls</button>
-            <button className={rightOpen && rightTab === 'library' ? 'on' : ''} aria-pressed={rightOpen && rightTab === 'library'} title="Sound library (O)" onClick={() => editActions.current.toggleLibrary()}>Library</button>
-            <button className={rightOpen && rightTab === 'muse' ? 'on' : ''} aria-pressed={rightOpen && rightTab === 'muse'} title="Muse chat" onClick={() => (rightOpen && rightTab === 'muse' ? setRightOpen(false) : (setRightOpen(true), setRightTab('muse')))}>Muse</button>
           </div>
         </div>
+        {/* ─── end region: canvas ─── */}
 
-        <main className="arrange">
-          {error && (
-            <div className="error" role="alert" onClick={() => setError(null)}>
-              {error} <small>(click to dismiss)</small>
-            </div>
-          )}
-          <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound}>
-            {session.tracks.length === 0 ? (
-              <div className="empty" data-testid="empty">Drop a WAV/MP3 or a sound from the Library here, use Import, or Record from the mic.</div>
-            ) : (
-              <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap}>
-                <Waveform showClipHeaders interactiveClips renderTrackControls={(i) => <TrackHeader session={session} index={i} run={run} />} />
-              </BeatsAndBarsProvider>
-            )}
-          </ArrangeInteraction>
-          {session.punchIn && (
-            <div className="punch">
-              Punch-in armed on {session.punchIn.trackId}: {session.punchIn.start}–{session.punchIn.end} s. Press Record.
-            </div>
-          )}
-        </main>
-        {/* ─── end region: tracks area ─── */}
-
-        {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ───
-            Put the effects UI inside <SmartControls>, e.g.
-              <SmartControls ...>{selectedTrackId && <DevicePanel trackId={selectedTrackId} run={run} />}</SmartControls>
-            With no children it shows a placeholder for the selected track. */}
-        {smartOpen && (
-          <SmartControls session={session} onClose={() => setSmartOpen(false)}>
-            <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
-          </SmartControls>
-        )}
-        {/* ─── end region: Smart Controls ─── */}
-
-        {/* ─── region: right pane (Library / Muse tabs) ─── */}
-        <aside className="right-pane" aria-label="Library and Muse" hidden={!rightOpen}>
-          <div className="tabs" role="tablist">
-            <button role="tab" aria-selected={rightTab === 'library'} className={rightTab === 'library' ? 'on' : ''} onClick={() => setRightTab('library')}>Library</button>
-            <button role="tab" aria-selected={rightTab === 'muse'} className={rightTab === 'muse' ? 'on' : ''} onClick={() => setRightTab('muse')}>Muse</button>
-            <button className="close" title="Hide (O)" aria-label="Hide panel" onClick={() => setRightOpen(false)}>×</button>
-          </div>
-          <div className="tab-body" hidden={rightTab !== 'library'}>
-            <LibraryPanel bridge={bridge} />
-          </div>
-          <div className="tab-body" hidden={rightTab !== 'muse'}>
-            <ChatPanel bridge={bridge} />
-          </div>
+        {/* ─── region: floating chrome (top bar, Muse, library, tool rail, zoom) ─── */}
+        <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
+        <ChatPanel bridge={bridge} open={museOpen} onOpenChange={setMuseOpen} context={museContext} />
+        <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
+          <LibraryPanel bridge={bridge} />
         </aside>
-        {/* ─── end region: right pane ─── */}
+        <nav className="rail island" aria-label="Panels">
+          <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
+          <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (O)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
+          <button className={`ibtn${smartOpen ? ' on' : ''}`} aria-pressed={smartOpen} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
+          <hr />
+          <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
+        </nav>
+        <ZoomBar run={run} />
+        {/* ─── end region: floating chrome ─── */}
       </div>
     </WaveformPlaylistProvider>
+  );
+}
+
+/** Bottom-right island: undo / redo and the timeline zoom. */
+function ZoomBar({ run }: { run: Run }) {
+  const { zoomIn, zoomOut } = usePlaylistControls();
+  const { samplesPerPixel, canZoomIn, canZoomOut } = usePlaylistData();
+  return (
+    <div className="zoombar island" role="toolbar" aria-label="Edit and zoom">
+      <button className="ibtn" title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}><Icon name="undo" /></button>
+      <button className="ibtn" title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}><Icon name="redo" /></button>
+      <span className="sep" />
+      <button className="ibtn" title="Zoom out" aria-label="Zoom out" disabled={!canZoomOut} onClick={zoomOut}><Icon name="minus" /></button>
+      <span className="zoom-pct" title="Timeline zoom">{Math.round((1024 / samplesPerPixel) * 100)}%</span>
+      <button className="ibtn" title="Zoom in" aria-label="Zoom in" disabled={!canZoomIn} onClick={zoomIn}><Icon name="plus" /></button>
+    </div>
   );
 }
 
@@ -322,7 +370,8 @@ function TransportSync({ session, run }: { session: Session; run: Run }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rev]);
 
-  // playback ended on its own (end of audio): tell the session
+  // playback ended on its own: tell the session. With indefinitePlayback the transport rolls
+  // past the last region (DAW-style), so this is only a fallback for engine-side stops.
   useEffect(() => {
     if (!isPlaying && playing) run('stop', { at: currentTimeRef.current ?? 0 });
     // eslint-disable-next-line react-hooks/exhaustive-deps

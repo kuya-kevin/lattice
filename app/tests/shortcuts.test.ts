@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { shortcutFor } from '../src/renderer/shortcuts';
 
-const key = (k: string, extra: Partial<{ shiftKey: boolean; metaKey: boolean; tag: string }> = {}) => ({
+const key = (k: string, extra: Partial<{ shiftKey: boolean; metaKey: boolean; tag: string; type: string }> = {}) => ({
   key: k,
   shiftKey: !!extra.shiftKey,
   metaKey: !!extra.metaKey,
   ctrlKey: false,
   altKey: false,
-  target: extra.tag ? ({ tagName: extra.tag.toUpperCase(), isContentEditable: false } as unknown as EventTarget) : null,
+  target: extra.tag ? ({ tagName: extra.tag.toUpperCase(), type: extra.type, isContentEditable: false } as unknown as EventTarget) : null,
 });
 
 describe('key commands', () => {
@@ -25,8 +25,14 @@ describe('key commands', () => {
   it('ignores typing and modifier combos', () => {
     expect(shortcutFor(key(' ', { tag: 'textarea' }))).toBeNull();
     expect(shortcutFor(key('Enter', { tag: 'input' }))).toBeNull();
-    expect(shortcutFor(key('k', { tag: 'select' }))).toBeNull();
+    expect(shortcutFor(key(' ', { tag: 'input', type: 'search' }))).toBeNull();
     expect(shortcutFor(key('r', { metaKey: true }))).toBeNull();
     expect(shortcutFor(key(' ', { tag: 'button' }))).toBe('playStop');
+  });
+
+  it('still plays/stops from focused buttons, sliders and menus', () => {
+    expect(shortcutFor(key(' ', { tag: 'select' }))).toBe('playStop'); // e.g. "+ Add device…"
+    expect(shortcutFor(key(' ', { tag: 'input', type: 'range' }))).toBe('playStop');
+    expect(shortcutFor(key(' ', { tag: 'input', type: 'checkbox' }))).toBe('playStop');
   });
 });

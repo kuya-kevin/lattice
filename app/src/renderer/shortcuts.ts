@@ -21,12 +21,18 @@ interface KeyLike {
   target: EventTarget | null;
 }
 
-/** True while the user is typing somewhere (inputs, the chat box, selects, editable text). */
+/** Input types that don't take text: key commands still apply while one has focus. */
+const NON_TEXT_INPUTS = new Set(['button', 'checkbox', 'color', 'file', 'image', 'radio', 'range', 'reset', 'submit']);
+
+/** True while the user is typing somewhere (text inputs, the chat box, editable text). A
+ *  focused button, slider or select is not typing: Space there plays/stops instead of
+ *  pressing the button or opening the menu (e.g. "+ Add device…"). */
 export function isTyping(target: EventTarget | null): boolean {
   const el = target as HTMLElement | null;
   if (!el || typeof el.tagName !== 'string') return false;
   const tag = el.tagName.toLowerCase();
-  return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable === true;
+  if (tag === 'input') return !NON_TEXT_INPUTS.has(((el as HTMLInputElement).type || 'text').toLowerCase());
+  return tag === 'textarea' || el.isContentEditable === true;
 }
 
 export function shortcutFor(e: KeyLike): ShortcutAction | null {

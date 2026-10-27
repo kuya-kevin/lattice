@@ -21,6 +21,30 @@ test('electron app imports audio through the main-process session', async () => 
   await app.close();
 });
 
+test('electron: a 0.1 s one-shot keeps the transport rolling; Space works from a focused menu', async () => {
+  const app = await electron.launch({ args: ['.'], recordVideo: { dir: 'screenshots/electron-video' } });
+  const page = await app.firstWindow();
+  const n = 2205; // 0.1 s at 22.05 kHz
+  const wav = Buffer.alloc(44 + n * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(22050, 24); wav.writeUInt32LE(44100, 28);
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / 22050) * 6000), 44 + i * 2);
+  await page.getByTestId('file-input').setInputFiles({ name: 'hit.wav', mimeType: 'audio/wav', buffer: wav });
+  await expect(page.getByTestId('track-t1')).toBeVisible();
+  await page.getByTestId('fx-add').focus();
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(1000);
+  await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+  await page.screenshot({ path: 'screenshots/electron-playing-past-one-shot.png' });
+  await page.keyboard.press('Space');
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+  const s = await page.evaluate(() => window.lattice!.getSession());
+  expect(s.transport.position).toBeGreaterThan(0.5);
+  expect(s.tracks.at(-1)!.devices).toEqual([]); // Space did not pick a device
+  await app.close();
+});
+
 test('electron serves the sound library over IPC (fixture data dir)', async () => {
   const app = await electron.launch({ args: ['.'], env: { ...process.env, LATTICE_DATA_DIR: 'tests/fixtures/library' } as Record<string, string> });
   const page = await app.firstWindow();
