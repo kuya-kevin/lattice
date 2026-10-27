@@ -83,4 +83,4 @@ Blind, randomized listening test (`spikes/e_eval`): per reference, a hidden copy
 - Job-by-job model map: `docs/model-map.md`
 - Transport/control-bar conventions: `app/docs/ux-notes.md`
 - Superseded arrange-first concept (proposals, provenance, object model): `docs/archive/arrange-first-concept.md`
-- Current status and next steps: `HANDOFF.md`
+- Current status: `HANDOFF.md`; remaining work: `docs/backlog.md`; agent rules: `CLAUDE.md`

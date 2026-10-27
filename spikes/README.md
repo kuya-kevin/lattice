@@ -1,0 +1,29 @@
+# Spikes
+
+Python experiments, one folder per question. `spikes/` is one uv project (`cd spikes && uv run python ...`);
+models with clashing dependencies have their own projects under `../envs/` and `j_evals/envs/`.
+Updated 2026-10-27.
+
+**Status:** **live** = the app calls this code today. **ready** = works, waiting to be wired into
+the app (backlog entry in brackets). **reference** = results recorded, kept for re-runs.
+**dropped** = the approach lost; kept only for the record.
+
+| Folder | Question | Status | Results |
+|---|---|---|---|
+| `muse.py` | thin Muse client for the spikes | reference | — |
+| `ears.py` | measured features → text Muse can read | reference (used by `c_recreate`) | — |
+| `a_ears/` | can Muse hear music? | dropped: speech-to-text only | `docs/spike-results.md` |
+| `b_cleanup/` | which cleanup for phone voice notes? | **ready** (noisereduce) [B3]; DeepFilterNet dropped (`run_deepfilter.py` no longer runs: its env was removed) | `docs/spike-results.md` |
+| `c_recreate/` | recreate a reference with a 15-knob synth + CMA-ES (+ Muse seed) | ready, optional [B7] | `docs/spike-results.md` |
+| `d_mrt2/` | Magenta RT2 as the sound engine (Mac, MLX) | ready, optional [B7] | `docs/spike-results.md` |
+| `e_eval/` | blind A/B listening test server + analysis | reference | pair round: spectral distance 77% |
+| `f_engineer/` | drum quantize and trim | **ready** [B3] | 12.5 → 4.5 ms off grid |
+| `fx_verify/` | effects engine vs published references | reference (re-run after DSP changes) | `docs/fx-verification.md` |
+| `g_pe_av/` | can PE-AV be Muse's ears? | reference (large not run) [B9] | `docs/spike-results.md` |
+| `h_freesound/` | curate CC0/CC-BY Freesound sets | reference | `h_freesound/README.md` |
+| `i_to_midi/` | first audio → MIDI pass (basic-pitch + key) | superseded by `k_source_prep`; its env (`envs/basicpitch`) was removed, so it no longer runs | `docs/spike-results.md` |
+| `j_evals/` | GPU evals on the 3090: MRT2 CUDA, Audiobox, separation, transcription | reference | `j_evals/README.md` |
+| `k_source_prep/` | voice note → stems → MIDI (the `extract_midi` sidecar) | **live** | `k_source_prep/README.md` |
+
+New spike: next letter (`l_...`), a module docstring that states the question and how to run it,
+results in a README or `docs/spike-results.md`, and a row here.

@@ -1,5 +1,7 @@
 # Session plan
 
+> Stream definitions (S0-S8) and decisions. Live status is in `HANDOFF.md`; remaining work, in priority order, is in `docs/backlog.md`.
+
 Updated 2026-10-26 after the workflow interview. Work happens on the 3090 box; the Mac is for listening and recording.
 
 ## Product statement
@@ -30,7 +32,7 @@ Pain point: not knowing which knob to use ("how do I make my vocals stand out in
 | S3 | **Source prep to MIDI** | Clean phone audio, isolate layers/instruments, convert to notes (octave fix, key snap, quantize) | S0, data/ | pipeline script on the 4 voice notes + Freesound set; accuracy scored on a synthetic phone-quality set (mir_eval note F1) |
 | S4 | **Sidecar bridge** | One local Python process the app calls for: cleanup, separation, audio to MIDI, effects render, quantize | S1/S3 interfaces | app tools call real implementations; stubs replaced |
 | S5 | **Plugin research** | Survey stock Logic plugins and common third-party ones for knobs/ranges/typical chains; map to what pedalboard can do; list gaps | none | `docs/plugin-catalog.md` with per-device knob tables and the gaps list |
-| S6 | **Push-to-talk** | Hotkey records speech, Muse 1.2 audio-in transcribes, feeds the agent | S0 | spoken command reaches the agent and runs a tool in the web app |
+| S6 | **Voice commands** | Push-to-talk hotkey or the spoken wake word "Muse" (spotted locally) records speech, Muse 1.2 audio-in transcribes, feeds the agent | S0 | spoken command reaches the agent and runs a tool in the web app |
 | S7 | **Eval (optional)** | Pair ratings, ears (PE-AV), reference recreation, MRT2 | user ratings | decision recorded: keep or drop each module |
 | S8 | **Stems/remix** | Whole-song separation (Demucs, SAM Audio) and export | S3, SAM access | export of stems with quality notes |
 

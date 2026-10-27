@@ -85,7 +85,7 @@ tools.
 
 ## Layout
 
-Updated 2026-10-27: canvas layout (mock: `app/mocks/canvas.html`). The session is a dot-grid
+Updated 2026-10-27: canvas layout (the mock was removed Oct 27; this section is the spec). The session is a dot-grid
 canvas that scrolls both ways. Drag on empty ground to pan, or scroll with a trackpad or wheel.
 The chrome floats over the canvas as rounded islands. The musical conventions below stay
 Logic's.

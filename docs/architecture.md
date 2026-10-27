@@ -1,6 +1,11 @@
 # Architecture (updated 2026-10-26, after the workflow interview)
 
-## A. Where we are today
+> **2026-10-27 note:** diagram A is the day-1 snapshot and is out of date. Since then the effects
+> engine (13 devices), the device panel and audio-to-MIDI (`extract_midi`) were built and wired in;
+> the vocabulary layer exists only as seed data. Current status: `HANDOFF.md`; models by job:
+> `docs/model-map.md`. Diagram B is still the target.
+
+## A. Where we were on day 1 (2026-10-26)
 
 Solid = working. Dashed = spike only, not wired into the app. Dotted = blocked or unproven.
 
@@ -115,12 +120,12 @@ flowchart LR
 ```
 
 **What is new relative to the first diagram**
-- Effects engine and vocabulary layer are the main deliverable. Neither exists.
+- Effects engine and vocabulary layer are the main deliverable. The effects engine is built (Oct 27); the vocabulary layer is seed data only.
 - Source prep (cleanup, isolation, audio to notes) is one pipeline that also serves the stems/remix use case.
 - Synth+optimizer, MRT2 and PE-AV ears are demoted to **optional modules** ("recreate a reference", "grade an attempt").
 - Muse never needs to hear: it picks from words plus session state, and the user judges by ear.
 
-## Reading the current state (A)
+## Reading diagram A (day 1)
 
 - **The gap that matters:** everything the agent can *do to sound* is in the dashed box. The app only has stubs. The sidecar is the bridge.
 - **Muse is blind:** it plans from text. Any "listening" has to be a measurement or an embedding turned into text, which is why ears and self-grading are the open research questions.

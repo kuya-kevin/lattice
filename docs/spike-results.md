@@ -2,7 +2,7 @@
 
 Code in `spikes/`, outputs in `out/` (git-ignored). Direction is in `../idea.md`; which model does which job is in `model-map.md`.
 
-Code in `spikes/` (uv project; `envs/denoise` and `envs/basicpitch` hold tools whose dependencies clash). Outputs in `out/` (git-ignored). Test material: 4 of the builder's voice notes (`data/`, git-ignored).
+Code in `spikes/` (uv project; `envs/denoise` and `envs/basicpitch` held tools whose dependencies clash; both were removed Oct 27 (superseded by `spikes/j_evals/envs/amt`)). Outputs in `out/` (git-ignored). Test material: 4 of the builder's voice notes (`data/`, git-ignored).
 
 **Credentials:** Meta key (`META_MODEL_API_KEY`) and Freesound key are in `.env` and both verified. HF login done; access to `facebook/sam-audio-small`/`-large` requested, awaiting Meta's review. **Meta budget: $150 for the 10 days.** Muse Spark 1.2 is $1.25 / $4.25 per M input/output tokens; a short audio-plus-question call is about 1.1k tokens (mostly reasoning), so ~$0.005. Contributor mode is ~12× cheaper but lets Meta train on what we send (not decided).
 

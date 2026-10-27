@@ -1,6 +1,6 @@
 /* Lattice canvas theme: a dot-grid canvas with floating rounded islands (the chrome), audio drawn
    with DAW precision on top. Musical conventions stay Logic's (M blue, S yellow, R red, bar.beat).
-   Mocks and the design brief: app/mocks/ (canvas.html). */
+   Layout spec: app/docs/ux-notes.md (Layout). */
 :root {
   /* ground and surfaces: blue-biased near-blacks, so the teal accent sits in the same family */
   --ground: #0c0d10;
