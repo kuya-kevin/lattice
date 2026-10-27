@@ -16,6 +16,7 @@ const bridge: Bridge = {
     const bytes: Uint8Array = await ipcRenderer.invoke('library:audio', id);
     return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
   },
+  putSourceAudio: (id, wav) => ipcRenderer.invoke('source:put', id, new Uint8Array(wav)), // [S3 midi]
 };
 
 contextBridge.exposeInMainWorld('lattice', bridge);

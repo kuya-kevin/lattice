@@ -7,6 +7,7 @@ import { SYNTH_KNOBS } from './sidecar';
 import type { Actor, SessionStore } from './store';
 import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
+import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
 
 export type JsonSchema = {
   type: 'object';
@@ -341,6 +342,9 @@ export const TOOLS: ToolDef[] = [
 
   // ---- effect chain tools (fx/tools.ts) ----
   ...FX_TOOLS,
+
+  // ---- audio -> MIDI (core/midiTools.ts) ----
+  ...MIDI_TOOLS,
 
   // ---- user-only (UI) tools ----
   {

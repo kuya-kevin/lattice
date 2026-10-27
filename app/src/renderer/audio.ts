@@ -7,6 +7,9 @@ import type { Session } from '../core/session';
 
 export const buffers = new Map<string, AudioBuffer>();
 
+/** [S3 midi] Key of a MIDI clip's rendered audio in `buffers` (renderer/midiSynth.ts). */
+export const midiBufferId = (clipId: string) => `midi:${clipId}`;
+
 export function newSourceId(): string {
   return `src-${Math.random().toString(36).slice(2, 10)}`;
 }
@@ -27,7 +30,7 @@ export function toClipTracks(s: Session): ClipTrack[] {
     volume: dbToGain(t.gainDb),
     pan: 0,
     clips: t.clips.flatMap((c): AudioClip[] => {
-      const b = buffers.get(c.sourceId);
+      const b = buffers.get(c.midi ? midiBufferId(c.id) : c.sourceId); // [S3 midi] MIDI clips play their render
       if (!b) return []; // audio not here yet
       const sr = b.sampleRate;
       return [{

@@ -4,6 +4,34 @@ import react from '@vitejs/plugin-react';
 import { searchForWorkspaceRoot, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { audioMime, loadLibrary, type Library } from './src/node/library.ts';
+import { putAudio, runSourcePrep, sourcePrepConfig } from './src/node/sourcePrep.ts';
+
+/** [S3 midi] dev:web stand-in for the Electron sidecar IPC: POST /api/sidecar/extract-midi?args=<json>
+ *  with the source's WAV as the body -> the prep.py manifest (or $LATTICE_SIDECAR_MOCK's). */
+function sidecarMiddleware(): Plugin {
+  const cfg = sourcePrepConfig(resolve(import.meta.dirname, '..'));
+  return {
+    name: 'lattice-sidecar',
+    configureServer(server) {
+      server.middlewares.use('/api/sidecar/extract-midi', (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', async () => {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            if (req.method !== 'POST') throw new Error('POST only');
+            const args = JSON.parse(new URL(req.url ?? '/', 'http://x').searchParams.get('args') ?? '{}');
+            if (!cfg.mockManifest) putAudio(cfg, args.sourceId, Buffer.concat(chunks));
+            res.end(JSON.stringify(await runSourcePrep(cfg, args)));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+          }
+        });
+      });
+    },
+  };
+}
 
 /** dev:web stand-in for the Electron library IPC: GET /api/library (item list) and
  *  GET /api/library/audio/<id> (the file). Data dir: $LATTICE_DATA_DIR, else ../data. */
@@ -46,7 +74,7 @@ const realNodeModules = (() => {
 })();
 
 export default defineConfig({
-  plugins: [react(), libraryMiddleware()],
+  plugins: [react(), libraryMiddleware(), sidecarMiddleware()],
   base: './', // so the built page loads from file:// in Electron
   server: { port: 5199, strictPort: false, fs: { allow: [searchForWorkspaceRoot(process.cwd()), realNodeModules] } },
   build: { outDir: 'dist', emptyOutDir: true },

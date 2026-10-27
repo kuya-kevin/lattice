@@ -3,6 +3,7 @@
 // renderer's audio store, keyed by source id). Every op is pure: (session, ...) -> session.
 
 import { describeSettings, type ParamValues } from '../fx/catalog';
+import { describeMidi, type MidiData } from './midi'; // [S3 midi]
 
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated';
 
@@ -22,6 +23,10 @@ export interface Clip {
   start: number; // timeline position (s)
   offset: number; // trim-start point inside the source (s)
   duration: number; // audible length (s)
+  /** [S3 midi] A MIDI clip: notes (source-relative seconds) instead of audio. Its source only
+   *  carries the length; the renderer synthesizes the sound from the notes. Keeping the notes
+   *  on the clip (not the source) lets undo restore them. */
+  midi?: MidiData;
 }
 
 /** One effect device on a track's insert chain (kind = catalog device id, e.g. "eq"). */
@@ -125,6 +130,32 @@ export function addClip(s: Session, trackId: string, sourceId: string, start = 0
   const clip: Clip = { id, sourceId, name: src.name, start: round(Math.max(0, start)), offset: 0, duration: src.duration };
   return [mapTrack(s1, trackId, (t) => ({ ...t, clips: [...t.clips, clip] })), clip];
 }
+
+// ─── [S3 midi] MIDI clips ───
+
+/** Add a MIDI clip on a track. `offset`/`duration` let it line up exactly with the audio clip
+ *  it was extracted from (same source length); by default it spans the whole source. */
+export function addMidiClip(
+  s: Session,
+  trackId: string,
+  a: { name: string; midi: MidiData; sourceDuration: number; start?: number; offset?: number; duration?: number },
+): [Session, Clip] {
+  getTrack(s, trackId);
+  const [s1, srcId] = nextId(s, 'm');
+  const s2 = addSource(s1, { id: srcId, name: a.name, duration: Math.max(a.sourceDuration, 0.01), origin: 'generated' });
+  const [s3, clip] = addClip(s2, trackId, srcId, a.start ?? 0);
+  const offset = round(Math.min(Math.max(0, a.offset ?? 0), clip.duration - 0.01));
+  const duration = round(Math.min(a.duration ?? clip.duration, clip.duration - offset));
+  const out = { ...clip, offset, duration, midi: a.midi };
+  return [mapClip(s3, clip.id, () => out), out];
+}
+
+export function setClipMidi(s: Session, clipId: string, midi: MidiData): Session {
+  const { clip } = findClip(s, clipId);
+  if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
+  return mapClip(s, clipId, (c) => ({ ...c, midi }));
+}
+// ─── end [S3 midi] ───
 
 /** Set a clip's audible region to [start, end] on the timeline. The audio stays put:
  *  moving the left edge also moves the trim point inside the source. */
@@ -254,7 +285,7 @@ export function summarize(s: Session): string {
   const lines = s.tracks.map((t) => {
     const flags = [t.muted && 'muted', t.soloed && 'soloed', t.armed && 'record-armed'].filter(Boolean).join(', ');
     const clips = t.clips
-      .map((c) => `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s`)
+      .map((c) => `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}`)
       .join('; ');
     const fx = describeChain(t);
     return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;

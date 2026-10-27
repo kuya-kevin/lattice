@@ -10,14 +10,28 @@ import { SessionStore } from '../src/core/store';
 import { runTool, type ToolContext } from '../src/core/tools';
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
+import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
+import type { ExtractMidiArgs } from '../src/core/sidecar';
 
 const appDir = app.getAppPath(); // .../lattice/app
 loadEnv(resolve(appDir, '..', '.env'));
 
+// [S3 midi] extract_midi runs the Python source-prep sidecar as a child process; the other
+// sidecar methods are still stubs.
+const prepCfg = sourcePrepConfig(resolve(appDir, '..'));
+class AppSidecar extends StubSidecar {
+  override extractMidi(a: ExtractMidiArgs) {
+    return runSourcePrep(prepCfg, a);
+  }
+}
+ipcMain.handle('source:put', (_e, id: string, bytes: Uint8Array) => {
+  putAudio(prepCfg, String(id), bytes);
+});
+
 const store = new SessionStore();
 const ctx: ToolContext = {
   store,
-  sidecar: new StubSidecar(), // TODO(sidecar): swap for the Python sidecar
+  sidecar: new AppSidecar(), // TODO(sidecar): the remaining methods are stubs
   searchFreesound: async (q, f, n) => {
     const token = process.env.FREESOUND_API_KEY;
     if (!token) throw new Error('FREESOUND_API_KEY is not set');

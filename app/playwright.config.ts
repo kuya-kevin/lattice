@@ -16,6 +16,10 @@ export default defineConfig({
     command: `npx vite --port ${port} --strictPort`,
     url: `http://localhost:${port}`,
     reuseExistingServer: true,
-    env: { LATTICE_DATA_DIR: resolve(import.meta.dirname, 'tests/fixtures/library') },
+    env: {
+      LATTICE_DATA_DIR: resolve(import.meta.dirname, 'tests/fixtures/library'),
+      // extract_midi answers with a fixture manifest instead of running the Python sidecar
+      LATTICE_SIDECAR_MOCK: resolve(import.meta.dirname, 'tests/fixtures/source_prep/manifest.json'),
+    },
   },
 });

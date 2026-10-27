@@ -17,6 +17,9 @@ export interface Bridge {
   listLibrary(): Promise<LibraryEntry[]>;
   /** The encoded audio file (wav/mp3) of a library item, for decoding in the renderer. */
   loadLibraryAudio(id: string): Promise<ArrayBuffer>;
+  /** [S3 midi] Hand a source's audio (mono WAV) to the sidecar side, so tools such as
+   *  extract_midi (called by the user or Muse) can read it. */
+  putSourceAudio(sourceId: string, wav: ArrayBuffer): Promise<void>;
 }
 
 declare global {

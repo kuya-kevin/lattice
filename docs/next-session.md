@@ -17,7 +17,6 @@ Read first: `docs/session-plan.md` (streams, rules), `docs/plugin-catalog.md` (S
 - Python: `cd spikes && UV_CACHE_DIR=<bigdisk>/uv-cache UV_LINK_MODE=copy UV_PROJECT_ENVIRONMENT=<bigdisk>/venvs/spikes uv run python ...`; `uv run --with pytest` / `--with av` as needed. Never a `.venv` in the worktree.
 - Model weights, caches, clones, outputs: `<bigdisk>/{hf,torch,xdg-cache,repos,venvs,out-fx,out-evals,ui-shots}`; set `HF_HUB_CACHE=<bigdisk>/hf` (not `HF_HOME`, so the Hugging Face login token at its default location still works), `TORCH_HOME`, `XDG_CACHE_HOME` accordingly. Hugging Face login is done (2026-10-26).
 - No paid API calls (no Muse/Meta). Stage-only rule: do not commit. Existing tests must pass: `npx vitest run` (34) and `npx playwright test e2e/smoke.spec.ts e2e/shortcuts.spec.ts` (9).
-- Local Qwen3.8 27B (free Muse stand-in): `<bigdisk>/start-qwen.sh` (port 8090, 18 GB VRAM). Keep it off while the GPU eval agent runs.
 
 ## Agent 1: S1 effects engine + verification
 
@@ -37,7 +36,7 @@ User asks:
 3. Polish toward Logic: track headers (name, mute/solo/arm, volume), selection highlight, Logic-like dark theme, shortcuts from `app/docs/ux-notes.md` intact; leave a bottom "editor / smart controls" area for the DevicePanel. Append cited conventions to `ux-notes.md`.
 Iterate with headless Playwright screenshots (≥3 passes, saved to `<bigdisk>/ui-shots/`). Add Vitest (clip move, snap math, library filter) and e2e tests. Report files touched, especially `App.tsx` regions, for merging with Agent 1.
 
-## Agent 3: GPU model evals (3090 to itself; Qwen server off)
+## Agent 3: GPU model evals (3090 to itself)
 
 1. **Magenta RT2 on CUDA** (JAX or other backend; check licence). If it runs: RTF and VRAM for small/base; reproduce `spikes/d_mrt2` on the 6 `out/c_recreate` targets as new listening-test candidates (`mrt2_cuda_small`, `mrt2_cuda_base`); text prompts on a short MIDI phrase. If not supported, document why.
 2. **Audio to MIDI on real material**: voice notes 112, 114, 119, 143, 145, 146, 149, 150 + drum loop, and Freesound `bass_keys_phrase`, `layered_multi`, `hum_whistle_beatbox`. Separation (BS-RoFormer / Mel-RoFormer, htdemucs_6s) then transcription (YourMT3+, MT3 if runnable, ByteDance piano) vs basic-pitch. Synthetic phone-degraded set with known MIDI, mir_eval note F1 (onset ±50 ms). Export MIDI + synth renders for listening.

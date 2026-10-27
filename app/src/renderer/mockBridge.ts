@@ -3,7 +3,8 @@
 // because API keys must never reach a browser page.
 import { MuseAgent, type ChatFn } from '../core/agent';
 import type { Bridge } from '../core/bridge';
-import { StubSidecar } from '../core/sidecar';
+import type { PrepManifest } from '../core/midi';
+import { StubSidecar, type ExtractMidiArgs } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 
@@ -17,11 +18,30 @@ const offlineMuse: ChatFn = async ({ messages }) => {
   return { message: { content: null, tool_calls: [{ id: `mock-${messages.length}`, type: 'function', function: { name: 'list_tracks', arguments: '{}' } }] }, finish_reason: 'tool_calls' };
 };
 
+/** [S3 midi] dev:web: extract_midi goes to the Vite middleware (/api/sidecar/extract-midi),
+ *  which runs the Python sidecar (or returns a fixture manifest under $LATTICE_SIDECAR_MOCK). */
+class WebSidecar extends StubSidecar {
+  private audio: Map<string, ArrayBuffer>;
+  constructor(audio: Map<string, ArrayBuffer>) {
+    super();
+    this.audio = audio;
+  }
+  override async extractMidi(a: ExtractMidiArgs): Promise<PrepManifest> {
+    const wav = this.audio.get(a.sourceId);
+    if (!wav) throw new Error(`no audio for source ${a.sourceId} yet`);
+    const r = await fetch(`/api/sidecar/extract-midi?args=${encodeURIComponent(JSON.stringify(a))}`, { method: 'POST', body: wav });
+    const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+    return body as PrepManifest;
+  }
+}
+
 export function createMockBridge(): Bridge {
   const store = new SessionStore();
+  const sourceAudio = new Map<string, ArrayBuffer>(); // [S3 midi]
   const ctx: ToolContext = {
     store,
-    sidecar: new StubSidecar(),
+    sidecar: new WebSidecar(sourceAudio),
     searchFreesound: async () => ({ count: 0, results: [] }),
   };
   const agent = new MuseAgent(ctx, offlineMuse);
@@ -40,6 +60,7 @@ export function createMockBridge(): Bridge {
       if (!r.ok) throw new Error(`library audio ${id}: HTTP ${r.status}`);
       return r.arrayBuffer();
     },
+    putSourceAudio: async (id, wav) => void sourceAudio.set(id, wav), // [S3 midi]
     sendChat: async (text) => {
       try {
         return { ok: true, turn: await agent.send(text) };

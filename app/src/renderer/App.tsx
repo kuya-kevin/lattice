@@ -23,6 +23,8 @@ import { editShortcutFor, type EditAction } from './shortcuts';
 import { SmartControls } from './SmartControls';
 import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
+import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
+import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
 
 // Logic Pro-like dark theme on top of the library's dark theme: neutral greys, coloured
 // region headers (per track, see trackColorCss), light waveforms on a dark region body.
@@ -104,7 +106,16 @@ export function App({ bridge }: { bridge: Bridge }) {
   const addBuffer = useCallback((id: string, b: AudioBuffer) => {
     buffers.set(id, b);
     setAudioVersion((v) => v + 1);
+    uploadSourceAudio(bridge, id, b); // [S3 midi] so extract_midi (user or Muse) can read it
+  }, [bridge]);
+
+  // ─── region: [S3 midi] MIDI clip playback (rendered offline, played as audio) ───
+  const setMidiRender = useCallback((id: string, b: AudioBuffer) => {
+    buffers.set(id, b);
+    setAudioVersion((v) => v + 1);
   }, []);
+  useMidiRenders(session, setMidiRender);
+  // ─── end region ───
 
   // user drags/trims in the playlist -> same tools Muse uses, logged as feedback.
   // During a trim drag the engine reports every frame; we commit once when it ends.
@@ -226,6 +237,9 @@ export function App({ bridge }: { bridge: Bridge }) {
             <button title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}>↶</button>
             <button title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}>↷</button>
           </div>
+          {/* ─── region: [S3 midi] Extract MIDI (source-prep sidecar) ─── */}
+          <ExtractMidiControl session={session} bridge={bridge} run={run} />
+          {/* ─── end region ─── */}
           <div className="spacer" />
           <div className="group">
             <button className={smartOpen ? 'on' : ''} aria-pressed={smartOpen} title="Smart Controls (B)" onClick={() => editActions.current.toggleSmartControls()}>Smart Controls</button>

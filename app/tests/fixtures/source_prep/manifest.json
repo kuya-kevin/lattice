@@ -1,0 +1,36 @@
+{
+ "version": 1,
+ "input": "hum.wav",
+ "duration": 2.0,
+ "mode": "auto",
+ "content": "layered",
+ "analysis": {"percussive_ratio": 0.1, "voiced_fraction": 0.9, "vocal_share": 0.5},
+ "tempo": {"bpm": 120.0, "offset": 0.0, "fit_error": 0.02, "confidence": 0.9, "source": "onsets", "quantized": true},
+ "key": {"name": "A minor", "tonic": "A", "tonic_pc": 9, "mode": "minor", "r": 0.8},
+ "settings": {"grid": "1/16"},
+ "separation": [{"model": "mel_roformer", "licence": "MIT"}],
+ "warnings": [],
+ "timing": {"total": 0.1},
+ "stems": [
+  {"name": "melody", "role": "melody", "instrument": "piano", "is_drum": false, "audio": "stems/mel_roformer-vocals.wav",
+   "transcriber": "pyin", "midi": "midi/melody.mid", "raw_midi": "midi/melody.raw.mid", "raw_notes": 9, "notes_count": 4,
+   "range": ["A3", "E4"], "confidence": 0.8, "cleanup": {"in": 9, "out": 4},
+   "notes": [
+    {"pitch": 57, "start": 0.0, "end": 0.5, "velocity": 90},
+    {"pitch": 60, "start": 0.5, "end": 1.0, "velocity": 80},
+    {"pitch": 64, "start": 1.0, "end": 1.5, "velocity": 85},
+    {"pitch": 60, "start": 1.5, "end": 2.0, "velocity": 70}
+   ]},
+  {"name": "drums", "role": "drums", "instrument": "drums", "is_drum": true, "audio": "input.wav",
+   "transcriber": "onsets", "midi": "midi/drums.mid", "raw_midi": "midi/drums.raw.mid", "raw_notes": 3, "notes_count": 3,
+   "range": null, "confidence": 1.0, "cleanup": {"in": 3, "out": 3}, "drum_classes": {"kick": 2, "snare": 1, "hat": 0},
+   "notes": [
+    {"pitch": 36, "start": 0.0, "end": 0.1, "velocity": 100},
+    {"pitch": 38, "start": 0.5, "end": 0.6, "velocity": 90},
+    {"pitch": 36, "start": 1.0, "end": 1.1, "velocity": 100}
+   ]},
+  {"name": "bass", "role": "bass", "instrument": "piano", "is_drum": false, "audio": "stems/htdemucs_6s-bass.wav",
+   "transcriber": "basic_pitch", "midi": "midi/bass.mid", "raw_midi": "midi/bass.raw.mid", "raw_notes": 2, "notes_count": 0,
+   "range": null, "confidence": 0.0, "cleanup": {"in": 2, "out": 0}, "notes": []}
+ ]
+}

@@ -47,7 +47,7 @@ Your earlier priority was E/D/C/B/A. Mapping: E is S1+S2, D is S3+S8 (separation
 2. **DSP source (researched, see `plugin-catalog.md`):** one browser implementation, no pedalboard (it is GPL-3.0 and has no expander or de-esser). Native Web Audio / Tone.js for EQ, saturation, filter, delay, modulation, utility; Faust compiled to WASM (permissive parts only) for compressor, de-esser, gate, limiter, reverb (`zita_rev1`); Signalsmith Stretch (MIT) for pitch. Offline/agent renders use the same graph in `OfflineAudioContext`, rendered headless via Playwright/Electron. 13 devices in v1. No browser de-esser exists anywhere, so we write a small Faust one. Logic knob ranges in the catalog are approximate; confirm on the Mac.
 3. **Browser vs Electron audio (decided):** effects run **live in the browser/app** so the user can hand-tune them. Agent renders should reuse the same graph via `OfflineAudioContext` where possible, so there is one DSP implementation; the Python sidecar keeps only what the browser can't do (separation, transcription, cleanup).
 4. **Reference recreation:** kept as an optional module (S7), aimed at other users (remixers). The pair round shows spectral distance agrees with ears 77% of the time, so the agent can self-check "closer to the reference" (see `spike-results.md`).
-6. **Local Qwen for development:** Qwen3.8 27B runs locally via llama.cpp (OpenAI-compatible, configured in omp). Use it as a free stand-in for Muse while iterating prompts and tool schemas (S2), then confirm with a few Muse calls. It shares the GPU with evals.
+6. **Planner (decided 2026-10-27):** Muse is the agent; the local-Qwen stand-in was tried and dropped. Muse costs about $0.04 per mixing request with the full tool prompt, and the budget is ~$150 to Nov 4, so keep Muse testing small and deliberate.
 5. **Demo story** for the hackathon (Nov 4, 3-minute video): to be written after S1/S2 show something. Meta models must stay central.
 
 ## Needs from the user
@@ -61,7 +61,11 @@ Your earlier priority was E/D/C/B/A. Mapping: E is S1+S2, D is S3+S8 (separation
 - Pair-rating round analysed (spectral distance matches ears 77%).
 - Plugin research done: `docs/plugin-catalog.md` (13-device v1 set, knob tables, catalog JSON schema, licence flags, gap list).
 - Freesound producer-material set: 48 CC0/CC-BY sounds in 6 categories, `data/freesound_material/` (script `spikes/h_freesound/curate_material.py`). Dry vocals are thin.
-- Local Qwen3.8 27B server built (`<bigdisk>/start-qwen.sh`, port 8090): 60 tok/s with MTP, 18 GB VRAM, sensible tool calls on a vocal-mix test.
+- Local Qwen3.8 27B tried as a Muse stand-in, then dropped in favour of Muse (2026-10-27).
 - 5 new voice notes (`.m4a`) in `data/voice_notes/`, awaiting conversion.
 - Docs reorganised; architecture diagrams updated (this commit set is staged only).
 - Files transferred to this machine; keys present; Meta spend ~$0.03.
+- S3 source prep → MIDI (`spikes/k_source_prep/`): router (Mel-RoFormer / htdemucs_6s → pyin /
+  basic-pitch, YourMT3+ opt-in), cleanup (range, octave fix, pruning, merge, key snap, tempo +
+  quantize), onset drum/beatbox → MIDI. Wired into the app as `extract_midi` / `quantize_midi` with
+  MIDI clips and a built-in synth. Results in its README.

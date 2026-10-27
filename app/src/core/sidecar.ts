@@ -8,6 +8,23 @@
 //   fitSynthToReference -> spikes/c_recreate/match.py + run_optimizer.py (CMA-ES, ~30 s)
 //   generateMrt2        -> spikes/d_mrt2/run_mrt2.py (envs/mrt, mlx==0.31.1)
 //   quantizeDrums       -> onset slicing + snap + crossfade (no time-stretch), not written yet
+//
+// extractMidi is real (S3): a one-shot child process, spikes/k_source_prep/run.sh, spawned by
+// src/node/sourcePrep.ts (Electron main, or the Vite dev middleware for dev:web). The audio
+// reaches it as a WAV the renderer uploads per source (Bridge.putSourceAudio).
+import type { PrepManifest } from './midi';
+
+export type ExtractMode = 'auto' | 'hum' | 'keys' | 'bass' | 'drums' | 'layered';
+export interface ExtractMidiArgs {
+  sourceId: string;
+  mode: ExtractMode;
+  /** quantize grid ('off' or a GRIDS key); the sidecar skips it when the tempo is unclear */
+  grid: string;
+  separate: 'auto' | 'none' | 'vocals' | 'full';
+  keySnap: boolean;
+  /** known tempo; omit to let the sidecar estimate one */
+  bpm?: number;
+}
 
 /** The 15 knobs of our subtractive synth (mirrors spikes/c_recreate/synth.py PARAMS). */
 export const SYNTH_KNOBS: Record<string, { lo: number; hi: number; unit: string; doc: string }> = {
@@ -40,6 +57,8 @@ export interface Sidecar {
   generateMrt2(a: { styleText?: string; referenceSourceId?: string; notes?: string; seconds: number }): Promise<{ status: string; seconds: number; prompt: string }>;
   setSynthKnobs(patch: Record<string, number>): Promise<{ patch: Record<string, number>; clamped: string[] }>;
   fitSynthToReference(a: { sourceId: string }): Promise<{ patch: Record<string, number>; distance: number; renders: number }>;
+  /** Voice note -> stems -> notes (spikes/k_source_prep). */
+  extractMidi(a: ExtractMidiArgs): Promise<PrepManifest>;
 }
 
 export function clampPatch(patch: Record<string, number>): { patch: Record<string, number>; clamped: string[] } {
@@ -75,5 +94,8 @@ export class StubSidecar implements Sidecar {
   }
   async fitSynthToReference() {
     return { patch: { ...DEFAULT_PATCH, voices: 5, detune: 18, cutoff: 3200 }, distance: 0.82, renders: 2400 };
+  }
+  async extractMidi(_a: ExtractMidiArgs): Promise<PrepManifest> {
+    throw new Error('the source-prep sidecar is not available here (set LATTICE_BIGDISK and run the app from the repo)');
   }
 }
