@@ -1,0 +1,6 @@
+[project]
+name = "lattice-separate"
+version = "0"
+requires-python = "==3.12.*"
+# Stem separation (piano / vocals / drums ...) via UVR models, e.g. Demucs htdemucs_6s.
+dependencies = ["audio-separator[cpu]", "audioread"]  # audioread: imported but not declared upstream

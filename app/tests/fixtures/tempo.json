@@ -1,0 +1,82 @@
+{
+  "name": "tempo",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "This beat is 92 BPM in G minor. Set that up, turn the click on with a count-in, then tighten the drums to 8ths."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-27T01:13:43.791Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Setting up 92 BPM in G minor with click and tightening the drums.",
+        "tool_calls": [
+          {
+            "id": "call_68b09381-0894-43f5-8008-e8e4ba0978b1",
+            "type": "function",
+            "function": {
+              "name": "set_tempo",
+              "arguments": "{\"bpm\":92.0}"
+            }
+          },
+          {
+            "id": "call_09cc672c-1526-4a4b-b901-d84635d94231",
+            "type": "function",
+            "function": {
+              "name": "set_key",
+              "arguments": "{\"key\":\"G minor\"}"
+            }
+          },
+          {
+            "id": "call_2cdb2a8b-d9bd-4aa7-a6a4-e4a21748f9cc",
+            "type": "function",
+            "function": {
+              "name": "set_metronome",
+              "arguments": "{\"count_in\":true,\"on\":true}"
+            }
+          },
+          {
+            "id": "call_6d526906-628b-45ae-8e1e-036af3031f40",
+            "type": "function",
+            "function": {
+              "name": "quantize_drums",
+              "arguments": "{\"grid\":\"1/8\",\"strength\":1.0,\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 3908,
+        "completion_tokens": 592
+      }
+    },
+    {
+      "message": {
+        "content": "Set to 92 BPM in G minor with click + count-in on, and quantized drums to 8ths — note the tighten result is a placeholder for now.\n\nHave a listen to the drums against the click and tell me if you want it looser or harder."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 4347,
+        "completion_tokens": 164
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 8255,
+    "completion_tokens": 756
+  }
+}

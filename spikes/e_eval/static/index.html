@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lattice Listening Test</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --ink: #1d1c1a; --muted: #6b6862; --line: #e3e0da;
+    --accent: #3b5bdb; --accent-ink: #ffffff; --playing: #e8eefc; --ok: #2b8a3e; --like: #e8590c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141413; --panel: #1e1d1b; --ink: #ecebe7; --muted: #a29f98; --line: #34322e;
+      --accent: #7c95f2; --accent-ink: #10131f; --playing: #232a40; --ok: #69db7c; --like: #ff922b;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.45 -apple-system, system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; padding: 24px 16px 64px; }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 14px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 8px; padding: 10px 14px; cursor: pointer; }
+  button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  button.playing { background: var(--playing); }
+  .bar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .progress { color: var(--muted); font-variant-numeric: tabular-nums; }
+  .hint { color: var(--muted); font-size: 13px; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  input[type=text] { font: inherit; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--ink); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .side { display: flex; flex-direction: column; gap: 8px; }
+  .side .play { font-size: 18px; padding: 18px; }
+  .like { color: var(--muted); }
+  .like.on { color: var(--like); border-color: var(--like); font-weight: 600; }
+  .choices { display: grid; grid-template-columns: 1fr auto 1fr; gap: 12px; margin-top: 12px; }
+  .done { color: var(--ok); font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Which one is closer to the reference?</h1>
+  <p class="sub">Listen to the reference, then A and B, and pick the one that sounds closer to the reference. Separately, give a thumbs-up to any sound you'd actually use. One of them may be the reference itself.</p>
+
+  <section class="panel" id="start">
+    <div class="bar">
+      <input type="text" id="rater" placeholder="Your name" autocomplete="name">
+      <button class="primary" id="begin">Start</button>
+    </div>
+  </section>
+
+  <section id="test" hidden>
+    <div class="panel bar">
+      <button class="primary" id="ref">▶ Reference</button>
+      <span class="progress" id="progress"></span>
+    </div>
+    <div class="panel">
+      <div class="pair">
+        <div class="side"><button class="play" id="playA">▶ A</button><button class="like" id="likeA">👍 I'd use A</button></div>
+        <div class="side"><button class="play" id="playB">▶ B</button><button class="like" id="likeB">👍 I'd use B</button></div>
+      </div>
+      <div class="choices">
+        <button class="primary" id="pickA">A is closer</button>
+        <button id="pickSame">Same</button>
+        <button class="primary" id="pickB">B is closer</button>
+      </div>
+    </div>
+    <p class="hint"><kbd>R</kbd> reference · <kbd>A</kbd> / <kbd>B</kbd> play · <kbd>←</kbd> A closer · <kbd>→</kbd> B closer · <kbd>↓</kbd> same · <kbd>Space</kbd> stop</p>
+  </section>
+
+  <section class="panel" id="finished" hidden>
+    <p class="done">Done, thanks. Your answers are saved.</p>
+  </section>
+</main>
+<script>
+const ctx = new (window.AudioContext || window.webkitAudioContext)();
+const $ = (id) => document.getElementById(id);
+let rater = "", queue = [], idx = 0, buffers = {}, current = null, startedAt = 0, liked = {};
+
+function storage(get, key, value) {
+  try { return get ? localStorage.getItem(key) : localStorage.setItem(key, value); } catch { return null; }
+}
+
+// Seeded shuffle so a rater sees a stable order across reloads but raters differ.
+function seeded(seed) {
+  let s = 0; for (const c of seed) s = (s * 31 + c.charCodeAt(0)) >>> 0;
+  return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+}
+function shuffle(arr, rand) {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(rand() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
+
+// About as many pairs as candidates per sound: two shuffled passes, paired off,
+// so each candidate is heard about twice without asking every possible pair.
+function pairsFor(trial, rand) {
+  const seen = new Set(), out = [];
+  for (let pass = 0; pass < 2; pass++) {
+    const order = shuffle(trial.candidates, rand);
+    for (let i = 0; i + 1 < order.length; i += 2) {
+      const [a, b] = rand() < 0.5 ? [order[i], order[i + 1]] : [order[i + 1], order[i]];
+      const key = [a, b].sort().join("|");
+      if (!seen.has(key)) { seen.add(key); out.push({ trial: trial.id, a, b }); }
+    }
+  }
+  return out;
+}
+
+async function load(trial, name) {
+  const key = `${trial}/${name}`;
+  if (buffers[key]) return buffers[key];
+  const res = await fetch(`/audio/${trial}/${name}.wav`);
+  const buf = await ctx.decodeAudioData(await res.arrayBuffer());
+  // Match loudness (RMS) so "louder" never reads as "closer".
+  let sum = 0, n = 0;
+  for (let c = 0; c < buf.numberOfChannels; c++) { const d = buf.getChannelData(c); for (let i = 0; i < d.length; i++) sum += d[i] * d[i]; n += d.length; }
+  return (buffers[key] = { buf, gain: 0.1 / Math.max(Math.sqrt(sum / n), 1e-4) });
+}
+
+function stop() {
+  if (current) { try { current.src.stop(); } catch {} current.btn?.classList.remove("playing"); current = null; }
+}
+async function play(name, btn) {
+  stop();
+  const { buf, gain } = await load(queue[idx].trial, name);
+  const src = ctx.createBufferSource(); const g = ctx.createGain();
+  g.gain.value = Math.min(gain, 4); src.buffer = buf; src.connect(g).connect(ctx.destination);
+  src.onended = () => { if (current?.src === src) { btn?.classList.remove("playing"); current = null; } };
+  src.start(); btn?.classList.add("playing"); current = { src, btn };
+}
+
+function likeKey(p, side) { return `${p.trial}/${p[side]}`; }
+function renderLikes() {
+  const p = queue[idx];
+  for (const side of ["a", "b"]) $(`like${side.toUpperCase()}`).classList.toggle("on", !!liked[likeKey(p, side)]);
+}
+
+function showPair() {
+  stop();
+  const p = queue[idx];
+  $("progress").textContent = `Pair ${idx + 1} of ${queue.length}`;
+  renderLikes();
+  startedAt = performance.now();
+  Promise.all([load(p.trial, "reference"), load(p.trial, p.a), load(p.trial, p.b)]);  // preload
+}
+
+async function choose(choice) {
+  const p = queue[idx];
+  await fetch("/api/ratings", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      kind: "pair", rater, trial: p.trial, a: p.a, b: p.b, choice,
+      like: { [p.a]: !!liked[likeKey(p, "a")], [p.b]: !!liked[likeKey(p, "b")] },
+      seconds: (performance.now() - startedAt) / 1000,
+    }),
+  });
+  idx += 1;
+  if (idx < queue.length) showPair();
+  else { stop(); $("test").hidden = true; $("finished").hidden = false; }
+}
+
+function toggleLike(side) {
+  const k = likeKey(queue[idx], side);
+  liked[k] = !liked[k];
+  renderLikes();
+}
+
+$("begin").onclick = async () => {
+  rater = $("rater").value.trim();
+  if (!rater) return $("rater").focus();
+  storage(false, "lattice-rater", rater);
+  await ctx.resume();
+  const rand = seeded(rater);
+  const trials = shuffle(await (await fetch("/api/trials")).json(), rand);
+  // Interleave sounds so the same reference doesn't run many times in a row.
+  queue = shuffle(trials.flatMap((t) => pairsFor(t, rand)), rand);
+  $("start").hidden = true; $("test").hidden = false;
+  showPair();
+};
+$("ref").onclick = () => play("reference", $("ref"));
+$("playA").onclick = () => play(queue[idx].a, $("playA"));
+$("playB").onclick = () => play(queue[idx].b, $("playB"));
+$("likeA").onclick = () => toggleLike("a");
+$("likeB").onclick = () => toggleLike("b");
+$("pickA").onclick = () => choose("a");
+$("pickB").onclick = () => choose("b");
+$("pickSame").onclick = () => choose("same");
+document.addEventListener("keydown", (e) => {
+  if ($("test").hidden || e.target.tagName === "INPUT") return;
+  const k = e.key.toLowerCase();
+  if (k === "r") $("ref").click();
+  else if (k === "a") $("playA").click();
+  else if (k === "b") $("playB").click();
+  else if (e.key === "ArrowLeft") choose("a");
+  else if (e.key === "ArrowRight") choose("b");
+  else if (e.key === "ArrowDown") choose("same");
+  else if (e.key === " ") { e.preventDefault(); stop(); }
+});
+$("rater").value = storage(true, "lattice-rater") || "";
+</script>
+</body>
+</html>

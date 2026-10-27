@@ -1,0 +1,95 @@
+:root {
+  --bg: #111317;
+  --panel: #1a1d23;
+  --line: #2a2e36;
+  --text: #e6e8ec;
+  --muted: #8a909c;
+  --accent: #7c9cff;
+  --rec: #ff5c5c;
+  color-scheme: dark;
+  font: 13px/1.4 system-ui, -apple-system, sans-serif;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); }
+button {
+  background: var(--panel); color: var(--text); border: 1px solid var(--line);
+  border-radius: 6px; padding: 5px 10px; cursor: pointer; font: inherit;
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: 0.4; cursor: default; }
+button.on.mute { background: #6b3a3a; }
+button.on.solo { background: #6b5a2a; }
+button.recording { background: var(--rec); color: #fff; }
+
+.app { display: grid; grid-template-columns: 1fr 360px; height: 100vh; }
+.daw { overflow: auto; padding: 10px; min-width: 0; }
+.controlbar {
+  display: flex; gap: 10px; align-items: center; justify-content: center; flex-wrap: wrap;
+  padding: 6px 8px; margin: -10px -10px 10px; background: #1d2027; border-bottom: 1px solid var(--line);
+  position: sticky; top: -10px; z-index: 5;
+}
+.controlbar .group { display: flex; gap: 4px; align-items: center; }
+.controlbar button { min-width: 34px; }
+.controlbar button.icon { font-size: 17px; line-height: 1; padding: 3px 8px; }
+.controlbar button.on { background: #2f3a55; border-color: var(--accent); }
+.controlbar button.on.play { background: #23452f; border-color: #4caf6a; }
+.controlbar button.on.rec, .controlbar button.rec-idle { color: var(--rec); }
+.controlbar button.on.rec { background: var(--rec); color: #fff; }
+.controlbar button.on.cycle { background: #5a4a14; border-color: #e0b830; }
+
+/* the LCD: dark display in the middle of the control bar */
+.lcd {
+  display: flex; align-items: stretch; background: #0b0d10; border: 1px solid #2c323c; border-radius: 8px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace; color: #cfe3ff; overflow: hidden;
+}
+.lcd .cell { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 3px 10px; border-left: 1px solid #1d2229; min-width: 58px; }
+.lcd .cell:first-child { border-left: 0; }
+.lcd .cell.pos { min-width: 110px; }
+.lcd .big { font-size: 20px; letter-spacing: 1px; white-space: pre; }
+.lcd .mid { font-size: 14px; }
+.lcd .label { font: 600 9px system-ui, sans-serif; letter-spacing: 0.8px; color: #6f7c90; margin-top: 1px; }
+.lcd-field {
+  background: transparent; border: 1px solid transparent; border-radius: 4px; color: inherit;
+  font: inherit; font-size: 14px; text-align: center; padding: 0 2px;
+}
+.lcd-field:hover { border-color: #2c323c; }
+.lcd-field:focus { outline: none; border-color: var(--accent); background: #141922; }
+.lcd-field.tempo { width: 52px; }
+.lcd-field.key { width: 92px; }
+select.lcd-field { appearance: none; cursor: pointer; }
+select.lcd-field option { background: var(--panel); }
+.empty { border: 2px dashed var(--line); border-radius: 10px; padding: 60px; text-align: center; color: var(--muted); }
+.error { background: #3a2020; border: 1px solid #6b3a3a; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; cursor: pointer; }
+.punch { margin-top: 8px; color: var(--rec); }
+.loading { padding: 40px; }
+
+.track-controls { padding: 6px 8px; display: flex; flex-direction: column; gap: 4px; height: 100%; background: var(--panel); color: var(--text); }
+.track-name { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.track-name small, .db { color: var(--muted); font-weight: 400; }
+.track-row { display: flex; gap: 4px; align-items: center; }
+.track-row button { padding: 2px 7px; }
+.track-row input[type='range'] { width: 80px; }
+
+.chat { border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+.chat header { padding: 10px 12px; font-weight: 600; border-bottom: 1px solid var(--line); }
+.badge { font-size: 11px; font-weight: 400; color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; margin-left: 6px; }
+.chat-list { flex: 1; overflow: auto; padding: 10px 12px; display: flex; flex-direction: column; gap: 10px; }
+.hint { color: var(--muted); }
+.msg { white-space: pre-wrap; }
+.msg.user { align-self: flex-end; background: #26324d; padding: 6px 10px; border-radius: 10px; max-width: 90%; }
+.msg.error { color: var(--rec); }
+.msg.pending { color: var(--muted); }
+.msg audio { display: block; width: 100%; height: 30px; margin: 4px 0; }
+.steps { margin: 0 0 4px; padding: 0; list-style: none; font: 11px ui-monospace, monospace; color: var(--muted); }
+.steps li::before { content: '→ '; }
+.steps li.fail { color: var(--rec); }
+.chat form { display: flex; gap: 6px; padding: 10px; border-top: 1px solid var(--line); }
+.chat textarea { flex: 1; resize: none; height: 54px; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 6px; font: inherit; }
+
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr 40vh; }
+  .chat { border-left: 0; border-top: 1px solid var(--line); }
+  .lcd .cell { padding: 3px 6px; min-width: 0; }
+  .lcd .cell.pos { min-width: 84px; }
+  .lcd .big { font-size: 16px; }
+}

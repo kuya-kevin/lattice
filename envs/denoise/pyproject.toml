@@ -1,0 +1,11 @@
+[project]
+name = "lattice-denoise"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "deepfilternet>=0.5.6",
+    "numpy<2",
+    "soundfile>=0.14.0",
+    "torch==2.2.*",
+    "torchaudio==2.2.*",
+]

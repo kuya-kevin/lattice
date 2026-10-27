@@ -1,0 +1,6 @@
+[project]
+name = "lattice-ears"
+version = "0"
+requires-python = "==3.12.*"
+# Meta PE-AV (Perception Encoder Audio-Visual, Apache-2.0): text-audio embeddings as Muse's ears.
+dependencies = ["transformers>=4.57", "torch", "torchaudio", "torchvision", "soundfile", "scipy", "librosa", "numpy", "timm", "pillow"]  # timm/pillow: the AV model builds its video tower too

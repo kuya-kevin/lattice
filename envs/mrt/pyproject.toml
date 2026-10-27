@@ -1,0 +1,7 @@
+[project]
+name = "lattice-mrt"
+version = "0"
+requires-python = "==3.12.*"
+# mlx is pinned to the version the published mrt2 .mlxfn files were exported with;
+# newer mlx fails with "[import_function] Invalid string size".
+dependencies = ["magenta-rt[mlx]==2.0.3", "mlx==0.31.1", "soundfile", "scipy"]

@@ -1,0 +1,117 @@
+{
+  "name": "feedback",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "The vocal is too loud. Turn it down."
+    },
+    {
+      "editsBefore": [
+        {
+          "tool": "set_gain",
+          "args": {
+            "track_id": "t3",
+            "gain_db": -2
+          }
+        }
+      ],
+      "user": "Ok. Now also clean up the noise on the vocal and quantize the drums to 16ths, not too hard."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-27T00:46:49.013Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Turning that vocal down for you.",
+        "tool_calls": [
+          {
+            "id": "call_ccd6d69e-64ae-4efa-856a-acd39c36b80e",
+            "type": "function",
+            "function": {
+              "name": "set_gain",
+              "arguments": "{\"gain_db\":-6.0,\"track_id\":\"t3\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 3365,
+        "completion_tokens": 187
+      }
+    },
+    {
+      "message": {
+        "content": "Turned the vocal track down to -6 dB — play it back and let me know if it needs to go lower."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 3485,
+        "completion_tokens": 140
+      }
+    },
+    {
+      "message": {
+        "content": "On it — cleaning vocal noise and tightening drums.",
+        "tool_calls": [
+          {
+            "id": "call_ac40df64-7911-40c0-a717-c1cb8aee66ac",
+            "type": "function",
+            "function": {
+              "name": "cleanup_noise",
+              "arguments": "{\"track_id\":\"t3\"}"
+            }
+          },
+          {
+            "id": "call_85da44e6-db58-47b9-aac9-34e41a5ef9a8",
+            "type": "function",
+            "function": {
+              "name": "quantize_drums",
+              "arguments": "{\"grid\":\"1/16\",\"strength\":0.5,\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 3647,
+        "completion_tokens": 208
+      }
+    },
+    {
+      "message": {
+        "content": "Ran vocal noise cleanup and quantized drums to 16ths at 0.5 strength — both used placeholder stub processing for now, so have a listen and tell me if you want more."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 3918,
+        "completion_tokens": 149
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 14415,
+    "completion_tokens": 684
+  }
+}
