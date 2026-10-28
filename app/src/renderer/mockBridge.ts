@@ -7,6 +7,7 @@ import type { PrepManifest } from '../core/midi';
 import { StubSidecar, type ExtractMidiArgs } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
+import { MemoryChainLibrary } from '../fx/savedChains';
 
 /** Offline stand-in: lists the tracks once, then answers with what it saw. */
 const offlineMuse: ChatFn = async ({ messages }) => {
@@ -43,6 +44,7 @@ export function createMockBridge(): Bridge {
     store,
     sidecar: new WebSidecar(sourceAudio),
     searchFreesound: async () => ({ count: 0, results: [] }),
+    chains: new MemoryChainLibrary(), // B10: kept for the page's lifetime only
   };
   const agent = new MuseAgent(ctx, offlineMuse);
   return {

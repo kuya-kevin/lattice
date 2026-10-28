@@ -155,7 +155,38 @@ and update the `HANDOFF.md` status table.
   Mac setup is in B3a.
 - **Links:** https://github.com/muscriptor/muscriptor, https://huggingface.co/DamRsn/muscriptor-gguf, arXiv 2607.08168.
 
+### B9. Ears: let Muse describe a sound and check its own knob moves (S7) — moved up Oct 27
+- **Why:** today Muse never gets a description of the audio, only the session, knob values and
+  Freesound metadata. It moves knobs blind and the user judges.
+- **Evidence:** LLM2Fx (Doh et al., WASPAA 2025, arXiv 2505.20770) found an LLM picks better EQ and
+  reverb settings from text when measured DSP features are in its context. LLM2Fx-Tools
+  (arXiv 2512.01559) extends this to planning whole effect chains with tool calls. That is the
+  cheap version below.
+- **Cheap version (preferred):** render the track before and after a change (`renderTrack`, offline),
+  measure brightness, loudness, noise, pitch and envelope (the features in `spikes/ears.py`), and
+  return them as text in the tool result: "brightness +18%, level −0.4 dB". Muse can then say
+  what it did and catch a move that went the wrong way.
+- **Heavier version:** PE-AV word scores ("is this grittier?"); tracks drive, resonance, attack and
+  detune but misses brightness and noise. PE-AV large is untested. Only if the cheap version isn't enough.
+- **Depends on:** B1.
+
+### B11. Autosave and named versions
+- **Why:** lost projects after a crash are the top complaint about DAWs (research, Oct 27), and
+  "history is a tree of versions" is already in the pitch (`idea.md`). Today undo history
+  (`src/core/store.ts`, 100 steps) is memory only, and nothing is written to disk.
+- **Do:** write the session JSON to the user-data folder after each edit (debounced). Add a
+  "Save version" action that stores a named snapshot, and a Versions list to switch between them.
+  Muse gets the same tools (`save_version`, `restore_version`), so "go back to before the drive"
+  works.
+- **Open question:** audio buffers live only in the renderer. A restored session needs each clip's
+  source file path so the audio can be reloaded. Check that before starting.
+- **Done when:** Playwright: edit, reload the window, session is back; save two versions, restore
+  the first, `getSession()` matches.
+
 ### B6. Demo script and public repo
+- **Positioning (research, Oct 27):** "agentic DAW" is already a crowded category, so don't claim
+  first AI DAW, first text-to-preset, first hum-to-MIDI, or stems as the headline. Name the closest
+  work and say what is different. Details in `idea.md` §1a.
 - **Do:** write the 3-minute script (`docs/demo.md`) from what works; decide which optional
   modules appear; set up the fresh public repo with third-party pieces labelled.
 - **Done when:** the user approves the script; repo is public with a README.
@@ -194,17 +225,6 @@ and update the `HANDOFF.md` status table.
 ### B8. Move live sidecar code out of `spikes/`
 Into a top-level `sidecar/` with one entry point. On hold until B3 is done and the user agrees.
 
-### B9. Ears: let Muse describe a sound and check its own knob moves (S7)
-- **Why:** today Muse never gets a description of the audio, only the session, knob values and
-  Freesound metadata. It moves knobs blind and the user judges.
-- **Cheap version (preferred):** render the track before and after a change (`renderTrack`, offline),
-  measure brightness, loudness, noise, pitch and envelope (the features in `spikes/ears.py`), and
-  return them as text in the tool result: "brightness +18%, level −0.4 dB". Muse can then say
-  what it did and catch a move that went the wrong way.
-- **Heavier version:** PE-AV word scores ("is this grittier?"); tracks drive, resonance, attack and
-  detune but misses brightness and noise. PE-AV large is untested. Only if the cheap version isn't enough.
-- **Depends on:** B1.
-
 ## Dropped
 
 - SAM Audio GGUF for stems (B4, Oct 27): lost to htdemucs_6s / Mel-RoFormer on every scored part
@@ -218,3 +238,9 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 - 2026-10-27: S1 effects engine + verification; device panel; S3 audio to MIDI wired in; canvas UI;
   sound library; clip moves and snap; musical typing and sampler; repo docs reorganised (`CLAUDE.md`,
   this backlog, `spikes/README.md`).
+- 2026-10-27: B10 saved device chains. Tools `save_chain` / `load_chain` (appends; `replace`
+  clears first; one undo step) / `list_chains`, for Muse and the panel's "Save chain" and
+  "Load chain…" controls. Saved names show in `summarize()`. Electron stores them in
+  `chains.json` in userData (`app/src/node/chainFile.ts`); the web build keeps them in memory.
+  Tests: `app/tests/chains.test.ts`, `app/e2e/chains.spec.ts`. Not done: delete or rename a
+  saved chain.

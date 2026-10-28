@@ -2,6 +2,7 @@
 // back -> repeat until Muse answers in text or MAX_STEPS is hit. The chat function is
 // injected: live Meta API in the Electron main process, recorded fixtures in tests.
 import { summarize } from './session';
+import { chainLibrary } from '../fx/savedChains';
 import { museToolSpecs, runTool, type ToolContext, type ToolOutcome } from './tools';
 
 export const MAX_STEPS = 10;
@@ -69,7 +70,7 @@ export class MuseAgent {
 
   async send(text: string): Promise<TurnResult> {
     const { store } = this.ctx;
-    this.history.push({ role: 'user', content: buildUserTurn(text, summarize(store.get()), store.takeUserEdits()) });
+    this.history.push({ role: 'user', content: buildUserTurn(text, summarize(store.get(), { savedChains: chainLibrary(this.ctx).list().map((c) => c.name) }), store.takeUserEdits()) });
     const steps: StepRecord[] = [];
     const usage: Usage = { prompt_tokens: 0, completion_tokens: 0 };
 

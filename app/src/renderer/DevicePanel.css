@@ -5,6 +5,10 @@
 .fx-panel .fx-toggle { background: none; border: none; font-weight: 600; padding: 2px 4px; color: var(--text); }
 .fx-panel .fx-toggle small, .fx-device-head small { color: var(--faint); font: 10px var(--font-data); }
 .fx-panel > header select { border-radius: 999px; height: 30px; padding: 0 12px; }
+.fx-chains { display: flex; gap: 6px; align-items: center; }
+.fx-chains button, .fx-chains input { border-radius: 999px; height: 30px; padding: 0 12px; }
+.fx-chains input { width: 140px; }
+.fx-chain-error { color: var(--rec); font-size: 11px; }
 .fx-latency { color: var(--muted); font: 11px var(--font-data); margin-left: auto; }
 .fx-chain { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 4px; }
 .fx-empty { color: var(--muted); padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-card); }

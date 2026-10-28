@@ -12,6 +12,27 @@
 
 **Lattice: a mini-DAW where Muse is your sound designer and your session engineer.** You bring a voice note or a sound from a song, trim it, and *talk* about the vibe you want. Muse proposes versions you can hear, compare and tweak by hand, and keeps going from your changes. Muse also runs the session: punch-in, take picking, drum quantize, trimming, cleanup. We build our own DAW (not Logic) so every agent action is a typed tool call on a session model we own; Logic stays the finishing tool via stem/MIDI export.
 
+### 1a. Positioning (checked Oct 27)
+
+"Agentic DAW" is already a named, crowded category. Don't claim first AI DAW, first text-to-preset,
+first hum-to-MIDI, or stem separation as the headline. What is new is the whole loop and how it
+works: hum → notes or sample → a synth Muse designs → competing versions → your hand move read
+as feedback → version tree → Logic export. Nobody found does all of that.
+
+| Closest work | What it does | Difference |
+|---|---|---|
+| Moises Studio Agentic Mode (launched Sept 2 2026) | "comp the best takes, clean up a noisy recording, build an effect chain", every step visible and reversible (their press release) | the same as our engineer half; no competing versions, no hand moves as feedback |
+| DAWZY (arXiv 2512.03289, NeurIPS 2025 workshop) | GPT-5 + MCP drives REAPER, Basic Pitch hum-to-MIDI, undo markers | research prototype; cite it |
+| Keeble Weil | plugin synth where Claude sets every knob from a description ("darker", "more movement") | one synth, not a session; vendor claims, no reviews found |
+| Jamu (Ableton), FL Studio 2026 Gopher | plain language → DAW actions and device settings | inside an existing DAW; Gopher can't add notes or pick presets |
+
+Research that backs the design: LLM2Fx (arXiv 2505.20770) and LLM2Fx-Tools (2512.01559) on LLMs
+setting effect parameters, helped by measured audio features (backlog B9); Text2FX (2409.18847)
+on CLAP-guided effects.
+
+Lines to use: "Suno gives you a finished song. Lattice gives you the knobs." / "Your hand is part
+of the prompt."
+
 ### 2. Two roles
 
 | | **Sound designer** (centerpiece) | **Session engineer** (a given) |

@@ -47,6 +47,7 @@ export function DevicePanel({ session, run }: { session: Session; run: Run }) {
             </option>
           ))}
         </select>
+        <ChainMenu session={session} trackId={track.id} canSave={track.devices.length > 0} run={run} />
       </header>
       {open && (
         <div className="fx-chain">
@@ -57,6 +58,71 @@ export function DevicePanel({ session, run }: { session: Session; run: Run }) {
         </div>
       )}
     </section>
+  );
+}
+
+/** Save the chain under a name / load a saved one (B10). Electron has no window.prompt, so the
+ *  name is typed inline. The names are re-read whenever the session changes (Muse may save too). */
+function ChainMenu({ session, trackId, canSave, run }: { session: Session; trackId: string; canSave: boolean; run: Run }) {
+  const [names, setNames] = useState<string[]>([]);
+  const [naming, setNaming] = useState(false);
+  const [name, setName] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const refresh = () =>
+    run('list_chains').then((r) => r.ok && setNames((r.result as { chains: { name: string }[] }).chains.map((c) => c.name)));
+  useEffect(() => {
+    refresh();
+  }, [session]); // eslint-disable-line react-hooks/exhaustive-deps
+  const save = async () => {
+    const r = await run('save_chain', { track_id: trackId, name });
+    if (!r.ok) return setError(r.error ?? 'save failed');
+    setNaming(false);
+    setName('');
+    setError(null);
+    refresh();
+  };
+  const load = async (n: string) => {
+    const r = await run('load_chain', { track_id: trackId, name: n });
+    setError(r.ok ? null : (r.error ?? 'load failed'));
+  };
+  return (
+    <span className="fx-chains">
+      {naming ? (
+        <>
+          <input
+            data-testid="fx-chain-name"
+            aria-label="Chain name"
+            placeholder="Chain name"
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') save();
+              if (e.key === 'Escape') setNaming(false);
+            }}
+          />
+          <button data-testid="fx-chain-save" onClick={save} disabled={!name.trim()}>
+            Save
+          </button>
+          <button onClick={() => setNaming(false)} aria-label="Cancel">
+            ✕
+          </button>
+        </>
+      ) : (
+        <button data-testid="fx-save-chain" onClick={() => setNaming(true)} disabled={!canSave} title="Save this chain to load on other tracks">
+          Save chain
+        </button>
+      )}
+      <select data-testid="fx-load-chain" aria-label="Load chain" value="" disabled={!names.length} onChange={(e) => e.target.value && load(e.target.value)}>
+        <option value="">{names.length ? 'Load chain…' : 'No saved chains'}</option>
+        {names.map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
+      {error && <span className="fx-chain-error">{error}</span>}
+    </span>
   );
 }
 

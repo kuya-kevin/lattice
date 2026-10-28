@@ -8,6 +8,7 @@ import { searchFreesound } from '../src/core/freesound';
 import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
 import { runTool, type ToolContext } from '../src/core/tools';
+import { FileChainLibrary } from '../src/node/chainFile';
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
@@ -37,6 +38,7 @@ const ctx: ToolContext = {
     if (!token) throw new Error('FREESOUND_API_KEY is not set');
     return searchFreesound(token, q, f, n);
   },
+  chains: new FileChainLibrary(join(app.getPath('userData'), 'chains.json')), // B10
 };
 
 let chat: ChatFn | null = null;

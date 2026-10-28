@@ -4,6 +4,7 @@
 import { DEVICE_IDS, describeCatalog, describeSettings, getDevice, latencySeconds } from './catalog';
 import * as C from './chain';
 import * as S from '../core/session';
+import { chainLibrary } from './savedChains';
 import type { ToolDef } from '../core/tools';
 
 const str = (description: string, extra: object = {}) => ({ type: 'string', description, ...extra });
@@ -117,5 +118,55 @@ export const FX_TOOLS: ToolDef[] = [
       ctx.store.set(s);
       return chainView(s, a.track_id);
     },
+  },
+  {
+    name: 'save_chain',
+    description:
+      'Save a track\'s whole device chain (devices, order, knob values, bypass) under a name, to load onto any track later with load_chain. ' +
+      'Saving under an existing name overwrites it. Saved names are listed in the session summary.',
+    parameters: obj({ track_id: str('Track id'), name: str('Name, e.g. "dark vocal"') }, ['track_id', 'name']),
+    run: (ctx, a) => {
+      const name = String(a.name).trim();
+      if (!name) throw new S.SessionError('give the chain a name');
+      const t = S.getTrack(ctx.store.get(), a.track_id);
+      if (!t.devices.length) throw new S.SessionError(`track ${a.track_id} has no devices to save`);
+      const devices = t.devices.map((d) => ({ kind: d.kind, on: d.on, params: { ...d.params } }));
+      const replaced = chainLibrary(ctx).save({ name, devices, savedAt: new Date().toISOString() });
+      return { name, devices: devices.map((d) => d.kind), replaced };
+    },
+  },
+  {
+    name: 'load_chain',
+    description:
+      'Load a saved chain onto a track, with its saved knob values. Appends after the track\'s current devices; replace=true clears them first.',
+    parameters: obj(
+      { track_id: str('Track id'), name: str('Saved chain name'), replace: { type: 'boolean', description: 'true = remove the current devices first' } },
+      ['track_id', 'name'],
+    ),
+    run: (ctx, a) => {
+      const saved = chainLibrary(ctx).get(String(a.name).trim());
+      if (!saved) {
+        const names = chainLibrary(ctx).list().map((c) => `"${c.name}"`);
+        throw new S.SessionError(`no saved chain "${a.name}"${names.length ? ` (saved: ${names.join(', ')})` : ' (none saved yet)'}`);
+      }
+      let s = ctx.store.get();
+      if (a.replace) s = S.mapTrack(s, a.track_id, (t) => ({ ...t, devices: [] }));
+      const have = S.getTrack(s, a.track_id).devices.length;
+      if (have + saved.devices.length > C.MAX_DEVICES_PER_TRACK)
+        throw new S.SessionError(`track ${a.track_id} has ${have} devices; "${saved.name}" adds ${saved.devices.length}, over the limit of ${C.MAX_DEVICES_PER_TRACK} devices`);
+      for (const d of saved.devices) {
+        const [s1, dev] = C.insertDevice(s, a.track_id, d.kind, undefined, d.params);
+        s = d.on ? s1 : C.setDeviceOn(s1, a.track_id, dev.id, false);
+      }
+      ctx.store.set(s); // one store update, so one undo step
+      return { loaded: saved.name, ...chainView(s, a.track_id) };
+    },
+  },
+  {
+    name: 'list_chains',
+    description: 'List saved device chains with their devices.',
+    parameters: obj({}),
+    quiet: true,
+    run: (ctx) => ({ chains: chainLibrary(ctx).list().map((c) => ({ name: c.name, devices: c.devices.map((d) => d.kind), saved_at: c.savedAt })) }),
   },
 ];

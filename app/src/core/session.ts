@@ -375,7 +375,12 @@ export function sessionEnd(s: Session): number {
 }
 
 /** Compact text view of the session for Muse (it can't see the screen or hear audio). */
-export function summarize(s: Session): string {
+export function summarize(s: Session, opts: { savedChains?: string[] } = {}): string {
+  const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
+  return summarizeSession(s) + saved;
+}
+
+function summarizeSession(s: Session): string {
   const click = s.metronome.on ? `click on${s.metronome.countIn ? ', 1-bar count-in' : ''}` : 'click off';
   const header = `Tempo ${s.tempo} BPM, ${s.timeSignature.join('/')}, key ${s.key ?? 'not set'}, ${click}.`;
   if (!s.tracks.length) return `${header}\nSession is empty (no tracks).`;

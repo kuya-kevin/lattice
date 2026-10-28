@@ -8,6 +8,7 @@ import type { Actor, SessionStore } from './store';
 import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
 import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
+import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
 
 export type JsonSchema = {
   type: 'object';
@@ -20,6 +21,8 @@ export interface ToolContext {
   store: SessionStore;
   sidecar: Sidecar;
   searchFreesound: (query: string, filters: FreesoundFilters, max: number) => Promise<{ count: number; results: FreesoundHit[] }>;
+  /** saved device chains (B10); in memory if omitted */
+  chains?: ChainLibrary;
 }
 
 export interface ToolDef {
@@ -73,7 +76,7 @@ export const TOOLS: ToolDef[] = [
     description: 'List tracks and clips in the session (ids, names, positions in seconds, gain, mute/solo).',
     parameters: obj({}),
     quiet: true,
-    run: (ctx) => ({ summary: S.summarize(ctx.store.get()), tracks: ctx.store.get().tracks }),
+    run: (ctx) => ({ summary: S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name) }), tracks: ctx.store.get().tracks }),
   },
   {
     name: 'add_track',
