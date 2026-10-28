@@ -231,6 +231,26 @@ by id), then **M / S / R** buttons and a volume slider.
 - **Not yet:** there's no pan control (the session has no pan), and tracks can't be renamed
   in place.
 
+## Piano Roll (Oct 28)
+
+The editor area under the board has two tabs, **Device chain** (B) and **Piano Roll** (P), like
+Logic's Smart Controls and editors sharing the bottom of the main window (BandLab: Effects /
+MIDI Editor tabs). **Double-click a region** opens it in the Piano Roll, as in Logic and BandLab;
+an audio region shows Extract MIDI instead. It always shows the selected region.
+- Keys on the left (click to hear), bars on top (click moves the playhead), one row per semitone;
+  drum regions label rows with GM names (36 Kick, 38 Snare, 42 Hat).
+- **Pointer tool:** click selects (Shift adds), drag moves (time snaps to the grid, rows change
+  pitch), drag the right edge resizes, double-click empty grid adds a note. **Pencil:** click adds.
+- Delete removes the selected notes (not the region), ↑/↓ transpose (Shift: octave), Escape
+  clears the selection. The light line inside each note is its velocity (GarageBand).
+- Each gesture is one `edit_midi_notes` call: one undo step and a hand edit Muse sees.
+- A strip under the bar numbers shows the region's extent and name (GarageBand).
+- **MIDI regions on the tracks** draw their notes as dashes (time across the region, pitch filling
+  its height) instead of the rendered audio's waveform, as Logic, GarageBand and BandLab do.
+- Checked in GarageBand 10 on Oct 28: regions show white note lines on the track colour; the
+  Piano Roll shares the bottom editor with Score, with the region strip and velocity lines above.
+  Differences we keep: GarageBand names middle C "C3"; we say C4, like the session summary Muse reads.
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html
@@ -239,4 +259,4 @@ by id), then **M / S / R** buttons and a volume slider.
 - Logic Pro 9 manual, snapping region edits; regions move horizontally and vertically between tracks: https://help.apple.com/logicpro/mac/9.1.6/en/logicpro/usermanual/chapter_13_section_2.html
 - GarageBand for Mac, main-window shortcuts (⌘G Snap to Grid): https://support.apple.com/guide/garageband/gbnd58362a62/mac
 - Creative Commons, recommended practices for attribution (TASL): https://wiki.creativecommons.org/wiki/Recommended_practices_for_attribution
-- Unverified (from memory of Logic's default key commands, check on the Mac): O = Loop Browser, B = Smart Controls, Option-click resets a slider, M/S/R button colours.
+- Unverified (from memory of Logic's default key commands, check on the Mac): O = Loop Browser, B = Smart Controls, P = Piano Roll, double-click a region opens its editor, Option-click resets a slider, M/S/R button colours.

@@ -66,12 +66,18 @@ and update the `HANDOFF.md` status table.
 
 ### B3. Make cleanup and drum quantize real (S4, part 1)
 - **Do:** replace the `cleanup_noise` and `quantize_drums` stubs with the existing Python
-  (`spikes/b_cleanup/run_noisereduce.py`, `spikes/f_engineer/quantize.py`), called the same way
+  (`spikes/m_cleanup_models/clean.py` with `spikes/b_cleanup/run_noisereduce.py` as fallback, `spikes/f_engineer/quantize.py`), called the same way
   `extract_midi` is (a child process from `app/src/node/`), returning the processed audio as a new clip or take.
 - **Done when:** both tools change the audio in the app; e2e tests run with a mock manifest
   (like `LATTICE_SIDECAR_MOCK`); the user has listened to one quantized loop.
 - **Files:** `app/src/core/sidecar.ts`, `app/src/node/`, `app/src/core/tools.ts`, `spikes/b_cleanup`, `spikes/f_engineer`.
 - **Note:** the move of live sidecar code out of `spikes/` is on hold (user decision, Oct 27).
+- **Finding (Oct 28, `spikes/m_cleanup_models`):** cleanup in front of `extract_midi` lowers note F1
+  (raw 0.80, noisereduce 0.59, Mel-RoFormer denoise 0.59; 0.58 / 0.67 with the mode forced), so
+  `cleanup_noise` should clean the audio the musician hears and leave `extract_midi` on the raw take.
+  Decided (Oct 28): Mel-RoFormer denoise (`denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt`, via the `sep`
+  env) is the default, preferred by ear; ~17 s per 20 s note on MPS, so show progress. noisereduce (~0.2 s) is
+  the fallback when the model isn't installed or fails; the tool result says which ran.
 
 ### B3a. Run source prep (audio to MIDI) on the Mac
 - **Why:** `extract_midi` only runs on the 3090 box today. `spikes/k_source_prep/run.sh` needs
@@ -95,6 +101,14 @@ and update the `HANDOFF.md` status table.
 - **If MuScriptor isn't set up,** the sidecar still works: it falls back to basic-pitch / pyin with a
   warning in the manifest.
 - **Done when:** the user has run `extract_midi` on two real voice notes in the app and judged the MIDI.
+- **Progress (Oct 28):** steps 1-5 done on the Mac (`LATTICE_BIGDISK=~/lattice-data`; `amt`, `sep`, `muscriptor`
+  envs synced; HF token already there). Two real notes through `run.sh`, both `"transcriber": "muscriptor"`, no
+  fallback warning. 20 s note, warm: **43 s** (analyse 8, separation 21, MuScriptor 11); the first run took 117 s
+  with the weight download. That is over the ~30 s mark: separation is the larger part. Also added a **Piano Roll**
+  (double-click a region, or P) so the user can judge and fix the MIDI in the app: `edit_midi_notes` (user only,
+  one undo step per gesture) and `transpose_midi` (Muse has it too). Left: step 6, the user runs two notes in the
+  app and judges them in the Piano Roll. The app now finds `~/lattice-data` by itself
+  (or `LATTICE_BIGDISK` in `.env`); `LATTICE_BIGDISK=...` on a line of its own isn't exported to `npm run dev`.
 
 ## Next
 

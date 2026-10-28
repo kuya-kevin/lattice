@@ -100,5 +100,6 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
 | YourMT3+ | treat as GPL-3.0 | opt-in, separate process only |
 | ByteDance piano transcription | no licence file | opt-in only |
 | SAM Audio | SAM License | evaluated via audio.cpp GGUF, dropped Oct 27 (`spikes/l_sam_audio`) |
+| Mel-RoFormer denoise (aufr33) | community weights, no stated licence | `cleanup_noise` default (B3), separate process; noisereduce (MIT) fallback (`spikes/m_cleanup_models`) |
 | MuScriptor medium | code MIT, weights CC BY-NC 4.0 | non-commercial; sidecar default transcriber, separate process (`spikes/k_source_prep`) |
 | pedalboard | GPL-3.0 | not used (decided) |

@@ -4,7 +4,8 @@ version = "0.1.0"
 requires-python = ">=3.12,<3.13"
 # python-audio-separator (MIT): BS-RoFormer / Mel-RoFormer / htdemucs_6s behind one API.
 dependencies = [
-    "audio-separator[gpu]",
+    "audio-separator[gpu]; sys_platform == 'linux'",  # CUDA onnxruntime (3090 box)
+    "audio-separator[cpu]; sys_platform == 'darwin'",  # Mac: torch uses MPS, onnxruntime CPU
     "soundfile",
     "audioread",
     "imageio-ffmpeg",  # static ffmpeg binary; separate.py puts it on PATH (no system ffmpeg)

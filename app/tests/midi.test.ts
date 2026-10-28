@@ -162,6 +162,11 @@ describe('sidecar plumbing', () => {
     );
     const cfg = sourcePrepConfig('/repo', { LATTICE_SIDECAR_MOCK: FIXTURE, LATTICE_BIGDISK: '/big' });
     expect(cfg.workDir).toBe('/big/out-k/app');
+    expect(cfg.bigDisk).toBe('/big');
+    // without LATTICE_BIGDISK: ~/lattice-data if it exists, else none (and a clear error at run time)
+    expect(sourcePrepConfig('/repo', {}, import.meta.dirname).bigDisk).toBe(import.meta.dirname);
+    const none = sourcePrepConfig('/repo', {}, '/no/such/folder');
+    expect(none.bigDisk).toBeUndefined();
     expect(cfg.script).toBe('/repo/spikes/k_source_prep/run.sh');
     const m = await runSourcePrep(cfg, { sourceId: 'x', mode: 'auto', grid: '1/16', separate: 'auto', keySnap: true });
     expect(m.stems).toHaveLength(3);
@@ -172,5 +177,47 @@ describe('sidecar plumbing', () => {
     const m = stemToMidi(manifest().stems[0]);
     expect(midiSignature(m, 2)).toBe(midiSignature(structuredClone(m), 2));
     expect(midiSignature({ ...m, notes: m.notes.slice(1) }, 2)).not.toBe(midiSignature(m, 2));
+  });
+});
+
+describe('piano roll tools (edit_midi_notes, transpose_midi)', () => {
+  async function withMidi() {
+    const c = await withVoiceNote();
+    await runTool(c, 'extract_midi', { clip_id: c.store.get().tracks[0].clips[0].id, set_tempo: false }, 'user');
+    return { c, clip: c.store.get().tracks[1].clips[0] };
+  }
+
+  it('edit_midi_notes replaces the notes in one undo step and is logged as a hand edit', async () => {
+    const { c, clip } = await withMidi();
+    const notes = [n(62, 0.25, 0.5, 64), n(57, 0, 0.5)];
+    const r = await runTool(c, 'edit_midi_notes', { clip_id: clip.id, notes }, 'user');
+    expect(r.ok).toBe(true);
+    // stored sorted by start
+    expect(S.findClip(c.store.get(), clip.id).clip.midi!.notes).toEqual([n(57, 0, 0.5), n(62, 0.25, 0.5, 64)]);
+    await runTool(c, 'undo', {}, 'user');
+    expect(S.findClip(c.store.get(), clip.id).clip.midi!.notes).toHaveLength(4);
+  });
+
+  it('edit_midi_notes refuses bad notes and audio clips', async () => {
+    const { c, clip } = await withMidi();
+    for (const bad of [n(128, 0, 1), n(60, -1, 1), n(60, 0, 0), n(60, 0, 1, 0)])
+      expect((await runTool(c, 'edit_midi_notes', { clip_id: clip.id, notes: [bad] }, 'user')).ok).toBe(false);
+    const audio = c.store.get().tracks[0].clips[0].id;
+    expect((await runTool(c, 'edit_midi_notes', { clip_id: audio, notes: [] }, 'user')).ok).toBe(false);
+  });
+
+  it('transpose_midi moves every note (or the listed ones) and keeps them in range', async () => {
+    const { c, clip } = await withMidi();
+    expect((await runTool(c, 'transpose_midi', { clip_id: clip.id, semitones: 12 }, 'muse')).ok).toBe(true);
+    expect(S.findClip(c.store.get(), clip.id).clip.midi!.notes.map((x) => x.pitch)).toEqual([69, 72, 76, 72]);
+    await runTool(c, 'transpose_midi', { clip_id: clip.id, semitones: -1, notes: [0] }, 'user');
+    expect(S.findClip(c.store.get(), clip.id).clip.midi!.notes.map((x) => x.pitch)).toEqual([68, 72, 76, 72]);
+    expect((await runTool(c, 'transpose_midi', { clip_id: clip.id, semitones: 60 }, 'muse')).ok).toBe(false);
+  });
+
+  it('transpose_midi is visible to Muse; edit_midi_notes is not', () => {
+    const names = museToolSpecs().map((t) => t.function.name);
+    expect(names).toContain('transpose_midi');
+    expect(names).not.toContain('edit_midi_notes');
   });
 });

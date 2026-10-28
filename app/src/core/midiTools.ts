@@ -211,4 +211,63 @@ export const MIDI_TOOLS: ToolDef[] = [
       return { clips: clips.map((c) => c.id), grid: a.grid, bpm: s.tempo, strength: a.strength ?? 1 };
     },
   },
+  {
+    name: 'edit_midi_notes',
+    description: "Replace a MIDI clip's notes (Piano Roll edits: move, resize, add, delete, velocity). Times are seconds from the clip's source start.",
+    userOnly: true,
+    parameters: obj(
+      {
+        clip_id: str('MIDI clip id'),
+        notes: { type: 'array', items: obj({ pitch: num(''), velocity: num(''), start: num(''), duration: num('') }, ['pitch', 'velocity', 'start', 'duration']) },
+      },
+      ['clip_id', 'notes'],
+    ),
+    logText: (_a, r) => `edited notes in the Piano Roll on ${r.clip_id}: ${r.before} -> ${r.notes} notes`,
+    run: (ctx: ToolContext, a) => {
+      const s = ctx.store.get();
+      const { clip } = S.findClip(s, a.clip_id);
+      if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio, not MIDI`);
+      const notes = checkNotes(a.notes);
+      ctx.store.set(S.setClipMidi(s, clip.id, { ...clip.midi, notes }));
+      return { clip_id: clip.id, before: clip.midi.notes.length, notes: notes.length };
+    },
+  },
+  {
+    name: 'transpose_midi',
+    description: 'Transpose a MIDI clip by semitones (12 = an octave up). notes: indexes of the notes to move (default all).',
+    parameters: obj(
+      {
+        clip_id: str('MIDI clip id'),
+        semitones: num('Semitones, e.g. -12, -1, 1, 12'),
+        notes: { type: 'array', items: num('note index'), description: 'Only these notes (indexes in start order); default all' },
+      },
+      ['clip_id', 'semitones'],
+    ),
+    logText: (_a, r) => `transposed ${r.moved} note(s) on ${r.clip_id} by ${r.semitones}`,
+    run: (ctx: ToolContext, a) => {
+      const s = ctx.store.get();
+      const { clip } = S.findClip(s, a.clip_id);
+      if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio, not MIDI`);
+      if (!Number.isInteger(a.semitones)) throw new S.SessionError('semitones must be a whole number');
+      const which = a.notes ? new Set<number>(a.notes) : null;
+      const notes = clip.midi.notes.map((n, i) => (!which || which.has(i) ? { ...n, pitch: n.pitch + a.semitones } : n));
+      if (notes.some((n) => n.pitch < 0 || n.pitch > 127)) throw new S.SessionError('that would move notes outside MIDI 0-127');
+      ctx.store.set(S.setClipMidi(s, clip.id, { ...clip.midi, notes }));
+      return { clip_id: clip.id, semitones: a.semitones, moved: which ? which.size : notes.length };
+    },
+  },
 ];
+
+/** Validate Piano Roll notes and sort them by start (then pitch). */
+export function checkNotes(notes: MidiNote[]): MidiNote[] {
+  for (const n of notes) {
+    if (!Number.isInteger(n.pitch) || n.pitch < 0 || n.pitch > 127) throw new S.SessionError(`pitch ${n.pitch} is not a MIDI note 0-127`);
+    if (!(n.start >= 0)) throw new S.SessionError(`note start ${n.start} is before the clip`);
+    if (!(n.duration > 0)) throw new S.SessionError('notes need a duration > 0');
+    if (!(n.velocity >= 1 && n.velocity <= 127)) throw new S.SessionError(`velocity ${n.velocity} is outside 1-127`);
+  }
+  const r4 = (x: number) => Math.round(x * 10000) / 10000;
+  return notes
+    .map((n) => ({ pitch: n.pitch, start: r4(n.start), duration: r4(n.duration), velocity: Math.round(n.velocity) }))
+    .sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+}

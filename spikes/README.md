@@ -25,6 +25,7 @@ the app (backlog entry in brackets). **reference** = results recorded, kept for 
 | `j_evals/` | GPU evals on the 3090: MRT2 CUDA, Audiobox, separation, transcription | reference | `j_evals/README.md` |
 | `k_source_prep/` | voice note → stems → MIDI (the `extract_midi` sidecar) | **live** | `k_source_prep/README.md` |
 | `l_sam_audio/` | can SAM Audio GGUF (audio.cpp, text prompts) beat htdemucs_6s / Mel-RoFormer? | dropped: lost on every part, 8–12 GB VRAM vs ~1.5 GB | `l_sam_audio/README.md` |
+| `m_cleanup_models/` | do the Mel-RoFormer denoise / dereverb models (audio-separator) beat noisereduce before audio → MIDI? | reference | `m_cleanup_models/README.md` |
 
-New spike: next letter (`l_...`), a module docstring that states the question and how to run it,
+New spike: next letter (`n_...`), a module docstring that states the question and how to run it,
 results in a README or `docs/spike-results.md`, and a row here.

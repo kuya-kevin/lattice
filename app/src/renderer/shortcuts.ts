@@ -76,7 +76,7 @@ export function shortcutFor(e: KeyLike): ShortcutAction | null {
 
 // ---- edit and window key commands (handled in App; Logic Pro defaults unless noted) ----
 
-export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'toggleSnap' | 'musicalTyping';
+export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'togglePianoRoll' | 'toggleSnap' | 'musicalTyping';
 
 export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }[] = [
   { keys: '⌘Z', action: 'undo', label: 'Undo' },
@@ -86,6 +86,7 @@ export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }
   { keys: '⌘V', action: 'pasteClip', label: 'Paste region at the playhead on the selected track' },
   { keys: 'O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },
   { keys: 'B', action: 'toggleSmartControls', label: 'Show/hide Smart Controls' },
+  { keys: 'P', action: 'togglePianoRoll', label: 'Show/hide the Piano Roll (or double-click a region)' },
   { keys: '⌘G', action: 'toggleSnap', label: 'Snap to grid on/off (GarageBand)' },
   { keys: '⌘K', action: 'musicalTyping', label: 'Musical Typing on/off (letter keys play notes)' },
 ];
@@ -109,5 +110,6 @@ export function editShortcutFor(e: KeyLike): EditAction | null {
   if (e.shiftKey) return null;
   if (k === 'o') return 'toggleLibrary';
   if (k === 'b') return 'toggleSmartControls';
+  if (k === 'p') return 'togglePianoRoll';
   return null;
 }

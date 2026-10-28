@@ -4,7 +4,7 @@
 // manifest instead (e2e tests, machines without the Python envs).
 import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import type { PrepManifest } from '../core/midi.ts';
 import type { ExtractMidiArgs } from '../core/sidecar.ts';
@@ -15,16 +15,23 @@ export interface SourcePrepConfig {
   /** where uploaded audio and run outputs go */
   workDir: string;
   mockManifest?: string;
+  /** folder for the Python envs, model weights and caches (LATTICE_BIGDISK, passed to run.sh) */
+  bigDisk?: string;
 }
 
-/** Defaults from the environment: LATTICE_SIDECAR_MOCK, LATTICE_SIDECAR_WORK, LATTICE_BIGDISK. */
-export function sourcePrepConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env): SourcePrepConfig {
-  const big = env.LATTICE_BIGDISK;
+/** Where the sidecar's envs and weights live when LATTICE_BIGDISK isn't set (the Mac setup, backlog B3a). */
+export const DEFAULT_BIGDISK = join(homedir(), 'lattice-data');
+
+/** Defaults from the environment (Electron loads lattice/.env first): LATTICE_SIDECAR_MOCK,
+ *  LATTICE_SIDECAR_WORK, LATTICE_BIGDISK (else ~/lattice-data when that folder exists). */
+export function sourcePrepConfig(repoRoot: string, env: NodeJS.ProcessEnv = process.env, fallbackBig = DEFAULT_BIGDISK): SourcePrepConfig {
+  const big = env.LATTICE_BIGDISK || (existsSync(fallbackBig) ? fallbackBig : undefined);
   return {
     script: resolve(repoRoot, 'spikes', 'k_source_prep', 'run.sh'),
     // big audio and stems stay off the (small) root disk when the big disk is configured
     workDir: env.LATTICE_SIDECAR_WORK ?? (big ? join(big, 'out-k', 'app') : join(tmpdir(), 'lattice-sidecar')),
     ...(env.LATTICE_SIDECAR_MOCK ? { mockManifest: resolve(env.LATTICE_SIDECAR_MOCK) } : {}),
+    ...(big ? { bigDisk: resolve(big) } : {}),
   };
 }
 
@@ -60,11 +67,12 @@ export async function runSourcePrep(cfg: SourcePrepConfig, a: ExtractMidiArgs, t
   const input = audioPath(cfg, a.sourceId);
   if (!existsSync(input)) throw new Error(`no audio for source ${a.sourceId} on the sidecar side (the renderer uploads it when the audio loads)`);
   if (!existsSync(cfg.script)) throw new Error(`source-prep sidecar not found at ${cfg.script}`);
+  if (!cfg.bigDisk) throw new Error(`no folder for the Python envs: set LATTICE_BIGDISK in lattice/.env, or create ${DEFAULT_BIGDISK} (backlog B3a)`);
   const outDir = join(cfg.workDir, 'runs', `${safeId(a.sourceId)}-${Date.now().toString(36)}`);
   mkdirSync(outDir, { recursive: true });
   const { sourceId: _s, ...opts } = a;
   return new Promise((ok, fail) => {
-    const p = spawn('bash', [cfg.script, input, outDir, ...prepArgs(opts)], { env: process.env, stdio: ['ignore', 'pipe', 'pipe'] });
+    const p = spawn('bash', [cfg.script, input, outDir, ...prepArgs(opts)], { env: { ...process.env, LATTICE_BIGDISK: cfg.bigDisk }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '';
     let stderr = '';
     p.stdout.on('data', (d) => (stdout += d));

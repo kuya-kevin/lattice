@@ -1,22 +1,39 @@
-// The device chain under the arrangement board (Logic's Smart Controls, B). The effects agent
-// mounts its DevicePanel as this component's children (see the marked region in App.tsx).
+// The editor area under the arrangement board, with two tabs: the device chain (Logic's Smart
+// Controls, B; the effects agent mounts its DevicePanel as this component's children, see the
+// marked region in App.tsx) and the Piano Roll (P, or double-click a region).
 import type { ReactNode } from 'react';
 import type { Session } from '../core/session';
 
-export function SmartControls({ session, onClose, children }: { session: Session; onClose: () => void; children?: ReactNode }) {
+export type EditorTab = 'fx' | 'notes';
+
+export function SmartControls({ session, tab, onTab, onClose, pianoRoll, children }: {
+  session: Session;
+  tab: EditorTab;
+  onTab: (t: EditorTab) => void;
+  onClose: () => void;
+  pianoRoll: ReactNode;
+  children?: ReactNode;
+}) {
   const track = session.tracks.find((t) => t.id === session.selection.trackId) ?? null;
   return (
     <section className="smart-controls" aria-label="Smart Controls" data-testid="smart-controls">
       <header>
-        <span className="sc-title">Device chain</span>
-        {!track && <span className="sc-track muted">No track selected</span>}
-        <button className="sc-close" title="Hide device chain (B)" aria-label="Hide Smart Controls" onClick={onClose}>×</button>
+        <div className="sc-tabs" role="tablist" aria-label="Editor">
+          <button role="tab" aria-selected={tab === 'fx'} className={tab === 'fx' ? 'on' : ''} onClick={() => onTab('fx')} title="Device chain (B)">Device chain</button>
+          <button role="tab" aria-selected={tab === 'notes'} className={tab === 'notes' ? 'on' : ''} onClick={() => onTab('notes')} title="Piano Roll (P, or double-click a region)">Piano Roll</button>
+        </div>
+        {tab === 'fx' && !track && <span className="sc-track muted">No track selected</span>}
+        <button className="sc-close" title="Hide editor area (B / P)" aria-label="Hide Smart Controls" onClick={onClose}>×</button>
       </header>
-      <div className="sc-body" data-testid="device-panel-slot">
-        {children ?? (
-          <p className="hint">{track ? `Effects for ${track.name} will appear here.` : 'Select a track to see its effects chain.'}</p>
-        )}
-      </div>
+      {tab === 'fx' ? (
+        <div className="sc-body" data-testid="device-panel-slot">
+          {children ?? (
+            <p className="hint">{track ? `Effects for ${track.name} will appear here.` : 'Select a track to see its effects chain.'}</p>
+          )}
+        </div>
+      ) : (
+        <div className="sc-body">{pianoRoll}</div>
+      )}
     </section>
   );
 }

@@ -194,6 +194,10 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 [data-clip-container][data-lt-selected] > :first-child { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 [data-clip-container][data-lt-selected] > :nth-child(2) { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 [data-clip-container][data-lt-drag-source] { opacity: 0.45; }
+/* [S3 midi] MIDI regions show their notes (Arrange.tsx drawRegionNotes) instead of the waveform
+   of their rendered audio; white notes take the track colour through the multiply tint above */
+[data-clip-container][data-lt-midi] > :nth-child(2) canvas { visibility: hidden; }
+.lt-notes { position: absolute; inset: 3px 0; width: 100%; height: calc(100% - 6px); pointer-events: none; fill: #fff; }
 
 /* drop indicator + help tag while moving a region or dragging a sound in */
 .drop-ghost {
@@ -427,6 +431,39 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .sc-close { margin-left: auto; padding: 0 8px; background: transparent; border-color: transparent; color: var(--muted); font-size: 15px; }
 .sc-body { min-width: 0; }
 .sc-body > .hint { padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-card); }
+.sc-tabs { display: inline-flex; gap: 2px; }
+.sc-tabs button { padding: 2px 10px; background: transparent; border-color: transparent; color: var(--muted); font-weight: 600; font-size: 12.5px; border-radius: 999px; }
+.sc-tabs button.on { color: var(--text); background: var(--island-2); }
+
+/* ---------- [S3 midi] Piano Roll (PianoRoll.tsx; --note is the track colour) ---------- */
+.piano-roll { display: flex; flex-direction: column; height: 320px; background: var(--island); border: 1px solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+.piano-roll.empty { height: auto; padding: 16px; gap: 10px; border-style: dashed; }
+.piano-roll.empty .hint { margin: 0; color: var(--muted); }
+.pr-toolbar { flex: none; display: flex; align-items: center; gap: 10px; padding: 6px 10px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.pr-title { font-weight: 600; font-size: 12.5px; }
+.pr-sub { color: var(--faint); font-size: 12px; }
+.pr-toolbar .spacer { flex: 1; }
+.pr-vel { display: inline-flex; align-items: center; gap: 6px; }
+.pr-vel input { width: 90px; }
+.pr-vel-n { width: 2.4em; font-family: var(--font-data); font-size: 11px; color: var(--muted); }
+.pr-scroll { flex: 1; overflow: auto; position: relative; }
+.pr-canvas { position: relative; display: grid; width: max-content; }
+.pr-corner { position: sticky; left: 0; top: 0; z-index: 4; background: var(--island-2); border-bottom: 1px solid var(--line); }
+.pr-ruler { position: sticky; top: 0; z-index: 3; background: var(--island-2); border-bottom: 1px solid var(--line); cursor: pointer; }
+.pr-ruler span { position: absolute; top: 3px; padding-left: 4px; border-left: 1px solid var(--line-strong); font-family: var(--font-data); font-size: 10.5px; color: var(--muted); line-height: 14px; }
+.pr-keys { position: sticky; left: 0; z-index: 2; background: #d9dbe0; }
+.pr-key { box-sizing: border-box; background: #d9dbe0; border-bottom: 1px solid #b9bcc4; color: #3a3d45; font-size: 9px; line-height: 11px; text-align: right; padding-right: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
+.pr-key.black { background: #1b1d22; color: #8a909c; border-bottom-color: #1b1d22; margin-right: 16px; }
+.pr-grid { position: relative; background-color: #1a1c21; cursor: default; overflow: hidden; }
+.pr-grid.pencil { cursor: crosshair; }
+.pr-row-black { position: absolute; left: 0; right: 0; background: rgba(0, 0, 0, 0.22); pointer-events: none; }
+.pr-outside { position: absolute; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.35); pointer-events: none; }
+.pr-note { position: absolute; box-sizing: border-box; background: var(--note); border: 1px solid rgba(0, 0, 0, 0.45); border-radius: 3px; cursor: grab; touch-action: none; }
+.pr-note.sel { border-color: #fff; box-shadow: 0 0 0 1px #fff; opacity: 1 !important; }
+.pr-vel-line { position: absolute; left: 3px; top: 50%; height: 2px; margin-top: -1px; background: rgba(255, 255, 255, 0.75); border-radius: 1px; pointer-events: none; }
+.pr-region { position: absolute; top: 18px; height: 15px; box-sizing: border-box; padding-left: 6px; background: color-mix(in srgb, var(--note) 45%, var(--island-2)); border: 1px solid var(--note); border-radius: 3px; color: var(--text); font-size: 10px; line-height: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pr-note-end { position: absolute; right: -2px; top: 0; bottom: 0; width: 6px; cursor: ew-resize; }
+.pr-playhead { position: absolute; top: 0; left: 0; width: 1px; background: var(--accent); pointer-events: none; z-index: 3; }
 
 /* ---------- resizable layout (Resizable.tsx): panel handles, board / chain split, lane height ---------- */
 .board-col.fixed-w { flex: none; width: var(--board-w); min-width: 0; max-width: none; }

@@ -24,7 +24,8 @@ import { LibraryPanel } from './LibraryPanel';
 import { libraryBuffer } from './libraryAudio';
 import { ColumnHandles, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
 import { editShortcutFor, type EditAction } from './shortcuts';
-import { SmartControls } from './SmartControls';
+import { SmartControls, type EditorTab } from './SmartControls';
+import { PianoRoll } from './PianoRoll'; // [S3 midi] note editor in the editor area
 import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
@@ -101,7 +102,8 @@ export function App({ bridge }: { bridge: Bridge }) {
   // ─── region: layout state (floating panels, device chain, snap) ───
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [museOpen, setMuseOpen] = useState(() => window.innerWidth >= 1440); // the conversation panel
-  const [smartOpen, setSmartOpen] = useState(true);
+  const [smartOpen, setSmartOpen] = useState(true); // the editor area under the board
+  const [editorTab, setEditorTab] = useState<EditorTab>('fx'); // device chain or Piano Roll
   const pan = usePan();
   const layout = useLayoutSizes(); // resizable ideas / board / device chain + lane height
   const worldRef = useRef<HTMLDivElement>(null);
@@ -205,6 +207,14 @@ export function App({ bridge }: { bridge: Bridge }) {
 
   // ─── region: edit / window key commands (undo, delete, copy/paste, O, B, Cmd-G) ───
   const editActions = useRef<Record<EditAction, () => void>>(null!);
+  const editorRef = useRef({ open: smartOpen, tab: editorTab });
+  editorRef.current = { open: smartOpen, tab: editorTab };
+  const openEditor = (tab: EditorTab, toggle = true) => {
+    const { open, tab: cur } = editorRef.current;
+    if (toggle && open && cur === tab) return setSmartOpen(false);
+    setEditorTab(tab);
+    setSmartOpen(true);
+  };
   const copiedClip = useRef<string | null>(null); // clip id; a paste copies it as it is now
   const playheadRef = useRef<() => number>(() => sessionRef.current?.transport.position ?? 0); // set by TransportSync
   editActions.current = {
@@ -225,7 +235,9 @@ export function App({ bridge }: { bridge: Bridge }) {
       if (c) run('duplicate_clip', { clip_id: c, start: playheadRef.current(), ...(trackId ? { track_id: trackId } : {}) });
     },
     toggleLibrary: () => setLibraryOpen((o) => !o),
-    toggleSmartControls: () => setSmartOpen((o) => !o),
+    // B and P each toggle their own tab of the editor area (Logic: Smart Controls, Piano Roll)
+    toggleSmartControls: () => openEditor('fx'),
+    togglePianoRoll: () => openEditor('notes'),
     toggleSnap: () => setSnap((s) => (s === 'off' ? lastSnap.current : 'off')),
     musicalTyping: () => musicalTyping.toggle(),
   };
@@ -303,7 +315,7 @@ export function App({ bridge }: { bridge: Bridge }) {
                       {error} <small>(click to dismiss)</small>
                     </div>
                   )}
-                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound}>
+                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound} onOpenClip={() => openEditor('notes', false)}>
                     {session.tracks.length === 0 ? (
                       <div className="empty" data-testid="empty">
                         <strong>Start with a sound</strong>
@@ -327,7 +339,7 @@ export function App({ bridge }: { bridge: Bridge }) {
               {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
               {smartOpen && session.tracks.length > 0 && <SplitHandle layout={layout} />}
               {smartOpen && session.tracks.length > 0 && (
-                <SmartControls session={session} onClose={() => setSmartOpen(false)}>
+                <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} pianoRoll={<PianoRoll session={session} run={run} bridge={bridge} />}>
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
                 </SmartControls>
               )}
@@ -346,7 +358,8 @@ export function App({ bridge }: { bridge: Bridge }) {
         <nav className="rail island" aria-label="Panels">
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
           <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (O)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
-          <button className={`ibtn${smartOpen ? ' on' : ''}`} aria-pressed={smartOpen} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
+          <button className={`ibtn${smartOpen && editorTab === 'fx' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'fx'} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
+          <button className={`ibtn${smartOpen && editorTab === 'notes' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'notes'} title="Piano Roll (P)" aria-label="Piano Roll" onClick={() => editActions.current.togglePianoRoll()}><Icon name="roll" /></button>
           <MusicalTypingButton className="ibtn"><Icon name="keys" /></MusicalTypingButton>
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>

@@ -7,7 +7,8 @@
 //    committed as one trim_clip when the drag ends.
 //  - library sounds dragged in (HTML5 drag and drop) land on the track under the pointer at
 //    the snapped time, or on a new track below the others.
-//  - clicking a clip selects it (track + clip), as in Logic.
+//  - clicking a clip selects it (track + clip), as in Logic; double-clicking also opens it in
+//    the Piano Roll (onOpenClip).
 //  - clicking or dragging in the bar ruler moves the playhead, snapped to the grid (Logic's
 //    ruler). With Cycle on, the ruler's upper half stays the cycle area, as in Logic.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -15,6 +16,7 @@ import { Modifier } from '@dnd-kit/abstract';
 import { DragDropProvider } from '@dnd-kit/react';
 import { useClipDragHandlers, useDragSensors, usePlaylistData, usePlaylistState } from '@waveform-playlist/browser';
 import { formatBarsBeats, type Meter } from '../core/metronome';
+import { midiSignature, type MidiData } from '../core/midi';
 import type { Session } from '../core/session';
 import { pxToSeconds, secondsToPx, snapMove, snapTime, type SnapMode } from '../core/snap';
 import { LIBRARY_MIME, libraryDrag } from './libraryAudio';
@@ -51,12 +53,14 @@ interface Props {
   /** commit the engine's current tracks as tool calls (after a trim) */
   commitTracks: () => void;
   onDropSound: (id: string, target: DropTarget) => void;
+  /** double-click on a clip (it is selected first) */
+  onOpenClip: (clipId: string) => void;
   children: ReactNode;
 }
 
 const NEW_LANE_HEIGHT = 64;
 
-export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, children }: Props) {
+export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onOpenClip, children }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { tracks, samplesPerPixel, sampleRate, playoutRef, isDraggingRef, onTracksChange } = usePlaylistData();
   const { isLoopEnabled } = usePlaylistState();
@@ -208,10 +212,22 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     else if (!clip && session.selection.clipId) run('select', { track_id: h.trackId });
   };
 
-  // Decorate the library's clip DOM (attributes only; styled in styles.css): mark the selected
-  // clip, and label each region header with the clip's own name (the library prints the
-  // track name, which is wrong once a clip has moved to another track).
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('.track-controls, [data-lt-ruler]')) return;
+    const h = hitTest(e.clientX, e.clientY);
+    if (!h.trackId || h.x0 == null || e.clientX < h.x0) return;
+    const clip = session.tracks.find((x) => x.id === h.trackId)?.clips.find((c) => h.seconds >= c.start && h.seconds <= c.start + c.duration);
+    if (!clip) return;
+    if (session.selection.clipId !== clip.id) run('select', { track_id: h.trackId, clip_id: clip.id });
+    onOpenClip(clip.id);
+  };
+
+  // Decorate the library's clip DOM (styled in styles.css): mark the selected clip, label each
+  // region header with the clip's own name (the library prints the track name, which is wrong
+  // once a clip has moved to another track), and draw a MIDI region's notes over its body in
+  // place of the rendered audio's waveform, as Logic, GarageBand and BandLab do.
   const selClip = session.selection.clipId;
+  const midiById = new Map(session.tracks.flatMap((t) => t.clips.filter((c) => c.midi).map((c) => [c.id, c] as const)));
   useLayoutEffect(() => {
     const root = wrapRef.current;
     if (!root) return;
@@ -227,6 +243,9 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
         else node.removeAttribute('data-lt-selected');
         const header = node.firstElementChild;
         if (header && c.name && header.getAttribute('data-lt-name') !== c.name) header.setAttribute('data-lt-name', c.name);
+        const mc = midiById.get(c.id);
+        const body = node.children[1] as HTMLElement | undefined;
+        if (body) drawRegionNotes(node, body, mc?.midi, mc?.offset ?? 0, mc?.duration ?? 0);
       });
     }
   });
@@ -256,6 +275,7 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       ref={wrapRef}
       className="arrange-interaction"
       onPointerDownCapture={onPointerDownCapture}
+      onDoubleClick={onDoubleClick}
       onDragOver={onDragOver}
       onDragLeave={(e) => !wrapRef.current?.contains(e.relatedTarget as Node) && setGhost(null)}
       onDrop={onDrop}
@@ -269,5 +289,48 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
         </div>
       )}
     </div>
+  );
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg';
+
+/** Draw (or clear) a MIDI region's notes as dashes over its body: time runs across the clip's
+ *  audible window, pitch fills the height (at least 16 rows, so a few notes don't turn into
+ *  bars). One SVG, rebuilt only when the notes or the trim change. */
+export function drawRegionNotes(node: Element, body: HTMLElement, midi: MidiData | undefined, offset: number, duration: number) {
+  let svg = body.querySelector<SVGSVGElement>(':scope > svg.lt-notes');
+  if (!midi || !(duration > 0)) {
+    node.removeAttribute('data-lt-midi');
+    svg?.remove();
+    return;
+  }
+  node.setAttribute('data-lt-midi', '');
+  const sig = `${midiSignature(midi, duration)}@${offset}`;
+  if (svg?.dataset.sig === sig) return;
+  if (!svg) {
+    svg = document.createElementNS(SVG_NS, 'svg');
+    svg.classList.add('lt-notes');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    body.appendChild(svg);
+  }
+  svg.dataset.sig = sig;
+  const ps = midi.notes.map((n) => n.pitch);
+  const lo0 = ps.length ? Math.min(...ps) : 60;
+  const hi0 = ps.length ? Math.max(...ps) : 60;
+  const rows = Math.max(16, hi0 - lo0 + 3);
+  const hi = Math.round((lo0 + hi0) / 2 + rows / 2);
+  svg.setAttribute('viewBox', `0 0 ${duration} ${rows}`);
+  svg.replaceChildren(
+    ...midi.notes
+      .filter((n) => n.start + n.duration > offset && n.start < offset + duration)
+      .map((n) => {
+        const r = document.createElementNS(SVG_NS, 'rect');
+        r.setAttribute('x', String(n.start - offset));
+        r.setAttribute('y', String(hi - n.pitch + 0.15));
+        r.setAttribute('width', String(Math.max(duration / 400, n.duration)));
+        r.setAttribute('height', '0.7');
+        r.setAttribute('opacity', String(0.55 + 0.45 * (n.velocity / 127)));
+        return r;
+      }),
   );
 }

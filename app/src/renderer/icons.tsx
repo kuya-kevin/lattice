@@ -22,6 +22,7 @@ const P: Record<string, ReactElement> = {
   fit: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   chev: <path d="M6 9l6 6 6-6" />,
+  roll: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h4M10 13h5M13 17h4" /></>,
   keys: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M8 6v7M12 6v7M16 6v7" /></>,
 };
 
