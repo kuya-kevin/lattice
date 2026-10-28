@@ -26,6 +26,7 @@ import { ColumnHandles, LaneHeightControl, SplitHandle, useLayoutSizes } from '.
 import { editShortcutFor, type EditAction } from './shortcuts';
 import { SmartControls, type EditorTab } from './SmartControls';
 import { PianoRoll } from './PianoRoll'; // [S3 midi] note editor in the editor area
+import { AudioEditor } from './AudioEditor'; // audio regions up close, same tab as the Piano Roll
 import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
@@ -339,7 +340,7 @@ export function App({ bridge }: { bridge: Bridge }) {
               {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
               {smartOpen && session.tracks.length > 0 && <SplitHandle layout={layout} />}
               {smartOpen && session.tracks.length > 0 && (
-                <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} pianoRoll={<PianoRoll session={session} run={run} bridge={bridge} />}>
+                <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} regionKind={selClip && !selClip.midi ? 'audio' : 'midi'} pianoRoll={selClip && !selClip.midi ? <AudioEditor session={session} run={run} bridge={bridge} /> : <PianoRoll session={session} run={run} bridge={bridge} />}>
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
                 </SmartControls>
               )}
@@ -359,7 +360,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
           <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (O)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
           <button className={`ibtn${smartOpen && editorTab === 'fx' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'fx'} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
-          <button className={`ibtn${smartOpen && editorTab === 'notes' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'notes'} title="Piano Roll (P)" aria-label="Piano Roll" onClick={() => editActions.current.togglePianoRoll()}><Icon name="roll" /></button>
+          <button className={`ibtn${smartOpen && editorTab === 'notes' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'notes'} title="Region editor: Piano Roll or Audio Editor (P)" aria-label="Piano Roll" onClick={() => editActions.current.togglePianoRoll()}><Icon name="roll" /></button>
           <MusicalTypingButton className="ibtn"><Icon name="keys" /></MusicalTypingButton>
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>

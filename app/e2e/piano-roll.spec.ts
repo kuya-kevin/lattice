@@ -92,15 +92,16 @@ test('double-click a MIDI region opens the Piano Roll; drag, add, delete, transp
   expect(errors).toEqual([]);
 });
 
-test('double-click an audio region offers Extract MIDI; P toggles the Piano Roll', async ({ page }) => {
+test('double-click an audio region opens the Audio Editor (with Extract MIDI) instead', async ({ page }) => {
   await extract(page);
   await openRegion(page, 't1');
-  const roll = page.getByTestId('piano-roll');
-  await expect(roll).toContainText('audio region');
+  await expect(page.getByTestId('piano-roll')).toHaveCount(0);
+  const ed = page.getByTestId('audio-editor');
+  await expect(ed).toBeVisible();
   await expect(page.locator('[data-track-row][data-track-id="t1"] [data-clip-container][data-lt-midi]')).toHaveCount(0);
-  await expect(roll.getByRole('button', { name: 'Extract MIDI' })).toBeVisible();
-  await page.keyboard.press('p');
-  await expect(roll).toHaveCount(0);
-  await page.keyboard.press('p');
-  await expect(roll).toBeVisible();
+  await expect(ed.getByRole('button', { name: 'Extract MIDI' })).toBeVisible();
+  // a MIDI region switches the same tab back to the Piano Roll
+  await openRegion(page, (await session(page)).tracks[1].id);
+  await expect(page.getByRole('tab', { name: 'Piano Roll' })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.getByTestId('piano-roll')).toBeVisible();
 });

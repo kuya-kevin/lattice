@@ -236,7 +236,7 @@ by id), then **M / S / R** buttons and a volume slider.
 The editor area under the board has two tabs, **Device chain** (B) and **Piano Roll** (P), like
 Logic's Smart Controls and editors sharing the bottom of the main window (BandLab: Effects /
 MIDI Editor tabs). **Double-click a region** opens it in the Piano Roll, as in Logic and BandLab;
-an audio region shows Extract MIDI instead. It always shows the selected region.
+an audio region opens the Audio Editor instead (below). It always shows the selected region.
 - Keys on the left (click to hear), bars on top (click moves the playhead), one row per semitone;
   drum regions label rows with GM names (36 Kick, 38 Snare, 42 Hat).
 - **Pointer tool:** click selects (Shift adds), drag moves (time snaps to the grid, rows change
@@ -250,6 +250,23 @@ an audio region shows Extract MIDI instead. It always shows the selected region.
 - Checked in GarageBand 10 on Oct 28: regions show white note lines on the track colour; the
   Piano Roll shares the bottom editor with Score, with the region strip and velocity lines above.
   Differences we keep: GarageBand names middle C "C3"; we say C4, like the session summary Muse reads.
+
+## Audio Editor (Oct 28)
+
+Double-click an **audio** region (or press P with one selected) and the same tab becomes the
+**Audio Editor**, as GarageBand's bottom editor switches between audio and Piano Roll by region
+kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and trimming it.
+- The whole recording is drawn on the bar grid at close zoom (−/+), dimmed outside the region, so
+  you see what a trim would bring back. Grid lines show through the region.
+- Drag an edge to trim, drag the body to move; both snap to the editor's grid (default 1/16,
+  Off, or hold Option). The audio stays in place on a trim. **Snap start to grid** moves the
+  region to the nearest grid line.
+- Click or drag in the ruler (or the empty lane) to **scrub**: short grains of the dry audio
+  play under the pointer and the playhead lands where you let go (not snapped).
+- Each gesture is one `trim_clip` / `move_clip` call: one undo step and a hand edit Muse sees.
+  Extract MIDI sits in its toolbar.
+- Not done: slip editing (moving the audio inside a fixed region), fades, and the track's effects
+  in the scrub audio.
 
 ## Sources (layout, library, regions)
 

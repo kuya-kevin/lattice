@@ -1,16 +1,19 @@
 // The editor area under the arrangement board, with two tabs: the device chain (Logic's Smart
 // Controls, B; the effects agent mounts its DevicePanel as this component's children, see the
-// marked region in App.tsx) and the Piano Roll (P, or double-click a region).
+// marked region in App.tsx) and the region editor (P, or double-click a region): the Piano Roll
+// for a MIDI region, the Audio Editor for an audio one, as in GarageBand.
 import type { ReactNode } from 'react';
 import type { Session } from '../core/session';
 
 export type EditorTab = 'fx' | 'notes';
 
-export function SmartControls({ session, tab, onTab, onClose, pianoRoll, children }: {
+export function SmartControls({ session, tab, onTab, onClose, regionKind = 'midi', pianoRoll, children }: {
   session: Session;
   tab: EditorTab;
   onTab: (t: EditorTab) => void;
   onClose: () => void;
+  /** what the region tab shows, which names it */
+  regionKind?: 'midi' | 'audio';
   pianoRoll: ReactNode;
   children?: ReactNode;
 }) {
@@ -20,7 +23,7 @@ export function SmartControls({ session, tab, onTab, onClose, pianoRoll, childre
       <header>
         <div className="sc-tabs" role="tablist" aria-label="Editor">
           <button role="tab" aria-selected={tab === 'fx'} className={tab === 'fx' ? 'on' : ''} onClick={() => onTab('fx')} title="Device chain (B)">Device chain</button>
-          <button role="tab" aria-selected={tab === 'notes'} className={tab === 'notes' ? 'on' : ''} onClick={() => onTab('notes')} title="Piano Roll (P, or double-click a region)">Piano Roll</button>
+          <button role="tab" aria-selected={tab === 'notes'} className={tab === 'notes' ? 'on' : ''} onClick={() => onTab('notes')} title={`${regionKind === 'audio' ? 'Audio Editor' : 'Piano Roll'} (P, or double-click a region)`}>{regionKind === 'audio' ? 'Audio Editor' : 'Piano Roll'}</button>
         </div>
         {tab === 'fx' && !track && <span className="sc-track muted">No track selected</span>}
         <button className="sc-close" title="Hide editor area (B / P)" aria-label="Hide Smart Controls" onClick={onClose}>×</button>
