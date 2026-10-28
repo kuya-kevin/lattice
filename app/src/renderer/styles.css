@@ -97,10 +97,14 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .world {
   position: relative; display: flex; align-items: flex-start; gap: 56px;
   width: 100%; min-height: 100%;
-  padding: calc(var(--top-h) + 30px) 96px 280px 72px; /* the bottom clears the prompt bar and the keyboard */
+  padding: calc(var(--top-h) + 30px) 0 280px 72px; /* the bottom clears the prompt bar and the keyboard */
+  --gutter-r: 104px; /* clears the tool rail and zoom bar */
 }
+/* the right gutter is a trailing flex item, not padding: when a narrow window makes the board
+   overflow, padding stays inside the 100% box and the board's end slides under the rail */
+.world::after { content: ''; flex: none; align-self: stretch; width: calc(var(--gutter-r) - 56px); }
 .muse-open .world { padding-left: calc(var(--muse-w) + 64px); }
-.library-open .world { padding-right: calc(var(--lib-w) + 96px); }
+.library-open .world { --gutter-r: calc(var(--lib-w) + 104px); }
 .wires { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; overflow: visible; }
 .frame-title { display: flex; gap: 8px; align-items: baseline; margin: 0 0 10px 4px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
 .frame-title b { color: var(--text); font-weight: 600; }
