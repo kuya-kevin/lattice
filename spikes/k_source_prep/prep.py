@@ -12,6 +12,11 @@ Options (all optional):
   --always-quantize                          quantize even when the tempo estimate is unsure (< 0.45)
   --no-key-snap                              keep out-of-key notes
   --min-len S                                minimum note length in seconds
+  --transcriber muscriptor|classic           pitched stems: MuScriptor medium (default; separate process in the
+                                             j_evals `muscriptor` env, CC BY-NC weights) or basic-pitch / pyin.
+                                             The melody of a layered note stays on basic-pitch either way.
+                                             A stem falls back to classic when MuScriptor fails, is missing, has
+                                             < 3 GB free VRAM, or returns no notes (with a warning)
   --yourmt3                                  allow YourMT3+ for keys stems (separate GPL process; needs >= 14 GB free VRAM)
   --bytedance                                allow ByteDance piano for the layered melody (no licence file upstream)
 
@@ -30,6 +35,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -48,8 +54,10 @@ import transcribers as T  # noqa: E402
 
 ENV_SH = HERE.parent / "j_evals" / "env.sh"
 YOURMT3_RUN = HERE.parent / "j_evals" / "yourmt3_run.py"
+MUSCRIPTOR_RUN = HERE / "muscriptor_stems.py"
 SR = 44100
 YOURMT3_MIN_FREE_MB = 14000
+MUSCRIPTOR_MIN_FREE_MB = 3000  # medium peaks at 2.3 GB while loading (3090, fp32)
 # Below this tempo confidence the notes are not quantized (synthetic set at a steady tempo:
 # 0.53-0.90; free-time real voice notes: 0.11-0.40).
 MIN_TEMPO_CONF = 0.45
@@ -158,6 +166,18 @@ def yourmt3(jobs: list[tuple[str, str]], work: Path) -> bool:
     if p.returncode != 0:
         log("YourMT3+ failed:", p.stderr[-1500:])
     return p.returncode == 0
+
+
+def muscriptor(jobs: list[tuple[str, str]]) -> dict | None:
+    """{out_midi: {notes, retry, secs}}, or None if the process failed."""
+    jf = Path(jobs[0][1]).parent / "muscriptor_jobs.json"
+    jf.write_text(json.dumps([{"in": a, "out": b} for a, b in jobs]))
+    p = subprocess.run([str(ENV_SH), "muscriptor", "python", str(MUSCRIPTOR_RUN), str(jf)], capture_output=True, text=True, env=os.environ.copy())
+    for line in p.stdout.splitlines():
+        if line.startswith("RESULT "):
+            return json.loads(line[7:])
+    log("MuScriptor failed:", p.stderr[-1500:])
+    return None
 
 
 def notes_from_midi(path: str) -> list[C.Note]:
@@ -294,6 +314,34 @@ def run(src: str, out_dir: str, opts) -> dict:
     content, plan, w = plan_stems(opts.mode, stems, input_wav, analysis, opts)
     warns += w
 
+    # MuScriptor for the pitched stems the router gave to basic-pitch / pyin (opt-ins keep theirs),
+    # except a layered note's melody: basic-pitch + cleanup scored 0.89 on the Mel-RoFormer vocal stem
+    # vs 0.82 for MuScriptor (synthetic phone set, Oct 27)
+    ms = [p for p in plan if p["transcriber"] in ("basic_pitch", "pyin") and not (content == "layered" and p["role"] == "melody")
+          ] if opts.transcriber == "muscriptor" else []
+    if ms:
+        t = time.time()
+        free = T.free_vram_mb()
+        res = None
+        if shutil.which("nvidia-smi") and free < MUSCRIPTOR_MIN_FREE_MB:
+            warns.append(f"MuScriptor skipped: {free} MB VRAM free (< {MUSCRIPTOR_MIN_FREE_MB}); classic transcribers used")
+        else:
+            # a hum-only note goes in whole: on the Mel-RoFormer vocal stem MuScriptor more often hears
+            # nothing (medium F1 0.25 vs 0.76 on the raw recording, j_evals synthetic set)
+            src_of = {p["name"]: input_wav if content == "hum" else p["audio"] for p in ms}
+            res = muscriptor([(src_of[p["name"]], str(out / "midi" / f"{p['name']}.muscriptor.mid")) for p in ms])
+            if res is None:
+                warns.append("MuScriptor failed or is not installed (j_evals `muscriptor` env); classic transcribers used")
+        for p in ms:
+            r = (res or {}).get(str(out / "midi" / f"{p['name']}.muscriptor.mid"))
+            if r and r["notes"]:
+                p["transcriber"] = "muscriptor"
+                p["muscriptor_retry"] = r["retry"]
+                p["audio"] = src_of[p["name"]]
+            elif res is not None:
+                warns.append(f"{p['name']}: MuScriptor found no notes; {p['transcriber']} used instead")
+        timing["muscriptor"] = round(time.time() - t, 1)
+
     # YourMT3+ gate
     if any(p["transcriber"] == "yourmt3" for p in plan):
         free = T.free_vram_mb()
@@ -331,6 +379,8 @@ def run(src: str, out_dir: str, opts) -> dict:
             raw_by_stem[p["name"]] = T.bytedance_piano(p["audio"])
         elif p["transcriber"] == "yourmt3":
             raw_by_stem[p["name"]] = notes_from_midi(str(out / "midi" / f"{p['name']}.yourmt3.mid"))
+        elif p["transcriber"] == "muscriptor":
+            raw_by_stem[p["name"]] = notes_from_midi(str(out / "midi" / f"{p['name']}.muscriptor.mid"))
         timing[f"transcribe_{p['name']}"] = round(time.time() - t, 1)
 
     # one tempo for the whole note: estimated from all pitched + drum onsets together
@@ -377,6 +427,7 @@ def run(src: str, out_dir: str, opts) -> dict:
             "midi": f"midi/{p['name']}.mid", "raw_midi": f"midi/{p['name']}.raw.mid",
             "raw_notes": len(raw), "notes_count": len(notes), "range": note_range(notes) if not is_drum else None,
             "confidence": round(conf, 3), "cleanup": res.steps,
+            **({"muscriptor_retry": True} if p.get("muscriptor_retry") else {}),
             **({"drum_classes": {c: sum(1 for n in notes if n.pitch == D.GM[c]) for c in D.GM}} if is_drum else {}),
             "notes": [{"pitch": int(n.pitch), "start": round(n.start, 4), "end": round(n.end, 4), "velocity": int(n.velocity)} for n in notes],
         })
@@ -387,7 +438,7 @@ def run(src: str, out_dir: str, opts) -> dict:
         "version": 1, "input": Path(src).name, "duration": round(len(y) / SR, 3), "mode": opts.mode, "content": content,
         "analysis": analysis, "tempo": tempo, "key": key,
         "settings": {"min_tempo_confidence": MIN_TEMPO_CONF, "separate": opts.separate, "denoise": opts.denoise, "grid": opts.grid, "strength": opts.strength,
-                     "key_snap": not opts.no_key_snap, "yourmt3": opts.yourmt3, "bytedance": opts.bytedance},
+                     "key_snap": not opts.no_key_snap, "transcriber": opts.transcriber, "yourmt3": opts.yourmt3, "bytedance": opts.bytedance},
         "separation": [{"model": m, "licence": "MIT"} for m in models], "warnings": warns,
         "timing": {**timing, "total": round(time.time() - t0, 1)}, "stems": out_stems,
     }
@@ -408,6 +459,7 @@ def parse(argv=None):
     ap.add_argument("--always-quantize", action="store_true", help="quantize even when the tempo estimate is unsure")
     ap.add_argument("--no-key-snap", action="store_true")
     ap.add_argument("--min-len", type=float, default=None)
+    ap.add_argument("--transcriber", default="muscriptor", choices=["muscriptor", "classic"])
     ap.add_argument("--yourmt3", action="store_true")
     ap.add_argument("--bytedance", action="store_true")
     return ap.parse_args(argv)

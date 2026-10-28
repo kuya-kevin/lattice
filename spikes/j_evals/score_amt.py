@@ -8,7 +8,7 @@ Reads truth from $LATTICE_OUT/amt/synth/truth, predictions from $LATTICE_OUT/amt
 Scores
 - single-part clips (hum, bass, keys): all predicted non-drum notes vs the part;
 - layered clips, whole mix: all notes vs all parts ("all"), and for YourMT3 per part by its
-  instrument label (singing/voice -> hum, programs 32-39 -> bass, rest -> keys);
+  instrument label (YourMT3, MuScriptor; singing/voice -> hum, programs 32-39 -> bass, rest -> keys);
 - layered clips via separation: the stem's notes vs the matching part.
 Also a pitch-class F1 (octave errors forgiven). Writes $LATTICE_OUT/amt/f1.json and f1.md.
 """
@@ -24,7 +24,9 @@ import pretty_midi
 ROOT = Path(os.environ["LATTICE_OUT"]) / "amt"
 PRED = ROOT / "pred"
 TRUTH = ROOT / "synth" / "truth"
-SYSTEMS = ["basic_pitch", "basic_pitch_clean", "pyin", "bytedance_piano", "yourmt3"]
+SYSTEMS = ["basic_pitch", "basic_pitch_clean", "pyin", "bytedance_piano", "yourmt3",
+           "muscriptor_small", "muscriptor_medium", "muscriptor_large"]
+LABELLED = {"yourmt3", "muscriptor_small", "muscriptor_medium", "muscriptor_large"}  # name their instruments
 STEM_FOR_PART = {"hum": ["vocals"], "bass": ["bass"], "keys": ["piano"]}
 
 
@@ -97,11 +99,11 @@ def main():
                     s, spc = f1(all_truth, notes_of(pm)), f1(all_truth, notes_of(pm), fold=True)
                     rows[(f"layered {cond} mix->all parts", sysname)].append((s["f"], spc["f"]))
                     detail.append({"clip": clip, "cond": cond, "system": sysname, "part": "all", **s, "f_pitch_class": spc["f"]})
-                    if sysname == "yourmt3":
+                    if sysname in LABELLED:
                         for part, ref in parts.items():
                             s = f1(ref, notes_of(pm, part))
                             spc = f1(ref, notes_of(pm, part), fold=True)
-                            rows[(f"layered {cond} mix->{part} (YourMT3 instrument label)", sysname)].append((s["f"], spc["f"]))
+                            rows[(f"layered {cond} mix->{part} (instrument label)", sysname)].append((s["f"], spc["f"]))
             if cond != "phone":
                 continue
             # via separation stems

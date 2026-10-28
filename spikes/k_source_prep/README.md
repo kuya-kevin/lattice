@@ -9,15 +9,15 @@ voice note (wav / m4a)
   └─ analyse: percussive ratio (HPSS), pyin voiced fraction, beat-tracker BPM
        ├─ percussive + unvoiced ─────────────────────────────────────→ drums
        └─ Mel-RoFormer vocals / other (sep env, MIT)
-            vocal share > 0.7 → hum      vocals ──→ pyin (fmin 80 Hz: skips mains hum)
-            vocal share < 0.2 → instrument: basic-pitch on "other"
-                 median < E3-ish, mono-ish → bass ──→ basic-pitch
-                 polyphony ≥ 1.3          → keys ──→ basic-pitch (YourMT3+ if --yourmt3 and ≥ 14 GB free)
-                 else                     → melody ─→ basic-pitch
+            vocal share > 0.7 → hum      whole recording ──→ MuScriptor (classic: vocals → pyin)
+            vocal share < 0.2 → instrument: basic-pitch on "other" decides which
+                 median < E3-ish, mono-ish → bass ──→ MuScriptor
+                 polyphony ≥ 1.3          → keys ──→ MuScriptor (YourMT3+ if --yourmt3 and ≥ 14 GB free)
+                 else                     → melody ─→ MuScriptor
             otherwise → layered: + htdemucs_6s (MIT)
                  vocals ───────────────→ melody: basic-pitch (ByteDance if --bytedance)
-                 bass ─────────────────→ bass: basic-pitch
-                 piano+guitar+other (summed) → keys: basic-pitch / YourMT3+
+                 bass ─────────────────→ bass: MuScriptor
+                 piano+guitar+other (summed) → keys: MuScriptor / YourMT3+
                  drums (only if the mix is percussive) → onset drum detector
   └─ one tempo for the note: 1/8-grid fit of all onsets (+ beat-tracker hint), with a confidence
   └─ cleanup per stem (cleanup.py): range limits → octave fix (melody) → confidence/velocity
@@ -50,6 +50,9 @@ so it is never imported). It prints `MANIFEST <path>` last. Manifest schema: see
 | `score_cleanup.py` | amt | F1 before/after cleanup on the j_evals synthetic set → `<bigdisk>/out-k/cleanup_f1.md` |
 | `drum_eval.py` | amt | synthetic phone drum set + per-class onset F1; `tune` grid-searches `drums.TH` |
 | `renders.py` | amt | listening renders (piano / GM kit, A/B against the input) → `<bigdisk>/out-k/listen/` |
+| `muscriptor_stems.py` | muscriptor | MuScriptor medium on the stems prep.py hands it (one model load; retry with CFG 3 when empty) |
+| `run_synth.py` | amt | prep.py on the 16 synthetic phone clips, one log line per clip → `<bigdisk>/out-k/<name>/` |
+| `listen_compare.py` | amt | two sidecar runs side by side (old vs MuScriptor) → `<bigdisk>/out-k/listen_compare/index.html` |
 
 ## Results (2026-10-27)
 
@@ -84,6 +87,36 @@ What the ablation showed (and the defaults now follow):
   melodies only.
 - Cleanup hurts YourMT3+ on hum (0.47 → 0.37); the router never sends hum to YourMT3+.
 
+### MuScriptor medium as the transcriber (Oct 27, default since)
+
+`--transcriber muscriptor` (default) sends the pitched stems to MuScriptor medium in a separate
+process (j_evals `muscriptor` env, about 2.3 GB VRAM), except a layered note's melody, which stays
+on basic-pitch. `--transcriber classic` is the table above. A stem falls back to classic, with a
+warning, when MuScriptor fails, isn't installed, has < 3 GB free VRAM, or finds no notes.
+Same 16 phone clips, after cleanup + quantize (`run_synth.py`, `score_cleanup.py synth synth_muscriptor`):
+
+| category | classic | MuScriptor sidecar |
+|---|---|---|
+| hum | 0.67 | **0.84** |
+| bass | **0.98** | 0.97 |
+| keys | 0.79 | **0.90** |
+| layered → hum | **0.89** (basic-pitch, kept) | 0.89 |
+| layered → bass | 0.89 | **0.96** |
+| layered → keys | 0.59 | **0.68** |
+
+- **Hum goes in whole.** On the Mel-RoFormer vocal stem MuScriptor's onsets came 70-80 ms late on
+  2 of 4 clips (F1 0.00 at ±50 ms) or it heard nothing. On the raw recording the lag is under 11 ms
+  and hum averages 0.84 (vs 0.42 from the stem).
+- **The cleanup barely matters for MuScriptor.** Raw is equal or slightly better (keys 0.93 raw vs
+  0.90 after); it stays for key snap and quantize. On one clip the melody octave fix kept the wrong
+  octave of a doubled note.
+- htdemucs stems vary slightly from run to run, so MuScriptor note counts on layered real notes
+  change between runs (e.g. vn_112 keys 343 vs 456). MuScriptor itself is deterministic (greedy).
+- Real voice notes (all 9) ran clean through `run.sh` in 10-42 s each. The listening page is
+  `<bigdisk>/out-k/listen_compare/index.html`; the user judged the new output good (Oct 27).
+- On the Mac the weights go wherever `LATTICE_BIGDISK` points (`$LATTICE_BIGDISK/hf/`); setup steps
+  are in `docs/backlog.md` B3a.
+
 ### Drums (`drum_eval.py`, 6 synthetic GM-kit clips, phone-degraded)
 
 Onset F1 0.94; per class kick 0.73, snare 0.56, hat 0.89. The thresholds were tuned on these
@@ -110,6 +143,9 @@ session tempo (`quantize_midi`).
   (one piano-like voice, a synthesized kit for drums), rendered to an AudioBuffer.
 
 ## Licences
+
+MuScriptor (default transcriber): code MIT, weights CC BY-NC 4.0, non-commercial, HF licence
+click-through needed per user; a separate process.
 
 Mel-RoFormer (MIT), htdemucs_6s (MIT), basic-pitch (Apache-2.0), pyin/librosa (ISC) are the
 defaults. ByteDance piano transcription has no licence file upstream: opt-in only (`--bytedance`).

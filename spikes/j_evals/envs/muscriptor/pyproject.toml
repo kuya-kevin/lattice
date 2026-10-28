@@ -1,0 +1,6 @@
+[project]
+name = "j-evals-muscriptor"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+# MuScriptor: code MIT, weights CC BY-NC 4.0 (HF licence click-through, non-commercial).
+dependencies = ["muscriptor", "pretty_midi", "soundfile", "mir_eval"]

@@ -12,6 +12,8 @@ export UV_CACHE_DIR=$BIG/uv-cache UV_LINK_MODE=copy UV_PYTHON_INSTALL_DIR=$BIG/u
 export HF_HUB_CACHE=$BIG/hf TORCH_HOME=$BIG/torch XDG_CACHE_HOME=$BIG/xdg-cache
 export PIP_CACHE_DIR=$BIG/pip-cache TMPDIR=$BIG/tmp MAGENTA_HOME=$BIG/magenta
 export NUMBA_CACHE_DIR=$BIG/xdg-cache/numba MPLCONFIGDIR=$BIG/xdg-cache/mpl
+# huggingface_hub looks for the login token under XDG_CACHE_HOME, which moves above; keep the user's.
+[[ -f $HOME/.cache/huggingface/token ]] && export HF_TOKEN_PATH=${HF_TOKEN_PATH:-$HOME/.cache/huggingface/token}
 export LATTICE_OUT=$BIG/out-evals LATTICE_DATA=$BIG/transfer/data LATTICE_C=$BIG/transfer/out/c_recreate
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 name=$1; shift

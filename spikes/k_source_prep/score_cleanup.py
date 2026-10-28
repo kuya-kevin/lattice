@@ -1,13 +1,13 @@
 """Note F1 before / after cleanup on the j_evals synthetic phone set (mir_eval, onset +-50 ms).
 
-    spikes/j_evals/env.sh amt python spikes/k_source_prep/score_cleanup.py
+    spikes/j_evals/env.sh amt python spikes/k_source_prep/score_cleanup.py [sidecar run names...]
 
 A. Cleanup applied to yesterday's raw predictions ($LATTICE_OUT/amt/pred/<system>/), phone clips
    and the separated stems, for each transcriber:
      raw | clean (no quantize) | clean + 1/16 quantize at the estimated tempo | ... at the true tempo
 B. The full sidecar (router + cleanup) on the 16 phone clips, read from
-   $LATTICE_BIGDISK/out-k/synth/<clip>/manifest.json (run prep.py first, see README): raw vs
-   cleaned per stem, scored against the matching part.
+   $LATTICE_BIGDISK/out-k/<run>/<clip>/manifest.json for each run name given (default: synth;
+   make them with run_synth.py): raw vs cleaned per stem, scored against the matching part.
 Writes $LATTICE_BIGDISK/out-k/cleanup_f1.{json,md}.
 """
 import json
@@ -30,7 +30,7 @@ OUTK = Path(os.environ["LATTICE_BIGDISK"]) / "out-k"
 PRED = EVALS / "amt" / "pred"
 TRUTH = EVALS / "amt" / "synth" / "truth"
 MAN = {m["id"]: m for m in json.loads((EVALS / "amt" / "synth" / "manifest.json").read_text())}
-SYSTEMS = ["basic_pitch", "pyin", "bytedance_piano", "yourmt3"]
+SYSTEMS = ["basic_pitch", "pyin", "bytedance_piano", "yourmt3", "muscriptor_medium"]
 ROLE = {"hum": "melody", "bass": "bass", "keys": "keys"}
 STEM = {"hum": ("mel_roformer", "vocals"), "bass": ("htdemucs_6s", "bass"), "keys": ("htdemucs_6s", "piano")}
 VARIANTS = ["raw", "clean", "clean+q(est)", "clean+q(true)"]
@@ -59,6 +59,34 @@ def variants(notes, role, bpm):
     yield "clean+q(true)", C.clean(notes, C.CleanupOptions(role=role, bpm=bpm)).notes
 
 
+def score_sidecar(mf, clip, cat, bpm, parts, rows, tempo_err):
+    if not mf.exists():
+        return
+    m = json.loads(mf.read_text())
+    if m.get("tempo"):
+        b = m["tempo"]["bpm"]
+        ratio = min([abs(b * k / bpm - 1) for k in (0.5, 1, 2, 2 / 3, 1.5)])
+        tempo_err.append({"clip": clip, "true": bpm, "est": b, "rel_err_mod_octave": round(ratio, 4), "conf": m["tempo"].get("confidence")})
+    stem_part = {"melody": "hum", "bass": "bass", "keys": "keys", "piano": "keys", "guitar": "keys"}
+    used = set()
+    for s in m["stems"]:
+        part = cat if cat != "layered" else stem_part.get(s["name"])
+        if part not in parts or (cat == "layered" and part in used):
+            continue
+        used.add(part)
+        ref = parts[part]
+        raw = pretty_midi.PrettyMIDI(str(mf.parent / s["raw_midi"])).instruments[0].notes
+        cl = pretty_midi.PrettyMIDI(str(mf.parent / s["midi"])).instruments[0].notes
+        label = f"{cat} -> {part}" if cat == "layered" else cat
+        rows[("B", label, f"{m['content']}:{s['transcriber']}", "raw")].append(f1(ref, raw)["f"])
+        rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean+q(est)")].append(f1(ref, cl)["f"])
+        # same cleanup at the true tempo, from the raw notes
+        raw_n = [C.Note(n.pitch, n.start, n.end, n.velocity, n.velocity / 127 if s["transcriber"] != "pyin" else 1.0) for n in raw]
+        role = s["role"]
+        rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean")].append(f1(ref, as_pm(C.clean(raw_n, C.CleanupOptions(role=role, quantize=None)).notes))["f"])
+        rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean+q(true)")].append(f1(ref, as_pm(C.clean(raw_n, C.CleanupOptions(role=role, bpm=bpm)).notes))["f"])
+
+
 def main():
     rows = defaultdict(list)
     tempo_err = []
@@ -83,32 +111,8 @@ def main():
                 for v, ns in variants(notes, role, bpm):
                     rows[("A", label, system, v)].append(f1(ref, as_pm(ns))["f"])
         # --- B. the sidecar
-        mf = OUTK / "synth" / clip / "manifest.json"
-        if not mf.exists():
-            continue
-        m = json.loads(mf.read_text())
-        if m.get("tempo"):
-            b = m["tempo"]["bpm"]
-            ratio = min([abs(b * k / bpm - 1) for k in (0.5, 1, 2, 2 / 3, 1.5)])
-            tempo_err.append({"clip": clip, "true": bpm, "est": b, "rel_err_mod_octave": round(ratio, 4), "conf": m["tempo"].get("confidence")})
-        stem_part = {"melody": "hum", "bass": "bass", "keys": "keys", "piano": "keys", "guitar": "keys"}
-        used = set()
-        for s in m["stems"]:
-            part = cat if cat != "layered" else stem_part.get(s["name"])
-            if part not in parts or (cat == "layered" and part in used):
-                continue
-            used.add(part)
-            ref = parts[part]
-            raw = pretty_midi.PrettyMIDI(str(mf.parent / s["raw_midi"])).instruments[0].notes
-            cl = pretty_midi.PrettyMIDI(str(mf.parent / s["midi"])).instruments[0].notes
-            label = f"{cat} -> {part}" if cat == "layered" else cat
-            rows[("B", label, f"{m['content']}:{s['transcriber']}", "raw")].append(f1(ref, raw)["f"])
-            rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean+q(est)")].append(f1(ref, cl)["f"])
-            # same cleanup at the true tempo, from the raw notes
-            raw_n = [C.Note(n.pitch, n.start, n.end, n.velocity, n.velocity / 127 if s["transcriber"] != "pyin" else 1.0) for n in raw]
-            role = s["role"]
-            rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean")].append(f1(ref, as_pm(C.clean(raw_n, C.CleanupOptions(role=role, quantize=None)).notes))["f"])
-            rows[("B", label, f"{m['content']}:{s['transcriber']}", "clean+q(true)")].append(f1(ref, as_pm(C.clean(raw_n, C.CleanupOptions(role=role, bpm=bpm)).notes))["f"])
+        for run in sys.argv[1:] or ["synth"]:
+            score_sidecar(OUTK / run / clip / "manifest.json", clip, cat, bpm, parts, rows, tempo_err)
 
     table = defaultdict(dict)
     for (sec, label, system, v), vals in rows.items():

@@ -1,6 +1,6 @@
 # Backlog
 
-Updated 2026-10-27. One entry per remaining task, in priority order. Each says what "done" means,
+Updated 2026-10-27 (late). One entry per remaining task, in priority order. Each says what "done" means,
 which files it touches, and what it depends on, so an agent can be pointed at one entry.
 Rules and commands: `CLAUDE.md`. Status: `HANDOFF.md`. Stream ids (S0–S8): `docs/session-plan.md`.
 
@@ -73,27 +73,50 @@ and update the `HANDOFF.md` status table.
 - **Why:** `extract_midi` only runs on the 3090 box today. `spikes/k_source_prep/run.sh` needs
   `LATTICE_BIGDISK` and the j_evals `amt` and `sep` envs, which were only built there. The user
   hasn't tried audio to MIDI yet, and the demo is on the Mac.
-- **Do:** set `LATTICE_BIGDISK` to a Mac folder, `uv sync` the `amt` and `sep` envs there, run one
-  voice note end to end from the app. YourMT3+ stays off (needs a 14 GB GPU).
+- **Do (on the Mac; no code change expected):**
+  1. Pick a Mac folder for everything heavy, e.g. `~/lattice-data`, and
+     `export LATTICE_BIGDISK=~/lattice-data` (also wherever the app is started, so `sourcePrep.ts`
+     passes it on). `env.sh` puts every cache under it: venvs in `venvs/`, model weights in `hf/`
+     (`HF_HUB_CACHE`), torch weights in `torch/`. Nothing goes to the 3090's disk layout.
+  2. `uv sync` the j_evals `amt`, `sep` and `muscriptor` envs through `env.sh`.
+  3. HF login once, outside `env.sh`: `uvx hf auth login`, with the account that accepted the
+     MuScriptor licence (writes `~/.cache/huggingface/token`; `env.sh` points `HF_TOKEN_PATH` at it).
+  4. First run downloads MuScriptor medium (1.2 GB) into `$LATTICE_BIGDISK/hf/` on the Mac, plus the
+     Mel-RoFormer / htdemucs weights.
+  5. Pilot one voice note with `spikes/k_source_prep/run.sh` and check the manifest says
+     `"transcriber": "muscriptor"` with no fallback warning. MuScriptor picks MPS and float16 by
+     itself; the 3 GB free-VRAM check only runs where `nvidia-smi` exists. Speed on MPS is
+     unmeasured: if a 20 s note takes much longer than ~30 s, note it here before going on.
+  6. Run one voice note end to end from the app. YourMT3+ stays off (needs a 14 GB GPU).
+- **If MuScriptor isn't set up,** the sidecar still works: it falls back to basic-pitch / pyin with a
+  warning in the manifest.
 - **Done when:** the user has run `extract_midi` on two real voice notes in the app and judged the MIDI.
 
 ## Next
 
-### B4. Evaluate SAM Audio GGUF (S8)
-- **Do:** build audio.cpp, run `audiocpp_cli --task s2s --family sam_audio` with the small Q8_0
-  model on note 146 ("piano", "humming") and the drum loop ("kick", "snare"); try Metal on the Mac,
-  CUDA on the 3090. Record VRAM, speed, and a listen.
-- **Done when:** a short results section in `spikes/l_sam_audio/README.md` and a keep/drop decision.
-  If kept, a follow-up entry for an `isolate(source, text)` tool.
-- **Links:** https://huggingface.co/audio-cpp/SAM-Audio-GGUF (SAM License; the current build watermarks output).
-
-### B5. Evaluate MuScriptor for audio to MIDI (S3)
-- **Do:** run muscriptor.cpp (small and medium GGUF) on the j_evals synthetic phone set and score
-  it with `spikes/j_evals/score_amt.py`; compare with the router, especially layered keys (0.59)
-  and drums.
-- **Done when:** a row per model in the j_evals results and a keep/drop decision. Weights are
-  CC BY-NC 4.0: fine for the hackathon, flag it in the licence table.
-- **Links:** https://huggingface.co/DamRsn/muscriptor-gguf, arXiv 2607.08168.
+### B5. Evaluate MuScriptor for audio to MIDI (S3) — next on the 3090
+- **Do:** run MuScriptor (official `muscriptor` package, MIT code, CC BY-NC 4.0 weights, HF
+  licence click-through) on the j_evals synthetic phone set and score it with
+  `spikes/j_evals/score_amt.py`; compare with the router, especially layered keys (0.59), hum
+  (0.67) and drums.
+- **Milestones:**
+  - **How it runs:** every job writes one line (clip, model size, status, time, VRAM, F1) to a
+    progress log in `$LATTICE_OUT/amt/`; pilot on one clip first, including the longest one, and
+    stop on the first failure.
+  - **M6 runs:** `muscriptor transcribe` on one synthetic clip writes non-empty MIDI on the GPU.
+  - **M7 score:** an F1 row per model size (small, medium; large if it fits) per category, next
+    to the router's rows in `out-evals/amt/f1.md`.
+  - **M8 decide:** renders for 2 real voice notes, keep/drop in the j_evals README, licence table
+    row, staged.
+- **Progress (Oct 27):** M6-M8 done. The user kept medium. It is the sidecar's default transcriber
+  (`--transcriber muscriptor`), with basic-pitch kept for a layered note's melody: every category
+  at or above the old sidecar (hum 0.67 → 0.84, keys 0.79 → 0.90, layered keys 0.59 → 0.68).
+  Results in `spikes/k_source_prep/README.md`.
+- **Listening (Oct 27):** the user compared old vs new sidecar output on the voice notes
+  (`<bigdisk>/out-k/listen_compare/index.html`) and judged the new one good.
+- **Left:** run `extract_midi` from the app (it already calls `run.sh` with the new default); the
+  Mac setup is in B3a.
+- **Links:** https://github.com/muscriptor/muscriptor, https://huggingface.co/DamRsn/muscriptor-gguf, arXiv 2607.08168.
 
 ### B6. Demo script and public repo
 - **Do:** write the 3-minute script (`docs/demo.md`) from what works; decide which optional
@@ -147,6 +170,8 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 
 ## Dropped
 
+- SAM Audio GGUF for stems (B4, Oct 27): lost to htdemucs_6s / Mel-RoFormer on every scored part
+  and by ear on 6 voice notes; 8–12 GB VRAM vs ~1.5 GB. Details: `spikes/l_sam_audio/README.md`.
 - YuE / Noiz (song generation from lyrics): off-pitch, 24 GB VRAM, CC BY-NC weights (Oct 27).
 - Local Qwen as a Muse stand-in (Oct 27). DeepFilterNet for cleanup (treats humming as noise).
   Audiobox Aesthetics as a closeness grader. pedalboard (GPL-3.0).

@@ -41,6 +41,8 @@ leaving out `examples/`, `mid/` and every `amt/logs/2024/*` folder except
 | `yourmt3_run.py` | yourmt3 | YourMT3+ batch transcription |
 | `score_amt.py` | amt | mir_eval note F1 (onset 50 ms, offsets ignored) → `amt/f1.md` |
 | `listen.py` | amt | MIDI + GM renders + A/B files for the real material |
+| `muscriptor_run.py` | muscriptor | MuScriptor per size on `synth` / `stems` / `real`; one log line per job → `amt/muscriptor_progress.log` |
+| `listen_muscriptor.py` | amt | listening page: input, router, MuScriptor per size, truth (synthetic) → `listen_amt/index.html` |
 
 ## Results
 
@@ -93,6 +95,37 @@ The full table is in `f1.md` (16 clips; mean of 4 per row). In short:
 Caveat: the synthetic timbres are GM SoundFont samples (TimGM6mb), not real voices; 4 clips per cell.
 TimGM6mb's whistle preset plays about 10 semitones flat, so a flute stands in for the whistle.
 
+### MuScriptor on the synthetic phone set (Oct 27, `muscriptor_run.py`)
+
+Note F1 on phone audio, raw output (no cleanup), mean of 4 clips. The router column is the
+k_source_prep sidecar *after* its cleanup and quantize step (`k_source_prep/README.md`).
+
+| part | router | YourMT3+ | MuScriptor small | medium | large |
+|---|---|---|---|---|---|
+| hum | 0.67 | 0.47 | 0.68 | 0.76 | **0.81** |
+| bass | **0.98** | 0.50 | 0.83 | **0.98** | **0.98** |
+| keys | 0.79 | 0.90 | **0.94** | **0.94** | 0.89 |
+| layered → hum (Mel-RoFormer vocals) | **0.89** | 0.37 | 0.80 | 0.83 | 0.83 |
+| layered → bass (htdemucs bass) | 0.89 | 0.69 | **0.97** | 0.96 | **0.97** |
+| layered → keys (htdemucs piano) | 0.59 | **0.71** | 0.66 | **0.71** | **0.71** |
+| layered, whole mix → all parts | — | 0.79 | 0.87 | **0.88** | **0.88** |
+
+- **It matches or beats the router everywhere except layered hum**, before any cleanup. The router's
+  layered-hum 0.89 includes cleanup, which took basic-pitch from 0.78 to 0.88.
+- **Separate first for layered notes.** On a whole mix it finds the notes (0.88) but labels nearly
+  everything piano, so per-part F1 from its own instrument labels is poor (bass 0.00-0.17).
+- **It sometimes returns no notes at all on a hummed clip.** With greedy decoding every chunk ends
+  at once. `--instruments voice` doesn't help. A retry with classifier-free guidance 3 recovers
+  most: the final empties are 1 voice note for small (`vn_119`, peak -28 dBFS) and 1 hum stem for
+  medium. Medium on the Mel-RoFormer hum stems drops to 0.25 for this reason.
+- Instrument labels on hum are unreliable (voice, flute, violin, organ). The router decides the
+  part, so this doesn't matter there.
+- Speed and memory on the 3090 (fp32): small 0.6 GB, ~28× real time; medium 1.7 GB, ~17×; large
+  6.6 GB per clip (10.3 GB while loading), ~6×. Longest voice note (98 s): 17 s on small.
+- Listening page: `out-evals/listen_amt/index.html` (`listen_muscriptor.py`).
+- **Decision (Oct 27): keep medium.** It is now the sidecar's default transcriber
+  (`k_source_prep/README.md`), with basic-pitch kept for a layered note's melody.
+
 ### Real material (`out-evals/listen/<clip>/`, no ground truth)
 
 Each folder has `input.wav`, every transcription as `.mid` plus a GM render, `mix__*.wav`
@@ -127,3 +160,4 @@ transcriptions. Note counts and ranges are in `listen/summary.json`.
 | ByteDance piano (Kong et al.) | no LICENSE file on GitHub; check before shipping | 0.3 GB | 0.08-0.12 (incl. resampling) | easy (fetch the checkpoint ourselves; it would wget into ~) | 0.96 on clean piano, 0.76 on phone audio; best after Mel-RoFormer for hum |
 | basic-pitch (ONNX, CPU) | Apache-2.0 | CPU | 0.009 | medium: Linux pin pulls TensorFlow, overridden; scipy shim | good all-rounder on phone bass/keys, poor on hum |
 | pyin (librosa) | ISC | CPU | 0.13 | none | best on monophonic hum and bass |
+| MuScriptor small / medium / large | code MIT, weights CC BY-NC 4.0 (non-commercial, HF click-through) | 0.6 / 1.7 / 6.6 GB (10.3 GB while loading large) | 0.04 / 0.06 / 0.16 | easy (`muscriptor` package; HF token via `HF_TOKEN_PATH`, set in `env.sh`) | best raw F1 on hum, bass, keys and separated stems; sometimes returns nothing on hum (retry with CFG 3) |

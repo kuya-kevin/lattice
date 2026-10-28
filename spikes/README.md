@@ -24,6 +24,7 @@ the app (backlog entry in brackets). **reference** = results recorded, kept for 
 | `i_to_midi/` | first audio → MIDI pass (basic-pitch + key) | superseded by `k_source_prep`; its env (`envs/basicpitch`) was removed, so it no longer runs | `docs/spike-results.md` |
 | `j_evals/` | GPU evals on the 3090: MRT2 CUDA, Audiobox, separation, transcription | reference | `j_evals/README.md` |
 | `k_source_prep/` | voice note → stems → MIDI (the `extract_midi` sidecar) | **live** | `k_source_prep/README.md` |
+| `l_sam_audio/` | can SAM Audio GGUF (audio.cpp, text prompts) beat htdemucs_6s / Mel-RoFormer? | dropped: lost on every part, 8–12 GB VRAM vs ~1.5 GB | `l_sam_audio/README.md` |
 
 New spike: next letter (`l_...`), a module docstring that states the question and how to run it,
 results in a README or `docs/spike-results.md`, and a row here.

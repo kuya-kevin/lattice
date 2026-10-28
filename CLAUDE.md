@@ -99,6 +99,6 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
 | Faust devices | ours + STK-4.3 / zita_rev1 | no GPL `compressors.lib` / `limiter_lad` |
 | YourMT3+ | treat as GPL-3.0 | opt-in, separate process only |
 | ByteDance piano transcription | no licence file | opt-in only |
-| SAM Audio | SAM License | gated on HF; GGUF copies exist for audio.cpp |
-| MuScriptor (candidate) | CC BY-NC 4.0 | non-commercial; not yet evaluated |
+| SAM Audio | SAM License | evaluated via audio.cpp GGUF, dropped Oct 27 (`spikes/l_sam_audio`) |
+| MuScriptor medium | code MIT, weights CC BY-NC 4.0 | non-commercial; sidecar default transcriber, separate process (`spikes/k_source_prep`) |
 | pedalboard | GPL-3.0 | not used (decided) |
