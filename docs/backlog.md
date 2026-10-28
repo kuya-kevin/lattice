@@ -15,7 +15,7 @@ and update the `HANDOFF.md` status table.
 - **Done when:** each item has a failing Playwright test first, then the fix (`docs/local-testing-workflow.md`).
 - **Items:**
   - 2026-10-27, done: tap tempo (T; hint on the tempo field).
-  - 2026-10-27, done: delete a sound from Ideas (× on hover or Backspace on a focused card; asks if clips use it; undoable).
+  - 2026-10-27, done: delete a sound from Ideas (× on hover, or Delete/Backspace on a focused card; asks if clips use it; undoable).
   - 2026-10-27, done: click or drag the bar ruler to move the playhead (snapped). Also fixed: the playhead
     snapped back to the end of the audio when sent past it (`go_to`, `.`), because the engine's `seekTo` clamps.
 

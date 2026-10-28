@@ -1,6 +1,6 @@
 // "Ideas" column on the canvas: one card per recorded / imported sound (voice notes, takes,
 // library sounds), wired to the tracks that use it. Clicking a card selects its first clip.
-// The × (or Backspace on a focused card) deletes the sound; if clips use it, it asks first.
+// The × (or Delete/Backspace on a focused card) deletes the sound; if clips use it, it asks first.
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { Session, Source } from '../core/session';
 import { buffers } from './audio';

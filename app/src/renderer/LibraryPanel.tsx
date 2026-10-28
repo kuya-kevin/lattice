@@ -21,7 +21,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 const fmtDur = (s: number) => (s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
 const licenseBadge = (l: string) => (/^CC0/i.test(l) ? 'CC0' : /^CC-BY/i.test(l) ? 'CC BY' : l === 'own recording' ? 'Own' : l);
 
-export function LibraryPanel({ bridge }: { bridge: Bridge }) {
+export function LibraryPanel({ bridge, open }: { bridge: Bridge; open: boolean }) {
   const [items, setItems] = useState<LibraryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -35,6 +35,13 @@ export function LibraryPanel({ bridge }: { bridge: Bridge }) {
     bridge.listLibrary().then(setItems, (e) => setError(String(e)));
     return () => stopPreview();
   }, [bridge]);
+
+  // the panel only hides when closed (it keeps its search), so stop the preview here
+  useEffect(() => {
+    if (open) return;
+    stopPreview();
+    setPlaying(null);
+  }, [open]);
 
   const all = items ?? [];
   const results = useMemo(() => filterLibrary(all, { text, set: scope, category, chips }), [all, text, scope, category, chips]);

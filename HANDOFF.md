@@ -8,7 +8,7 @@ are in `CLAUDE.md`; direction is in `idea.md`.
 
 | Part | State | Where |
 |---|---|---|
-| Mini-DAW (Electron + web) | **Working, still buggy.** More bug and quality-of-life items from the user are coming (`docs/backlog.md`, B0). Tracks, trim, record, punch-in, click and count-in, tempo/key/time-signature LCD, GarageBand shortcuts, clips movable across tracks with snap, copy/paste, resizable panels, sound library panel, musical typing, a sampler from any clip. Canvas UI (dot grid, floating panels, bottom prompt bar). | `app/` |
+| Mini-DAW (Electron + web) | **Working, still buggy.** More bug and quality-of-life items from the user are coming (`docs/backlog.md`, B0). Tracks, trim, record, punch-in, click and count-in, tempo/key/time-signature LCD, GarageBand shortcuts, clips movable across tracks with snap, copy/paste, tap tempo, click-the-ruler playhead, deleting sounds from Ideas, resizable panels, sound library panel, musical typing, a sampler from any clip. Canvas UI (dot grid, floating panels, bottom prompt bar). | `app/` |
 | Muse agent | **Working.** OpenAI-format tool calling against the Meta API; sees session state and hand edits as text. Recorded fixtures for tests. | `app/src/core/agent.ts`, `app/src/node/muse.ts` |
 | Effects engine (S1) | **Working by ear; correctness rests on measurement.** The user's ears are not the source of truth here. The source of truth is the verification harness: each device is rendered headless and measured against a published reference (RBJ EQ cookbook, Giannoulis compressor curves, Schroeder RT60, BS.1770 loudness). Last run Oct 27: 68 pass, 2 known pitch gaps. It is not part of `vitest`; re-run it after any DSP change. A Logic "golden bounce" comparison is set up but not done. 13 devices (native Web Audio, Faust WASM, Signalsmith Stretch), one catalog JSON for UI and agent. | `app/src/fx/`, `docs/fx-verification.md` |
 | Device panel | **Working.** Generated from the catalog; knob moves go through the same tools as Muse. | `app/src/renderer/DevicePanel.tsx` |
@@ -24,7 +24,7 @@ are in `CLAUDE.md`; direction is in `idea.md`.
 ## Tests (2026-10-27)
 
 - Vitest: 115 passing in 15 files. `npx tsc --noEmit` clean.
-- Playwright: 39 web tests in 11 specs plus 4 Electron (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). All passed Oct 27 (evening).
+- Playwright: 41 web tests in 12 specs plus 4 Electron (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). All passed Oct 27 (evening).
 
 ## Spend
 

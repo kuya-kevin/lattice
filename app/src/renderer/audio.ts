@@ -33,7 +33,7 @@ export async function decodeFile(file: File): Promise<AudioBuffer> {
   return ctx.decodeAudioData(await file.arrayBuffer());
 }
 
-const dbToGain = (db: number) => Math.pow(10, db / 20);
+export const dbToGain = (db: number) => Math.pow(10, db / 20);
 
 export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {
   return s.tracks.map((t) => ({
@@ -63,13 +63,14 @@ export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {
   }));
 }
 
-/** True when two track lists would sound and look the same (lets us keep the engine's
- *  own array reference after a drag, which avoids a full engine rebuild). */
+/** True when two track lists have the same layout (lets us keep the engine's own array
+ *  reference after a drag, which avoids a full engine rebuild). Mute, solo and volume don't
+ *  count: App's MixSync sends those to the engine directly. */
 export function sameLayout(a: ClipTrack[], b: ClipTrack[]): boolean {
   if (a.length !== b.length) return false;
   return a.every((t, i) => {
     const u = b[i];
-    if (t.id !== u.id || t.name !== u.name || t.muted !== u.muted || t.soloed !== u.soloed || t.height !== u.height || Math.abs(t.volume - u.volume) > 1e-6) return false;
+    if (t.id !== u.id || t.name !== u.name || t.height !== u.height) return false;
     if (t.clips.length !== u.clips.length) return false;
     return t.clips.every((c, j) => {
       const d = u.clips[j];

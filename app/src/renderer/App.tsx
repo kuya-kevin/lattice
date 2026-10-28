@@ -14,7 +14,7 @@ import { attribution, needsAttribution } from '../core/library';
 import type { Session } from '../core/session';
 import { SNAP_LABELS, SNAP_MODES, type SnapMode } from '../core/snap';
 import { ArrangeInteraction, type DropTarget } from './Arrange';
-import { buffers, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTracks } from './audio';
+import { buffers, dbToGain, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTracks } from './audio';
 import { clicks } from './click';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
@@ -259,6 +259,7 @@ export function App({ bridge }: { bridge: Bridge }) {
         }}
       >
         <TransportSync session={session} run={run} playheadRef={playheadRef} />
+        <MixSync session={session} />
         <SelectionSync session={session} run={run} getSession={bridge.getSession} />
         <style>{trackColorCss(session)}</style>
 
@@ -340,7 +341,7 @@ export function App({ bridge }: { bridge: Bridge }) {
         <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
         <ChatPanel bridge={bridge} open={museOpen} onOpenChange={setMuseOpen} context={museContext} />
         <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
-          <LibraryPanel bridge={bridge} />
+          <LibraryPanel bridge={bridge} open={libraryOpen} />
         </aside>
         <nav className="rail island" aria-label="Panels">
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
@@ -438,6 +439,29 @@ function TimelineZoom() {
 }
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
+
+/** Pushes each track's mute / solo / gain to the engine. The playlist keeps its own copy of
+ *  these per track and, when it rebuilds, prefers that copy over the tracks we pass in, so a
+ *  session change only reaches the audio through its setters (no rebuild, no playback hiccup).
+ *  One setter per pass: each copies the playlist's state array, so two in a row would lose one. */
+function MixSync({ session }: { session: Session }) {
+  const { setTrackMute, setTrackSolo, setTrackVolume } = usePlaylistControls();
+  const { tracks, trackStates, playoutRef } = usePlaylistData();
+  (window as unknown as { __engineMix: () => unknown }).__engineMix = () => // read by e2e/mute-preview.spec.ts
+    playoutRef.current?.getState().tracks.map(({ id, muted, soloed, volume }) => ({ id, muted, soloed, volume })) ?? [];
+  useEffect(() => {
+    if (trackStates.length !== tracks.length) return; // the playlist is still adding or removing a track
+    for (let i = 0; i < tracks.length; i++) {
+      const t = session.tracks.find((x) => x.id === tracks[i].id);
+      const st = trackStates[i];
+      if (!t || !st) continue;
+      if (st.muted !== t.muted) return setTrackMute(i, t.muted);
+      if (st.soloed !== t.soloed) return setTrackSolo(i, t.soloed);
+      if (Math.abs(st.volume - dbToGain(t.gainDb)) > 1e-6) return setTrackVolume(i, dbToGain(t.gainDb));
+    }
+  });
+  return null;
+}
 
 /** Keeps the engine in step with session.transport (set by the play/stop/go_to tools, from
  *  the UI or from Muse), and runs the click while playing. Also lends App the engine's

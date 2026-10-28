@@ -14,7 +14,7 @@ defaults**: they're simpler, and they match what the artist asked for (Space, Re
 | Shift-K | Count-in on/off | GarageBand |
 | C | Cycle on/off (defaults to bars 1–4 if no region yet) | GarageBand, Logic |
 | , / . | Playhead back / forward one bar | GarageBand |
-| T | Tap tempo: tap in time; after 2 taps the tempo is the average of the last 4 intervals, rounded, 40–240 BPM. The LCD previews it (label TAP) and the tempo is set once, 2 s after the last tap: one undo step, one hand edit for Muse. Works in the tempo field too. | Logic: Tap Tempo key command (T in its Smart Tempo Editor preset) |
+| T | Tap tempo. From the second tap the LCD shows the average of up to the last 4 intervals (label TAP), rounded, 40–240 BPM. The tempo is set 2 s after the last tap, as one undo step, and Muse sees one hand edit rather than one per tap. Works in the tempo field too. | Logic: Tap Tempo key command |
 
 Shortcuts are ignored while typing (inputs, the chat box, selects, editable text) and when
 Cmd, Ctrl or Alt is held, so system shortcuts keep working. Space and Return are swallowed
@@ -33,8 +33,8 @@ so they don't scroll the page or press a focused button.
 - **The LCD:** shows the playhead as bars / beats / sixteenths ("1 1 1") and as time, then
   the tempo (BPM), time signature and key. This matches GarageBand's LCD and Logic's default
   "Beats & Project" LCD mode.
-  - **Tempo:** click it to type a value, or tap T (a hint says so while the field has focus). Enter or clicking away commits, Esc cancels, and
-    Up/Down nudges by 1 (Shift by 10). The range is 40–240 BPM. Logic also lets you drag the
+  - **Tempo:** click it to type a value, or tap T (a hint says so while the field has focus).
+    Enter or clicking away commits, Esc cancels, and Up/Down nudges by 1 (Shift by 10). The range is 40–240 BPM. Logic also lets you drag the
     value vertically; we skipped that for now (it's cheap to add).
   - **Time signature:** a pop-up of common signatures (2/4, 3/4, 4/4, 5/4, 6/8, 7/8, 12/8).
     As in Logic and GarageBand, it changes the grid and the click, not playback speed.
@@ -169,7 +169,7 @@ through the selected track's device chain.
   back.
 - **Preview:** click a row to hear it; click again to stop. This matches the Loop Browser,
   where clicking a loop previews it. Previews play straight to the output, not through the
-  track mixer.
+  track mixer. Closing the library stops the preview.
 - **Adding sounds:** drag a row onto a track to add it there, at the snapped time under the
   pointer. Drop it on empty space below the tracks (or on the empty project) to make a new
   track. This is Logic's rule: "drag the loop to an empty part of the Tracks area to create a
