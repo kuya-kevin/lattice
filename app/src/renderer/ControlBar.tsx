@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { usePlaybackAnimation, usePlaylistControls, usePlaylistState } from '@waveform-playlist/browser';
 import { useMicrophoneAccess, useRecording } from '@waveform-playlist/recording';
 import { barLength, formatBarsBeats, formatTime, type Meter } from '../core/metronome';
+import { TAP_RESET_MS, tapTempo, type TapState } from '../core/tapTempo';
 import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, type Session } from '../core/session';
 import { newSourceId } from './audio';
 import { clicks } from './click';
@@ -30,6 +31,11 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   const meter: Meter = { tempo: session.tempo, timeSignature: session.timeSignature };
   const rec = useRecorder(session, run, addBuffer, meter);
   const now = () => currentTimeRef.current ?? 0;
+  // Tap tempo previews in the LCD and commits once when the taps stop: one undo step, one hand edit
+  const taps = useRef<TapState>();
+  const tapTimer = useRef<ReturnType<typeof setTimeout>>();
+  const [tapBpm, setTapBpm] = useState<number | null>(null); // shown while tapping
+  useEffect(() => () => clearTimeout(tapTimer.current), []);
 
   const actions: Record<ShortcutAction, () => void> = {
     playStop: () => (isPlaying ? run('stop', { at: now() }) : run('play', { from: now() })),
@@ -43,6 +49,16 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
     },
     barBack: () => run('go_to', { position: Math.max(0, now() - barLength(meter)) }),
     barForward: () => run('go_to', { position: now() + barLength(meter) }),
+    tapTempo: () => {
+      taps.current = tapTempo(taps.current, performance.now());
+      const { bpm } = taps.current;
+      setTapBpm(bpm ?? session.tempo);
+      clearTimeout(tapTimer.current);
+      tapTimer.current = setTimeout(() => {
+        setTapBpm(null);
+        if (bpm && bpm !== session.tempo) run('set_tempo', { bpm });
+      }, TAP_RESET_MS);
+    },
   };
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -82,7 +98,7 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
           <button onClick={rec.toggle} title={tip('record', 'Record')} aria-label="Record" className={`ibtn rec${rec.isRecording || rec.countingIn ? ' on' : ''}`}><Icon name="rec" /></button>
         </div>
 
-        <Lcd session={session} run={run} meter={meter} recordingFor={rec.isRecording ? rec.duration : null} recordingMidi={rec.midi} countingIn={rec.countingIn} />
+        <Lcd session={session} run={run} meter={meter} tapBpm={tapBpm} onTap={() => actionsRef.current.tapTempo()} recordingFor={rec.isRecording ? rec.duration : null} recordingMidi={rec.midi} countingIn={rec.countingIn} />
 
         <div className="group">
           <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={`ibtn cycle${isLoopEnabled ? ' on' : ''}`}><Icon name="cycle" /></button>
@@ -105,7 +121,7 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   );
 }
 
-function Lcd({ session, run, meter, recordingFor, recordingMidi, countingIn }: { session: Session; run: Run; meter: Meter; recordingFor: number | null; recordingMidi: boolean; countingIn: boolean }) {
+function Lcd({ session, run, meter, tapBpm, onTap, recordingFor, recordingMidi, countingIn }: { session: Session; run: Run; meter: Meter; tapBpm: number | null; onTap: () => void; recordingFor: number | null; recordingMidi: boolean; countingIn: boolean }) {
   const { currentTime, registerFrameCallback, unregisterFrameCallback } = usePlaybackAnimation();
   const barsRef = useRef<HTMLSpanElement>(null);
   const timeRef = useRef<HTMLSpanElement>(null);
@@ -132,8 +148,8 @@ function Lcd({ session, run, meter, recordingFor, recordingMidi, countingIn }: {
         <span className="label">TIME</span>
       </div>
       <div className="cell">
-        <TempoField tempo={session.tempo} onCommit={(bpm) => run('set_tempo', { bpm })} />
-        <span className="label">BPM</span>
+        <TempoField tempo={session.tempo} preview={tapBpm} onCommit={(bpm) => run('set_tempo', { bpm })} onTap={onTap} />
+        <span className="label" data-testid="tempo-label">{tapBpm != null ? 'TAP' : 'BPM'}</span>
       </div>
       <div className="cell">
         <select
@@ -160,9 +176,12 @@ function Lcd({ session, run, meter, recordingFor, recordingMidi, countingIn }: {
   );
 }
 
-/** Click to type a tempo; Enter or leaving the field commits, Esc cancels, ↑/↓ nudge (⇧ = 10). */
-function TempoField({ tempo, onCommit }: { tempo: number; onCommit: (bpm: number) => void }) {
+/** Click to type a tempo; Enter or leaving the field commits, Esc cancels, ↑/↓ nudge (⇧ = 10).
+ *  T taps the tempo, here or anywhere (Logic's Tap Tempo); a hint says so while it's focused.
+ *  While tapping, `preview` is shown instead of the session tempo. */
+function TempoField({ tempo, preview, onCommit, onTap }: { tempo: number; preview: number | null; onCommit: (bpm: number) => void; onTap: () => void }) {
   const [text, setText] = useState(String(tempo));
+  const [focused, setFocused] = useState(false);
   useEffect(() => setText(String(tempo)), [tempo]);
   const commit = (value = text) => {
     const bpm = Number(value);
@@ -171,28 +190,43 @@ function TempoField({ tempo, onCommit }: { tempo: number; onCommit: (bpm: number
     } else setText(String(tempo));
   };
   return (
-    <input
-      className="lcd-field tempo"
-      aria-label="Tempo"
-      inputMode="decimal"
-      value={text}
-      onChange={(e) => setText(e.target.value)}
-      onFocus={(e) => e.target.select()}
-      onBlur={() => commit()}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter') e.currentTarget.blur();
-        if (e.key === 'Escape') {
-          setText(String(tempo));
-          requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
-        }
-        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-          e.preventDefault();
-          const next = Math.min(TEMPO_RANGE[1], Math.max(TEMPO_RANGE[0], Math.round(Number(text) || tempo) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
-          setText(String(next));
-          commit(String(next));
-        }
-      }}
-    />
+    <>
+      <input
+        className="lcd-field tempo"
+        aria-label="Tempo"
+        title="Type a tempo, or tap T"
+        inputMode="decimal"
+        value={preview != null ? String(preview) : text}
+        onChange={(e) => setText(e.target.value)}
+        onFocus={(e) => {
+          e.target.select();
+          setFocused(true);
+        }}
+        onBlur={() => {
+          setFocused(false);
+          commit();
+        }}
+        onKeyDown={(e) => {
+          if (e.key === 't' || e.key === 'T') {
+            e.preventDefault();
+            if (!e.repeat) onTap();
+            return;
+          }
+          if (e.key === 'Enter') e.currentTarget.blur();
+          if (e.key === 'Escape') {
+            setText(String(tempo));
+            requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
+          }
+          if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = Math.min(TEMPO_RANGE[1], Math.max(TEMPO_RANGE[0], Math.round(Number(text) || tempo) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1)));
+            setText(String(next));
+            commit(String(next));
+          }
+        }}
+      />
+      {focused && <span className="tap-hint" data-testid="tap-hint" role="status">Type a BPM, or tap <kbd>T</kbd> in time</span>}
+    </>
   );
 }
 

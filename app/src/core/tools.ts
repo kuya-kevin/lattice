@@ -221,6 +221,19 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'delete_sound',
+    description: 'Delete a sound (source) from the session and every clip that uses it (undoable). The user does this from the Ideas column.',
+    parameters: obj({ source_id: str('Source id (a clip\'s source)') }, ['source_id']),
+    run: (ctx, a) => {
+      const before = ctx.store.get();
+      const name = before.sources[a.source_id]?.name;
+      const used = before.tracks.reduce((n, t) => n + t.clips.filter((c) => c.sourceId === a.source_id).length, 0);
+      edit(ctx, (s) => S.deleteSource(s, a.source_id));
+      return { deleted: a.source_id, name, clips_removed: used };
+    },
+    logText: (_a, r) => `deleted sound "${r.name}" (${r.deleted}) and its ${r.clips_removed} clip(s)`,
+  },
+  {
     name: 'duplicate_clip',
     description:
       'Copy a clip (same audio or MIDI notes, same trim) to a timeline start (seconds), optionally on another track. ' +

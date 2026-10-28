@@ -1,5 +1,6 @@
 // "Ideas" column on the canvas: one card per recorded / imported sound (voice notes, takes,
 // library sounds), wired to the tracks that use it. Clicking a card selects its first clip.
+// The × (or Backspace on a focused card) deletes the sound; if clips use it, it asks first.
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import type { Session, Source } from '../core/session';
 import { buffers } from './audio';
@@ -23,7 +24,13 @@ function usage(s: Session, sourceId: string) {
 
 export function Ideas({ session, run, audioVersion }: { session: Session; run: Run; audioVersion: number }) {
   const sources = ideaSources(session);
+  const [confirm, setConfirm] = useState<string | null>(null); // source id awaiting "Delete?"
   if (!sources.length) return null;
+  const remove = (id: string) => {
+    setConfirm(null);
+    run('delete_sound', { source_id: id });
+  };
+  const askRemove = (id: string) => (usage(session, id).uses.length ? setConfirm(id) : remove(id));
   return (
     <section className="ideas" aria-label="Ideas">
       <div className="frame-title"><b>Ideas</b> {sources.length} sound{sources.length > 1 ? 's' : ''}</div>
@@ -32,26 +39,41 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
         const first = uses[0];
         const selected = !!first && uses.some((u) => u.c.id === session.selection.clipId);
         return (
-          <button
-            key={src.id}
-            className={`idea-card${selected ? ' sel' : ''}`}
-            data-idea={src.id}
-            style={{ '--c': color } as React.CSSProperties}
-            onClick={() => first && run('select', { track_id: first.t.id, clip_id: first.c.id })}
-            title={first ? `Select it on ${first.t.name}` : 'Not on a track'}
-          >
-            <span className="idea-head">
-              <i className="dot" />
-              <span className="idea-name">{src.name}</span>
-              <span className="idea-dur">{fmtDur(src.duration)}</span>
-            </span>
-            <MiniWave sourceId={src.id} version={audioVersion} />
-            <span className="idea-meta">
-              {ORIGIN[src.origin] ?? src.origin}
-              {uses.length ? ` · on ${[...new Set(uses.map((u) => u.t.name))].join(', ')}` : ' · not on a track'}
-            </span>
-            {src.credit && <span className="idea-credit" title={src.credit}>{src.credit}</span>}
-          </button>
+          <div key={src.id} className="idea" data-idea={src.id} style={{ '--c': color } as React.CSSProperties}>
+            <button
+              className={`idea-card${selected ? ' sel' : ''}`}
+              onClick={() => first && run('select', { track_id: first.t.id, clip_id: first.c.id })}
+              onKeyDown={(e) => {
+                if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+                e.preventDefault();
+                e.stopPropagation(); // the sound, not the selected clip (App's Delete key command)
+                askRemove(src.id);
+              }}
+              title={first ? `Select it on ${first.t.name}` : 'Not on a track'}
+            >
+              <span className="idea-head">
+                <i className="dot" />
+                <span className="idea-name">{src.name}</span>
+                <span className="idea-dur">{fmtDur(src.duration)}</span>
+              </span>
+              <MiniWave sourceId={src.id} version={audioVersion} />
+              <span className="idea-meta">
+                {ORIGIN[src.origin] ?? src.origin}
+                {uses.length ? ` · on ${[...new Set(uses.map((u) => u.t.name))].join(', ')}` : ' · not on a track'}
+              </span>
+              {src.credit && <span className="idea-credit" title={src.credit}>{src.credit}</span>}
+            </button>
+            <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
+            {confirm === src.id && (
+              <div className="idea-confirm" data-testid="idea-confirm" role="alertdialog" aria-label={`Delete ${src.name}?`} onKeyDown={(e) => e.key === 'Escape' && setConfirm(null)}>
+                <span>Delete “{src.name}”? Also removes {uses.length} clip{uses.length > 1 ? 's' : ''} from the arrangement.</span>
+                <span className="idea-confirm-actions">
+                  <button onClick={() => setConfirm(null)}>Cancel</button>
+                  <button className="danger" autoFocus onClick={() => remove(src.id)}>Delete</button>
+                </span>
+              </div>
+            )}
+          </div>
         );
       })}
     </section>

@@ -23,8 +23,8 @@ are in `CLAUDE.md`; direction is in `idea.md`.
 
 ## Tests (2026-10-27)
 
-- Vitest: 111 passing in 14 files. `npx tsc --noEmit` clean.
-- Playwright: 39 tests in 11 specs (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). Last full run not recorded here; run before relying on it.
+- Vitest: 115 passing in 15 files. `npx tsc --noEmit` clean.
+- Playwright: 39 web tests in 11 specs plus 4 Electron (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). All passed Oct 27 (evening).
 
 ## Spend
 

@@ -121,6 +121,24 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .idea-wave { width: 100%; height: 44px; color: var(--c); display: block; }
 .idea-meta { font-size: 11.5px; color: var(--muted); }
 .idea-credit { font-size: 10.5px; color: var(--solo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idea { position: relative; }
+.idea-del {
+  position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 6px; padding: 0;
+  border: 1px solid var(--line); background: var(--island-2); color: var(--muted); font-size: 14px; line-height: 1;
+  opacity: 0; pointer-events: none;
+}
+.idea:hover .idea-del, .idea-del:focus-visible { opacity: 1; pointer-events: auto; }
+.idea:hover .idea-dur { visibility: hidden; }
+.idea-del:hover { color: var(--text); border-color: var(--line-strong); }
+.idea-confirm {
+  position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: center; gap: 10px; padding: 12px;
+  background: color-mix(in srgb, var(--island) 94%, transparent); border: 1px solid var(--c); border-radius: var(--r-card);
+  font-size: 12px; color: var(--text);
+}
+.idea-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
+.idea-confirm button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--island-2); color: var(--text); }
+.idea-confirm button.danger { background: #c4473a; border-color: #c4473a; color: #fff; }
+[data-lt-ruler] { cursor: pointer; }
 
 /* the arrangement board */
 .board-col { display: flex; flex-direction: column; flex: 1 1 0; min-width: 720px; max-width: 1500px; position: relative; }
@@ -268,6 +286,13 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px 
 .lcd-field:hover { border-color: var(--line-strong); }
 .lcd-field:focus { outline: none; border-color: var(--accent); background: var(--island-2); }
 .lcd-field.tempo { width: 46px; }
+.lcd .cell { position: relative; }
+.tap-hint {
+  position: absolute; top: calc(100% + 10px); left: 50%; transform: translateX(-50%); z-index: 20; white-space: nowrap;
+  padding: 5px 9px; border-radius: 7px; background: var(--island-2); border: 1px solid var(--line-strong);
+  font: 11.5px var(--font-ui); color: var(--text);
+}
+.tap-hint kbd { font: 600 11px var(--font-data); padding: 0 4px; border: 1px solid var(--line-strong); border-radius: 4px; }
 .lcd-field.key { width: 86px; }
 select.lcd-field { appearance: none; cursor: pointer; }
 select.lcd-field option { background: var(--island); }

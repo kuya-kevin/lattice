@@ -164,6 +164,20 @@ export function addSource(s: Session, src: Source): Session {
   return { ...s, sources: { ...s.sources, [src.id]: src } };
 }
 
+/** Remove a sound and every clip that plays it (the Ideas card's delete). Undo restores both;
+ *  the renderer keeps the audio buffer, so the clips come back with their sound. */
+export function deleteSource(s: Session, sourceId: string): Session {
+  if (!s.sources[sourceId]) throw new SessionError(`no source "${sourceId}"`);
+  const { [sourceId]: _, ...sources } = s.sources;
+  const gone = new Set(s.tracks.flatMap((t) => t.clips.filter((c) => c.sourceId === sourceId).map((c) => c.id)));
+  return {
+    ...s,
+    sources,
+    tracks: s.tracks.map((t) => (t.clips.some((c) => gone.has(c.id)) ? { ...t, clips: t.clips.filter((c) => !gone.has(c.id)) } : t)),
+    selection: s.selection.clipId && gone.has(s.selection.clipId) ? { ...s.selection, clipId: null } : s.selection,
+  };
+}
+
 export function addClip(s: Session, trackId: string, sourceId: string, start = 0): [Session, Clip] {
   const src = s.sources[sourceId];
   if (!src) throw new SessionError(`no source "${sourceId}"`);

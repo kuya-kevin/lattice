@@ -443,7 +443,9 @@ type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boole
  *  the UI or from Muse), and runs the click while playing. Also lends App the engine's
  *  playhead (a timeline click moves it without touching the session) for paste. */
 function TransportSync({ session, run, playheadRef }: { session: Session; run: Run; playheadRef: React.MutableRefObject<() => number> }) {
-  const { play, pause, seekTo } = usePlaylistControls();
+  // setCurrentTime, not seekTo: seekTo clamps to the last clip's end, and the playhead may sit
+  // past it (Logic; the ruler, '.' and Muse's go_to all can)
+  const { play, pause, setCurrentTime } = usePlaylistControls();
   const { isPlaying, getPlaybackTime, getLookAhead, currentTimeRef } = usePlaybackAnimation();
   playheadRef.current = () => currentTimeRef.current ?? session.transport.position;
   const playingRef = useRef(isPlaying);
@@ -455,7 +457,7 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
     if (command === 'play') play(position);
     else if (command === 'stop') playingRef.current && pause();
     else if (playingRef.current) play(position); // locate while playing: continue from there
-    else seekTo(position);
+    else setCurrentTime(position);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rev]);
 

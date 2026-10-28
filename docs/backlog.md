@@ -13,7 +13,11 @@ and update the `HANDOFF.md` status table.
 - **What:** the mini-DAW works but is still buggy. The user will send items; list each one here as
   a bullet with a date, and fix them between the bigger entries.
 - **Done when:** each item has a failing Playwright test first, then the fix (`docs/local-testing-workflow.md`).
-- **Items:** _(none logged yet)_
+- **Items:**
+  - 2026-10-27, done: tap tempo (T; hint on the tempo field).
+  - 2026-10-27, done: delete a sound from Ideas (× on hover or Backspace on a focused card; asks if clips use it; undoable).
+  - 2026-10-27, done: click or drag the bar ruler to move the playhead (snapped). Also fixed: the playhead
+    snapped back to the end of the audio when sent past it (`go_to`, `.`), because the engine's `seekTo` clamps.
 
 ### B1. Words to knob moves: wire `vocab.json` into Muse (S2)
 - **Why:** the pitch is "you don't need to know which knob".

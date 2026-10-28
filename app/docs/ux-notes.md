@@ -14,6 +14,7 @@ defaults**: they're simpler, and they match what the artist asked for (Space, Re
 | Shift-K | Count-in on/off | GarageBand |
 | C | Cycle on/off (defaults to bars 1–4 if no region yet) | GarageBand, Logic |
 | , / . | Playhead back / forward one bar | GarageBand |
+| T | Tap tempo: tap in time; after 2 taps the tempo is the average of the last 4 intervals, rounded, 40–240 BPM. The LCD previews it (label TAP) and the tempo is set once, 2 s after the last tap: one undo step, one hand edit for Muse. Works in the tempo field too. | Logic: Tap Tempo key command (T in its Smart Tempo Editor preset) |
 
 Shortcuts are ignored while typing (inputs, the chat box, selects, editable text) and when
 Cmd, Ctrl or Alt is held, so system shortcuts keep working. Space and Return are swallowed
@@ -32,7 +33,7 @@ so they don't scroll the page or press a focused button.
 - **The LCD:** shows the playhead as bars / beats / sixteenths ("1 1 1") and as time, then
   the tempo (BPM), time signature and key. This matches GarageBand's LCD and Logic's default
   "Beats & Project" LCD mode.
-  - **Tempo:** click it to type a value. Enter or clicking away commits, Esc cancels, and
+  - **Tempo:** click it to type a value, or tap T (a hint says so while the field has focus). Enter or clicking away commits, Esc cancels, and
     Up/Down nudges by 1 (Shift by 10). The range is 40–240 BPM. Logic also lets you drag the
     value vertically; we skipped that for now (it's cheap to add).
   - **Time signature:** a pop-up of common signatures (2/4, 3/4, 4/4, 5/4, 6/8, 7/8, 12/8).
@@ -42,7 +43,11 @@ so they don't scroll the page or press a focused button.
     C major and 4/4 at 120 BPM. We default to 120 BPM and 4/4 with no key set, so Muse can
     tell "not set" apart from "C major".
 - **Ruler:** shows bars and beats driven by the session tempo and time signature
-  (waveform-playlist's `BeatsAndBarsProvider`). Snap is off for now.
+  (waveform-playlist's `BeatsAndBarsProvider`). Click or drag in it to move the playhead,
+  snapped to the board's Snap setting (free with Snap Off), as in Logic's ruler. While playing,
+  playback continues from there. With Cycle on, the upper half of the ruler stays the cycle
+  area and the lower half moves the playhead (Logic splits its ruler the same way). The
+  playhead can sit past the last region (added 2026-10-27).
 
 ## Metronome and count-in
 
@@ -91,6 +96,9 @@ The chrome floats over the canvas as rounded islands. The musical conventions be
 Logic's.
 - **On the canvas, left to right:**
   - **Ideas:** one card per recorded, imported or library sound, wired to the tracks that use it. A click selects its clip.
+    The × on hover, or Delete/Backspace while a card has focus, deletes the sound (`delete_sound`). If clips use it,
+    the card asks first ("Also removes N clips"); ⌘Z brings both back. Delete with a clip selected in the lanes still
+    removes only that region. (Logic's Project Audio browser asks the same way before deleting used files.)
   - **Arrangement board:** snap and Extract MIDI in the board's toolbar, then the tracks.
   - **Device chain:** Logic's Smart Controls, under the board. B shows and hides it. The effects agent mounts `DevicePanel` there (see the marked region in `App.tsx`).
 - **Top bar:**

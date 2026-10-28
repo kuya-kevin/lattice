@@ -1,7 +1,7 @@
 // Logic Pro / GarageBand-style key commands (see docs/ux-notes.md).
 import { claimsKey } from '../core/musicalTyping';
 
-export type ShortcutAction = 'playStop' | 'goToStart' | 'record' | 'metronome' | 'countIn' | 'cycle' | 'barBack' | 'barForward';
+export type ShortcutAction = 'playStop' | 'goToStart' | 'record' | 'metronome' | 'countIn' | 'cycle' | 'barBack' | 'barForward' | 'tapTempo';
 
 export const SHORTCUTS: { keys: string; action: ShortcutAction; label: string }[] = [
   { keys: 'Space', action: 'playStop', label: 'Play / stop' },
@@ -11,6 +11,7 @@ export const SHORTCUTS: { keys: string; action: ShortcutAction; label: string }[
   { keys: '⇧K', action: 'countIn', label: 'Count-in on/off' },
   { keys: 'C', action: 'cycle', label: 'Cycle on/off' },
   { keys: ', / .', action: 'barBack', label: 'Back / forward one bar' },
+  { keys: 'T', action: 'tapTempo', label: 'Tap tempo' },
 ];
 
 interface KeyLike {
@@ -65,6 +66,9 @@ export function shortcutFor(e: KeyLike): ShortcutAction | null {
       return 'barBack';
     case '.':
       return 'barForward';
+    case 't':
+    case 'T':
+      return 'tapTempo';
     default:
       return null;
   }

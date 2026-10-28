@@ -8,10 +8,12 @@
 //  - library sounds dragged in (HTML5 drag and drop) land on the track under the pointer at
 //    the snapped time, or on a new track below the others.
 //  - clicking a clip selects it (track + clip), as in Logic.
+//  - clicking or dragging in the bar ruler moves the playhead, snapped to the grid (Logic's
+//    ruler). With Cycle on, the ruler's upper half stays the cycle area, as in Logic.
 import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Modifier } from '@dnd-kit/abstract';
 import { DragDropProvider } from '@dnd-kit/react';
-import { useClipDragHandlers, useDragSensors, usePlaylistData } from '@waveform-playlist/browser';
+import { useClipDragHandlers, useDragSensors, usePlaylistData, usePlaylistState } from '@waveform-playlist/browser';
 import { formatBarsBeats, type Meter } from '../core/metronome';
 import type { Session } from '../core/session';
 import { pxToSeconds, secondsToPx, snapMove, snapTime, type SnapMode } from '../core/snap';
@@ -57,6 +59,7 @@ const NEW_LANE_HEIGHT = 64;
 export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, children }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { tracks, samplesPerPixel, sampleRate, playoutRef, isDraggingRef, onTracksChange } = usePlaylistData();
+  const { isLoopEnabled } = usePlaylistState();
   const [ghost, setGhost] = useState<Ghost | null>(null);
   const meter: Meter = useMemo(() => ({ tempo: session.tempo, timeSignature: session.timeSignature }), [session.tempo, session.timeSignature]);
   const latest = useRef({ session, snap, meter, samplesPerPixel, sampleRate });
@@ -167,8 +170,35 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     [trim, trimmingRef, commitTracks, run],
   );
 
+  // ---- click / drag in the ruler to move the playhead ----
+  const onRulerDown = (e: React.PointerEvent, ruler: HTMLElement) => {
+    const r = ruler.getBoundingClientRect();
+    if (isLoopEnabled && (e.clientY < r.top + r.height / 2 || (e.target as HTMLElement).closest('[data-loop-marker-handle]'))) return;
+    e.preventDefault(); // also keeps the library's cycle-drag (mousedown) from starting
+    e.stopPropagation();
+    let last = -1;
+    const locate = (x: number) => {
+      const { samplesPerPixel: spp, sampleRate: sr, snap: sn, meter: mt } = latest.current;
+      const t = snapTime(pxToSeconds(x - ruler.getBoundingClientRect().left, spp, sr), sn, mt);
+      if (t !== last) run('go_to', { position: (last = t) });
+    };
+    locate(e.clientX);
+    // scrub only while the button is held: a lost pointerup must not leave the ruler following the mouse
+    const move = (ev: PointerEvent) => (ev.buttons & 1 ? locate(ev.clientX) : up());
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+
   // ---- click a clip to select it ----
   const onPointerDownCapture = (e: React.PointerEvent) => {
+    const ruler = (e.target as HTMLElement).closest<HTMLElement>('[data-lt-ruler]');
+    if (ruler) return onRulerDown(e, ruler);
     if ((e.target as HTMLElement).closest('.track-controls')) return;
     const h = hitTest(e.clientX, e.clientY);
     if (!h.trackId || h.x0 == null || e.clientX < h.x0) return;
@@ -185,6 +215,8 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
   useLayoutEffect(() => {
     const root = wrapRef.current;
     if (!root) return;
+    // the ruler is the first child of the scrolling timeline (waveform-playlist's TimescaleWrapper)
+    root.querySelector('[data-scroll-container]')?.firstElementChild?.firstElementChild?.setAttribute('data-lt-ruler', '');
     for (const t of tracks) {
       const row = root.querySelector(`[data-track-row][data-track-id="${CSS.escape(t.id)}"]`);
       const nodes = row ? [...row.querySelectorAll('[data-clip-container]')] : [];
