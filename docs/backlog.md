@@ -24,37 +24,41 @@ and update the `HANDOFF.md` status table.
   `vocab.json`, which Muse never sees. Muse has also never been run on the effects tools (the
   recorded fixtures predate S1), so step one is a baseline: record a few requests without the
   vocabulary, then with it, and compare.
-- **Do:** expose the vocabulary to Muse (system prompt excerpt, or a `suggest_moves(word, source_type)`
-  tool that returns catalog-checked moves). Grow `vocab.json` to cover the S2 phrase list, per
-  source type (vocal, bass, drums, pad). Keep moves inside each knob's `agentRange`.
-- **Done when:** recorded-fixture tests show 10 requests producing sensible, bounded tool calls;
-  the user has judged the 10 phrases by ear once.
-- **Files:** `app/src/fx/vocab.json`, `app/src/fx/tools.ts`, `app/src/core/agent.ts`, `app/tests/`.
-- **Cost:** a handful of Muse calls to record fixtures (ask before recording).
-
-### B2. Voice commands: push-to-talk and the wake word "Muse" (S6)
-- **Do:** two ways to start a spoken command, one pipeline after that:
-  1. **Push-to-talk:** hold a hotkey, speak, release.
-  2. **Wake word:** the musician says "Muse" (or "Hey Muse"), then the command; the clip ends on
-     about 1 s of silence (voice activity detection).
-  Either way the clip goes to Muse 1.2 audio input for transcription, and the text becomes a normal
-  chat turn. The transcript shows in the chat panel so a mishearing is visible.
-- **Wake word constraints:**
-  - It must be spotted **locally**, always on. Streaming the mic to Meta would cost money all the
-    time and send everything the musician says or plays.
-  - Candidates (licence first; nothing installed yet): sherpa-onnx keyword spotting (Apache-2.0;
-    the keyword is plain text, no training; has WASM and Node builds), openWakeWord (Apache-2.0,
-    Python; needs a custom model trained for "muse"), Vosk with a one-word grammar (Apache-2.0),
-    Porcupine (proprietary, free tier with an access key). The Web Speech API isn't an option: it
-    doesn't work in Electron.
-  - "Muse" alone is short and close to "music", "news", "use": expect false triggers. "Hey Muse"
-    is more robust. Decide by testing both.
-  - Music playing through speakers, and a vocal take being recorded, will both reach the mic.
-    Pause listening while a track is armed or recording, and test with playback on.
-- **Done when:** both triggers reach the agent and run a tool, in Electron. Tests use recorded
-  transcription fixtures (no Meta calls); one manual check with real calls. False-trigger count
-  over a few minutes of playback is written down.
-- **Files:** `app/src/renderer/ChatPanel.tsx`, `app/src/core/bridge.ts`, `app/electron/`, `app/src/node/muse.ts`.
+- **Facts checked (Oct 27):** every fixed value in `vocab.json` is inside the knob's `agentRange`.
+  Tracks have no source type; Muse can only infer one from the track name. The system prompt says
+  nothing about effects. The existing fixtures don't store token usage.
+- **Plan:**
+  1. **Scenarios (no cost).** Add a `vocab` group to `SCENARIOS` in `core/scenario.ts`: 10 phrases on
+     named tracks ("Vocal take", "Bass DI", "Drum loop", "Pad"). For example: vocal stand out,
+     vocal less harsh, vocal less sibilant, warmer bass, bass less muddy, drums punchier, drums
+     glue, pad wider and more spacious, gritty bass, telephone vocal. One of them has a
+     hand-edit turn ("too much, back it off") to test nudge.
+  2. **Smoke test (about $0.10).** Record 2 of them live, with the vocabulary not yet exposed. Read the
+     actual spend per request before going on.
+  3. **Baseline (about $0.40).** Record all 10 without the vocabulary. Write down what Muse picked:
+     devices, values, clamps, extra `list_devices` calls. Copy these fixtures to
+     `tests/fixtures/baseline/`, because re-recording overwrites by name. `record-fixtures` already
+     takes scenario names as arguments.
+  4. **Expose the vocabulary.** Add a `suggest_moves(word, source_type)` tool in `fx/tools.ts`, plus one
+     line in the system prompt ("for a sound word, call suggest_moves first, then apply with
+     insert_device/set_param"). It returns the catalog-checked moves for the closest entry, or
+     says none match.
+     - **Why a tool over a prompt excerpt:** the vocabulary grows without growing every request, and
+       it's testable on its own.
+     - Grow `vocab.json`: add per-source variants where they differ (e.g. "warm" on bass leans on the
+       low shelf, on vocal on saturation), and the phrases from step 1.
+  5. **Record again (about $0.40)** and compare with the baseline in a short table in this entry.
+  6. **Tests.** Replay tests assert that each phrase uses the right devices, every value stays inside
+     `agentRange` (or the clamp note is passed on to the user), and nothing touches other tracks.
+  7. **By ear.** The user plays the 10 results in the app and marks each good, close or wrong. Wrong
+     ones get a vocab fix, with no re-record unless the tool calls change.
+- **Done when:** steps 6 and 7 pass.
+- **Files:** `app/src/core/scenario.ts`, `app/src/fx/vocab.json`, `app/src/fx/tools.ts`,
+  `app/src/core/agent.ts`, `app/tests/`.
+- **Cost:** about $1 total (at the ~$0.04 per request measured on Oct 27). Ask before each recording
+  step (`npm run record-fixtures` is denied in settings).
+- **Small fix on the way:** the `vocab.json` note names `tests/fx-catalog.test.ts`; the check is in
+  `tests/fx.test.ts`.
 
 ### B3. Make cleanup and drum quantize real (S4, part 1)
 - **Do:** replace the `cleanup_noise` and `quantize_drums` stubs with the existing Python
@@ -95,9 +99,33 @@ and update the `HANDOFF.md` status table.
 - **Do:** write the 3-minute script (`docs/demo.md`) from what works; decide which optional
   modules appear; set up the fresh public repo with third-party pieces labelled.
 - **Done when:** the user approves the script; repo is public with a README.
-- **Depends on:** B1, B2 at least.
+- **Depends on:** B1 at least (B2 is tabled).
 
 ## Later / optional
+
+### B2. Voice commands: push-to-talk and the wake word "Hey Muse" (S6) — tabled Oct 27
+- **Do:** two ways to start a spoken command, one pipeline after that:
+  1. **Push-to-talk:** hold a hotkey, speak, release.
+  2. **Wake word:** the musician says "Hey Muse", then the command; the clip ends on
+     about 1 s of silence (voice activity detection).
+  Either way the clip goes to Muse 1.2 audio input for transcription, and the text becomes a normal
+  chat turn. The transcript shows in the chat panel so a mishearing is visible.
+- **Wake word constraints:**
+  - It must be spotted **locally**, always on. Streaming the mic to Meta would cost money all the
+    time and send everything the musician says or plays.
+  - Candidates (licence first; nothing installed yet): sherpa-onnx keyword spotting (Apache-2.0;
+    the keyword is plain text, no training; has WASM and Node builds), openWakeWord (Apache-2.0,
+    Python; needs a custom model trained for "muse"), Vosk with a one-word grammar (Apache-2.0),
+    Porcupine (proprietary, free tier with an access key). The Web Speech API isn't an option: it
+    doesn't work in Electron.
+  - **Decided (Oct 27): "Hey Muse".** "Muse" alone is short and close to "music", "news", "use".
+  - Music playing through speakers, and a vocal take being recorded, will both reach the mic.
+    Pause listening while a track is armed or recording, and test with playback on.
+- **Done when:** both triggers reach the agent and run a tool, in Electron. Tests use recorded
+  transcription fixtures (no Meta calls); one manual check with real calls. False-trigger count
+  over a few minutes of playback is written down.
+- **Files:** `app/src/renderer/ChatPanel.tsx`, `app/src/core/bridge.ts`, `app/electron/`, `app/src/node/muse.ts`.
+
 
 ### B7. Remaining sidecar tools (S4, part 2)
 `set_synth_knobs`, `fit_synth_to_reference` (`spikes/c_recreate`), `generate_mrt2` (`spikes/d_mrt2`,

@@ -93,4 +93,25 @@ export const SCENARIOS: Scenario[] = [
     setup: [imp('src-hum', 'Hum voice note', 6)],
     turns: [{ user: 'I want a dark, warm synth bass for this hum. Find a few short candidates on Freesound and set up a starting patch on our synth.' }],
   },
+  // B1: sound words -> effect moves. Record the baseline first (before suggest_moves exists),
+  // copy those to tests/fixtures/baseline/, then record again. Names start with "fx-".
+  ...fxScenarios(),
 ];
+
+/** One mix with four named tracks; each phrase is one fx- scenario on it. */
+function fxScenarios(): Scenario[] {
+  const mix = [imp('src-vocal', 'Vocal take', 12), imp('src-bass', 'Bass DI', 8), imp('src-drums', 'Drum loop', 8), imp('src-pad', 'Pad', 8)];
+  const phrases: [string, string[]][] = [
+    ['stand-out', ['Make the vocal stand out in the mix.']],
+    ['harsh', ['The vocal sounds harsh, can you smooth it out?']],
+    ['sibilant', ['The S sounds on the vocal are too sharp.']],
+    ['warm-bass', ['Make the bass warmer.']],
+    ['muddy-bass', ['The bass is muddy.']],
+    ['punchy-drums', ['Make the drums punchier.']],
+    ['glue-drums', ['Glue the drums together a bit.']],
+    ['wide-pad', ['Make the pad wider and more spacious.']],
+    ['gritty-bass', ['Give the bass some grit.', 'Too much, back it off a bit.']],
+    ['telephone', ['Make the vocal sound like it is coming through a phone.']],
+  ];
+  return phrases.map(([name, turns]) => ({ name: `fx-${name}`, setup: mix, turns: turns.map((user) => ({ user })) }));
+}
