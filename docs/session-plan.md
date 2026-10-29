@@ -36,11 +36,12 @@ Pain point: not knowing which knob to use ("how do I make my vocals stand out in
 | S7 | **Eval (optional)** | Pair ratings, ears (PE-AV), reference recreation, MRT2 | user ratings | decision recorded: keep or drop each module |
 | S8 | **Stems/remix** | Whole-song separation (Demucs, SAM Audio) and export | S3, SAM access | export of stems with quality notes |
 
-### Suggested order and parallelism
-- **Wave 1, parallel worktrees:** S0 (me, first, small), S5 (research subagent), S3 (prep subagent; needs only data and uv).
-- **Wave 2:** S1 (needs S5 output), S6 in parallel.
-- **Wave 3:** S2 (needs S1 schema), S4 wiring.
-- **Wave 4:** S8, then S7 as time allows.
+### Parallelism
+Since Oct 29, parallel work runs in lanes split by area of the screen (A arrangement, B input and
+voice, C flexible, S styling), one worktree and branch each: `docs/parallel-work.md`. The Python
+lane (S4 part 2) is paused; the short-term priority is a UI that is easy for musicians to work in.
+The waves below were the Oct 26 plan and are done.
+- Wave 1: S0, S5, S3. Wave 2: S1, S6. Wave 3: S2, S4 wiring. Wave 4: S8, then S7.
 
 Your earlier priority was E/D/C/B/A. Mapping: E is S1+S2, D is S3+S8 (separation), C is S3 accuracy, B and A are S7 and S4. S4 is promoted because everything real needs it.
 

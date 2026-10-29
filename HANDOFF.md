@@ -2,7 +2,7 @@
 
 **Updated 2026-10-28 (day 3 of 10).** Submission: Nov 4 2026, 9:00 PM ET.
 This is the one current-status page. What's left to do is in `docs/backlog.md`; rules and commands
-are in `CLAUDE.md`; direction is in `idea.md`.
+are in `CLAUDE.md`; direction is in `idea.md`. Parallel lanes and merging (Oct 29): `docs/parallel-work.md`.
 
 ## Status by part
 
@@ -49,7 +49,7 @@ when you make Muse calls.
 - One line per voice note 112, 114, 119, 143, 145: hum, instrument, or layered?
 - A dry vocal take with strong "s" sounds (for the de-esser).
 - Check a few Logic knob ranges in `docs/plugin-catalog.md` on the Mac.
-- Commit the staged work once reviewed: worktree agents start from HEAD and won't see staged files.
+- Commit the Oct 29 parallel-work setup (`.githooks/`, `.claude/settings.json`, `.gitignore`, docs) before starting lanes: worktrees start from the last commit and won't have the hook or rules until then.
 
 ## Open decisions
 

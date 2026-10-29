@@ -5,3 +5,6 @@
 __pycache__/
 node_modules/
 .claude/worktrees/
+.DS_Store
+# lane S layout variants stay uncommitted (docs/parallel-work.md)
+app/variants/

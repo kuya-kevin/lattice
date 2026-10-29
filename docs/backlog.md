@@ -4,8 +4,11 @@ Updated 2026-10-28. One entry per remaining task, in priority order. Each says w
 which files it touches, and what it depends on, so an agent can be pointed at one entry.
 Rules and commands: `CLAUDE.md`. Status: `HANDOFF.md`. Stream ids (S0–S8): `docs/session-plan.md`.
 
-When you finish an entry: move it to "Done" at the bottom with the date and a one-line result,
-and update the `HANDOFF.md` status table.
+When you finish an entry: say so in your lane note; the merge step moves it to "Done" at the bottom
+with the date and a one-line result and updates the `HANDOFF.md` status table (`docs/parallel-work.md`).
+
+**Lanes (Oct 29):** A = B0. B = B14, then B12b pad UI, B2. C = B12b "Muse fills a kit", then B6.
+S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians to work in.
 
 ## Now
 
@@ -207,6 +210,34 @@ and update the `HANDOFF.md` status table.
   the fallback when the model isn't installed or fails; the tool result says which ran.
 
 ## Next
+
+### B14. Muse talks back (lane B)
+- **What:** an option for Muse to speak its reply, so a musician with hands on an instrument can
+  push-to-talk in and hear the answer. Push-to-talk input already works (B2, Done).
+- **First, before building:** find out whether the Meta API offers text-to-speech (model, voices,
+  price, latency) and add it to `docs/model-map.md`. If it doesn't, stop and ask the user: the
+  OS voice (`speechSynthesis`, free, arguably not a Meta model under the Meta-only runtime rule)
+  or text only.
+- **Do:** a toggle, off by default, that is a tool like every other action. When on, Muse's final
+  reply is spoken (a short version if the reply is long); playback ducks or pauses while it speaks;
+  never speaks while a track records; pressing push-to-talk stops it.
+- **Done when:** a Playwright test asserts the toggle and speaking state through a mock voice in
+  the web build; checked by ear in Electron; cost per reply logged in the lane note.
+- **Files:** `renderer/pushToTalk.ts`, `renderer/ChatPanel.tsx`, a new `node/tts.ts` beside
+  `node/stt.ts`, `electron/main.ts` and `preload.ts` (IPC), `core/bridge.ts`, `renderer/mockBridge.ts`.
+- **Budget:** a few live test calls only, and not while another lane is calling Muse.
+
+### B15. Layout variants (lane S)
+- **What:** variants for a more modern layout, the way Google Stitch was used before. The canvas
+  direction (Oct 27, `app/docs/ux-notes.md` Layout) is the starting point; Logic stays the
+  reference for musical conventions.
+- **Explore:** variants live in `app/variants/` (git-ignored, never committed). A restyle is an
+  override stylesheet over the real app behind a dev-only `?variant=<name>` switch; a new layout
+  is a standalone mock page. The user compares them on port 5394 and picks.
+- **Apply:** a short freeze (`docs/parallel-work.md`): the other lanes merge first, lane S applies
+  the pick to `styles.css` and the components, then everyone rebases.
+- **Done when:** the user has picked a variant, it is applied, the e2e suite passes, and
+  `app/docs/ux-notes.md` describes the new layout.
 
 ### B5. Evaluate MuScriptor for audio to MIDI (S3) — next on the 3090
 - **Do:** run MuScriptor (official `muscriptor` package, MIT code, CC BY-NC 4.0 weights, HF

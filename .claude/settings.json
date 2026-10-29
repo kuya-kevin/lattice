@@ -6,6 +6,13 @@
       "Bash(git log:*)",
       "Bash(git show:*)",
       "Bash(git add:*)",
+      "Bash(git commit *)",
+      "Bash(git rebase *)",
+      "Bash(git switch *)",
+      "Bash(git branch *)",
+      "Bash(git worktree *)",
+      "Bash(git merge --ff-only *)",
+      "Bash(.githooks/scan-leaks.sh*)",
       "Bash(npx vitest run:*)",
       "Bash(npx tsc --noEmit:*)",
       "Bash(npx playwright test:*)",
@@ -13,8 +20,18 @@
       "Bash(npm run typecheck:*)",
       "Bash(npm test:*)"
     ],
+    "ask": [
+      "Bash(LATTICE_ALLOW_MAIN=1 *)",
+      "Bash(git worktree remove *--force*)",
+      "Bash(git worktree remove * -f*)",
+      "Bash(git branch -D *)",
+      "Bash(git reset --hard*)"
+    ],
     "deny": [
-      "Bash(git commit:*)",
+      "Bash(git commit *--no-verify*)",
+      "Bash(git commit -n*)",
+      "Bash(git commit * -n *)",
+      "Bash(git * core.hooksPath*)",
       "Bash(git push:*)",
       "Bash(npm run record-fixtures:*)"
     ]

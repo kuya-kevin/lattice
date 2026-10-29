@@ -7,10 +7,16 @@ calls on a session model we own. Built for the Meta Global AI Developer Hackatho
 
 Direction and pitch: `idea.md`. Current status: `HANDOFF.md`. Remaining work, one entry per task:
 `docs/backlog.md`. Workstreams (S0-S8) and decisions: `docs/session-plan.md`. Spike index: `spikes/README.md`.
+Parallel lanes, branches and merging: `docs/parallel-work.md`.
 
 ## Ground rules
 
-- **Never `git commit`.** Stage with `git add` and say what's staged; the user reviews and commits.
+- **Commit on your lane branch, never on main** (`docs/parallel-work.md`). Each session works in its
+  own worktree; the pre-commit hook refuses agent commits on main and runs a leak scan (keys, `.env`
+  values, absolute home paths, `data/`, `out/`). Never bypass it with `--no-verify`. The user checks
+  each branch, then it merges.
+- **Stay in your lane.** Lanes don't edit `HANDOFF.md` or `docs/backlog.md`; write a lane note
+  instead. Only lane S changes `styles.css` and its tokens.
 - **Meta API budget: $150 for the whole hackathon.** Use `muse-spark-1.3-contributor`. Make a few
   test calls before any batch run, log token usage, and report spend. Tests never call Meta:
   use recorded fixtures (`npm run record-fixtures` re-records them, which costs money; ask first).
@@ -87,10 +93,12 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
   to a fresh folder so autosaves don't leak between launches.
 - Python model calls go through a separate process (the app never imports GPL code; YourMT3+ is
   treated as GPL). Stub sidecar tools must say "stub" in their result so Muse reports them honestly.
-- When you finish a backlog entry, move it to Done in `docs/backlog.md`, update the `HANDOFF.md`
-  status table, and keep docs short and dated. New spikes get a row in `spikes/README.md`.
-- `.claude/settings.json` allows tests, typecheck, build and read-only git, and denies `git commit`,
-  `git push` and `npm run record-fixtures` (costs Meta money).
+- When you finish a backlog entry, say so in your lane note (`docs/lane-notes/<branch>.md`); the
+  merge step moves it to Done in `docs/backlog.md` and updates `HANDOFF.md`. Keep docs short and
+  dated. New spikes get a row in `spikes/README.md`.
+- `.claude/settings.json` allows tests, typecheck, build, commits, rebase and worktrees; asks before
+  force-removing a worktree, `git branch -D`, `git reset --hard` or a commit on main; denies
+  `--no-verify`, `git push` and `npm run record-fixtures` (costs Meta money).
 
 ## Licence watchlist
 

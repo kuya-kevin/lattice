@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Installed by `git config core.hooksPath .githooks` (once per clone; worktrees share it).
+# 1. Agents commit on lane branches only, never on main (docs/parallel-work.md).
+# 2. Every commit passes the leak scan.
+set -u
+
+branch=$(git symbolic-ref --short -q HEAD)
+if [ "$branch" = "main" ] && [ -n "${CLAUDECODE:-}" ] && [ -z "${LATTICE_ALLOW_MAIN:-}" ]; then
+  echo "Refused: agents don't commit on main. Work on a lane branch in a worktree (docs/parallel-work.md)." >&2
+  exit 1
+fi
+
+exec "$(git rev-parse --show-toplevel)/.githooks/scan-leaks.sh"
