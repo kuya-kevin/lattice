@@ -5,7 +5,7 @@
 import { describeSettings, type ParamValues } from '../fx/catalog';
 import { describeMidi, type MidiData } from './midi'; // [S3 midi]
 
-export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated';
+export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated' | 'processed';
 
 export interface Source {
   id: string;
@@ -14,6 +14,10 @@ export interface Source {
   origin: SourceOrigin;
   /** Attribution for library sounds (CC-BY needs it), e.g. '"Kick" by x (url), CC-BY-4.0'. */
   credit?: string;
+  /** B3: audio made by the sidecar from another source (origin 'processed'): which one, and
+   *  what was done, e.g. "noise cleaned (Mel-RoFormer denoise)". Shown to Muse on the clip. */
+  derivedFrom?: string;
+  processed?: string;
 }
 
 export interface Clip {
@@ -162,6 +166,14 @@ export function deleteTrack(s: Session, trackId: string): Session {
 export function addSource(s: Session, src: Source): Session {
   if (!(src.duration > 0)) throw new SessionError('source duration must be > 0');
   return { ...s, sources: { ...s.sources, [src.id]: src } };
+}
+
+/** B3: a track's clips of one source now play a processed version of it (cleanup, quantize).
+ *  Timing is untouched: the processed audio has the source's length. Undo brings the original back. */
+export function replaceTrackSource(s: Session, trackId: string, fromId: string, src: Source): Session {
+  const t = getTrack(s, trackId);
+  if (!t.clips.some((c) => c.sourceId === fromId && !c.midi)) throw new SessionError(`track ${trackId} has no audio clips of source "${fromId}"`);
+  return mapTrack(addSource(s, src), trackId, (tr) => ({ ...tr, clips: tr.clips.map((c) => (c.sourceId === fromId && !c.midi ? { ...c, sourceId: src.id } : c)) }));
 }
 
 /** Remove a sound and every clip that plays it (the Ideas card's delete). Undo restores both;
@@ -388,7 +400,10 @@ function summarizeSession(s: Session): string {
   const lines = s.tracks.map((t) => {
     const flags = [t.muted && 'muted', t.soloed && 'soloed', t.armed && 'record-armed'].filter(Boolean).join(', ');
     const clips = t.clips
-      .map((c) => `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}`)
+      .map((c) => {
+        const done = s.sources[c.sourceId]?.processed; // B3
+        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}]` : ''}`;
+      })
       .join('; ');
     const fx = describeChain(t);
     return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;

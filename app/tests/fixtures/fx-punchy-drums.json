@@ -1,0 +1,125 @@
+{
+  "name": "fx-punchy-drums",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Make the drums punchier."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T01:08:53.062Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Making those drums punchier — dialing up the impact.",
+        "tool_calls": [
+          {
+            "id": "call_31690c6a-a42d-472a-b981-30a0936c2ca2",
+            "type": "function",
+            "function": {
+              "name": "suggest_moves",
+              "arguments": "{\"track_id\":\"t5\",\"words\":[\"punchier\"]}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7496,
+        "completion_tokens": 249
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_53d111da-8139-40b0-b39c-6f8a106390ca",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"comp\",\"params\":{\"attack\":25,\"ratio\":4,\"release\":80,\"style\":\"vca\"},\"track_id\":\"t5\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7851,
+        "completion_tokens": 164
+      }
+    },
+    {
+      "message": {
+        "content": "First device is in — now applying the final tweak.",
+        "tool_calls": [
+          {
+            "id": "call_0248e59f-3248-485e-becb-87badbffe4b6",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"add\",\"param\":\"thresh\",\"track_id\":\"t5\",\"value\":\"-6\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8045,
+        "completion_tokens": 145
+      }
+    },
+    {
+      "message": {
+        "content": "Added VCA compression to the Drum loop to let transients through. Listen for punch on the hits — tell me if you want a bit more or less."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8219,
+        "completion_tokens": 85
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 31611,
+    "completion_tokens": 643
+  }
+}

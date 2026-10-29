@@ -20,6 +20,8 @@ export default defineConfig({
       LATTICE_DATA_DIR: resolve(import.meta.dirname, 'tests/fixtures/library'),
       // extract_midi answers with a fixture manifest instead of running the Python sidecar
       LATTICE_SIDECAR_MOCK: resolve(import.meta.dirname, 'tests/fixtures/source_prep/manifest.json'),
+      // B3: cleanup_noise / quantize_drums return the input audio with a mock result
+      LATTICE_ENGINEER_MOCK: '1',
     },
   },
 });

@@ -1,17 +1,15 @@
-// The Python sidecar (DSP/ML) interface. Everything here is a stub for now: it returns
-// plausible fake results so the agent loop and UI can be built end to end.
+// The Python sidecar (DSP/ML) interface. StubSidecar fakes every method (plausible results
+// marked stub) so the agent loop and tests run anywhere; the app overrides the real ones.
 //
-// TODO(sidecar): implement as a long-lived Python process (JSON lines over stdio) in the
-// spikes' uv env, wrapping:
-//   cleanupNoise        -> spikes/b_cleanup/run_noisereduce.py (stationary, profile from the quietest 0.5 s)
+// Real, each a one-shot child process on a WAV the renderer uploads per source (Bridge.putSourceAudio):
+//   extractMidi                 (S3) spikes/k_source_prep/run.sh, via src/node/sourcePrep.ts
+//   cleanupNoise, quantizeDrums (B3) spikes/k_source_prep/run_engineer.sh, via src/node/engineer.ts;
+//     they write the processed audio under `newSourceId`, where the renderer loads it
+//     (Bridge.loadSourceAudio). A result without `stub` means that audio exists.
+// TODO(sidecar), still stubs:
 //   setSynthKnobs       -> spikes/c_recreate/synth.py render()
 //   fitSynthToReference -> spikes/c_recreate/match.py + run_optimizer.py (CMA-ES, ~30 s)
 //   generateMrt2        -> spikes/d_mrt2/run_mrt2.py (envs/mrt, mlx==0.31.1)
-//   quantizeDrums       -> onset slicing + snap + crossfade (no time-stretch), not written yet
-//
-// extractMidi is real (S3): a one-shot child process, spikes/k_source_prep/run.sh, spawned by
-// src/node/sourcePrep.ts (Electron main, or the Vite dev middleware for dev:web). The audio
-// reaches it as a WAV the renderer uploads per source (Bridge.putSourceAudio).
 import type { PrepManifest } from './midi';
 
 export type ExtractMode = 'auto' | 'hum' | 'keys' | 'bass' | 'drums' | 'layered';
@@ -51,9 +49,39 @@ export const DEFAULT_PATCH: Record<string, number> = {
   attack: 0.005, decay: 0.3, sustain: 0.7, release: 0.2, drive: 0,
 };
 
+export interface QuantizeDrumsArgs {
+  sourceId: string;
+  newSourceId: string;
+  /** grid division: 4, 8, 16 or 32 (1/16 -> 16) */
+  grid: number;
+  strength: number;
+  bpm: number;
+  /** source seconds of a grid line, so hits land on the session's bars */
+  phase: number;
+}
+export interface QuantizeDrumsResult {
+  hits: number;
+  moved: number;
+  max_shift_ms: number;
+  /** median distance of the hits from the nearest grid line */
+  off_grid_ms?: { before: number; after: number | null };
+  stub?: true;
+}
+export interface CleanupNoiseResult {
+  /** what ran: "Mel-RoFormer denoise", "noisereduce (fallback)", ... */
+  method: string;
+  /** level of the quietest 0.5 s (the noise between phrases), dB */
+  noise_floor_db: { before: number; after: number };
+  /** overall level change; near 0 means the performance was left alone */
+  level_change_db: number;
+  fallback_reason?: string;
+  seconds?: number;
+  stub?: true;
+}
+
 export interface Sidecar {
-  quantizeDrums(a: { sourceId: string; grid: string; strength: number; bpm: number }): Promise<{ onsets: number; moved: number; maxShiftMs: number }>;
-  cleanupNoise(a: { sourceId: string }): Promise<{ method: string; noiseFloorDb: number; performanceDb: number }>;
+  quantizeDrums(a: QuantizeDrumsArgs): Promise<QuantizeDrumsResult>;
+  cleanupNoise(a: { sourceId: string; newSourceId: string }): Promise<CleanupNoiseResult>;
   generateMrt2(a: { styleText?: string; referenceSourceId?: string; notes?: string; seconds: number }): Promise<{ status: string; seconds: number; prompt: string }>;
   setSynthKnobs(patch: Record<string, number>): Promise<{ patch: Record<string, number>; clamped: string[] }>;
   fitSynthToReference(a: { sourceId: string }): Promise<{ patch: Record<string, number>; distance: number; renders: number }>;
@@ -77,13 +105,13 @@ export function clampPatch(patch: Record<string, number>): { patch: Record<strin
   return { patch: out, clamped };
 }
 
-/** TODO(sidecar): every method below fakes its result. */
+/** Every method fakes its result; the audio ones write no audio and say stub. */
 export class StubSidecar implements Sidecar {
-  async quantizeDrums(a: { grid: string; strength: number }) {
-    return { onsets: 32, moved: Math.round(28 * a.strength), maxShiftMs: Math.round(24 * a.strength) };
+  async quantizeDrums(a: QuantizeDrumsArgs): Promise<QuantizeDrumsResult> {
+    return { hits: 32, moved: Math.round(28 * a.strength), max_shift_ms: Math.round(24 * a.strength), stub: true };
   }
-  async cleanupNoise() {
-    return { method: 'noisereduce stationary (stub)', noiseFloorDb: -11, performanceDb: -0.8 };
+  async cleanupNoise(_a: { sourceId: string; newSourceId: string }): Promise<CleanupNoiseResult> {
+    return { method: 'noisereduce stationary (stub)', noise_floor_db: { before: -40, after: -51 }, level_change_db: -0.8, stub: true };
   }
   async generateMrt2(a: { styleText?: string; referenceSourceId?: string; seconds: number }) {
     const prompt = a.styleText ?? `audio prompt from ${a.referenceSourceId}`;

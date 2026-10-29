@@ -25,6 +25,17 @@ const bridge: Bridge = {
     const bytes: Uint8Array | null = await ipcRenderer.invoke('source:load', id);
     return bytes && toArrayBuffer(bytes);
   },
+  // B9: main asks (measure:req), the renderer renders and measures, and answers (measure:res)
+  serveMeasure: (fn) => {
+    ipcRenderer.removeAllListeners('measure:req');
+    ipcRenderer.on('measure:req', async (_e, reqId: number, session, trackId: string) => {
+      try {
+        ipcRenderer.send('measure:res', reqId, { ok: true, result: await fn(session, trackId) });
+      } catch (e) {
+        ipcRenderer.send('measure:res', reqId, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    });
+  },
   pathForFile: (file) => webUtils.getPathForFile(file),
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),

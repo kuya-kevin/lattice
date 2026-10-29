@@ -1,0 +1,125 @@
+{
+  "name": "fx-sibilant",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "The S sounds on the vocal are too sharp."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T01:08:25.475Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Taming those S's — setting up a de-esser.",
+        "tool_calls": [
+          {
+            "id": "call_946614a0-7371-4146-9253-207462d1fecc",
+            "type": "function",
+            "function": {
+              "name": "suggest_moves",
+              "arguments": "{\"track_id\":\"t1\",\"words\":[\"harsh\",\"sibilant\"]}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7500,
+        "completion_tokens": 259
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_ec0be53a-f6c8-4bf2-bb26-7196d17a90a2",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"deess\",\"params\":{\"freq\":6500,\"range\":6},\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7938,
+        "completion_tokens": 268
+      }
+    },
+    {
+      "message": {
+        "content": "De-esser is on — now dialing in the threshold.",
+        "tool_calls": [
+          {
+            "id": "call_220f47fd-817b-47d6-8c05-064729b3b9d4",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"add\",\"param\":\"thresh\",\"track_id\":\"t1\",\"value\":\"-6\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8098,
+        "completion_tokens": 148
+      }
+    },
+    {
+      "message": {
+        "content": "Added a de-esser on the Vocal take around 6.5 kHz.\n\nPlay it back and listen if the S sounds sit right — tell me if you want a bit more or less, or if harshness elsewhere needs taming."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8274,
+        "completion_tokens": 108
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 31810,
+    "completion_tokens": 783
+  }
+}

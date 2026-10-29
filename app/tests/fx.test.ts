@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { CATALOG, VOCAB, coerce, defaults, fromNorm, getDevice, getParam, normalizeParams, nudge, toNorm } from '../src/fx/catalog';
 import * as C from '../src/fx/chain';
+import { lookupWord, scaledMoves, sourceTypeOf } from '../src/fx/vocab';
 import * as S from '../src/core/session';
 import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
@@ -46,6 +47,57 @@ describe('knob catalog', () => {
         else expect(typeof m.value).toBe('number');
       }
     }
+  });
+
+  it('vocab moves on a fresh device stay inside each knob\'s usual range (B1)', () => {
+    for (const e of VOCAB) {
+      for (const amount of ['a bit', 'normal'] as const) {
+        const params: Record<string, Record<string, unknown>> = {};
+        for (const m of scaledMoves(e, amount)) {
+          const p = getParam(getDevice(m.device), m.param);
+          const cur = (params[m.device] ??= { ...defaults(m.device) })[m.param];
+          const v = m.op === 'set' ? m.value : m.op === 'add' ? (cur as number) + (m.value as number) : (cur as number) * (m.value as number);
+          if (p.agentRange && typeof v === 'number') expect(v, `${e.word}/${e.sourceTypes} ${m.device}.${m.param} (${amount})`).toBeGreaterThanOrEqual(p.agentRange[0]);
+          if (p.agentRange && typeof v === 'number') expect(v, `${e.word}/${e.sourceTypes} ${m.device}.${m.param} (${amount})`).toBeLessThanOrEqual(p.agentRange[1]);
+          params[m.device][m.param] = v;
+        }
+      }
+    }
+  });
+
+  it('looks up sound words per source type (B1 phrases)', () => {
+    const cases: [string, string | undefined, string, Record<string, unknown>?][] = [
+      ['stand out', 'vocal', 'stand out'],
+      ['harsh', 'vocal', 'harsh'],
+      ['less harsh', 'vocal', 'harsh'],
+      ['S sounds', 'vocal', 'sibilant'],
+      ['sharp s', 'vocal', 'sibilant'],
+      ['warmer', 'bass', 'warm', { param: 'ls_gain' }],
+      ['warmer', 'vocal', 'warm', { param: 'b1_gain' }],
+      ['muddy', 'bass', 'muddy', { param: 'hp_freq', value: 30 }],
+      ['muddy', 'vocal', 'muddy', { param: 'hp_freq', value: 100 }],
+      ['punchier', 'drums', 'punchy'],
+      ['glue', 'drums', 'glue'],
+      ['wider', 'pad', 'wide'],
+      ['more spacious', 'pad', 'spacious'],
+      ['grit', 'bass', 'gritty'],
+      ['phone', 'vocal', 'telephone'],
+      ['less bright', undefined, 'dull'],
+      ['darker', 'pad', 'dull'],
+    ];
+    for (const [word, src, want, move] of cases) {
+      const e = lookupWord(word, src);
+      expect(e?.word, `${word} on ${src}`).toBe(want);
+      if (move) expect(e!.moves, `${word} on ${src}`).toContainEqual(expect.objectContaining(move));
+    }
+    expect(lookupWord('unicorn sparkle dust')?.word).toBe('bright'); // "sparkle" is an alias inside the phrase
+    expect(lookupWord('zxcv')).toBeUndefined();
+    expect(scaledMoves(lookupWord('gritty')!, 'a bit')).toContainEqual(expect.objectContaining({ param: 'drive', op: 'add', value: 3, unit: 'dB' }));
+  });
+
+  it('guesses the source type from a track name', () => {
+    const names: [string, string | undefined][] = [['Vocal take', 'vocal'], ['Lead Vox', 'vocal'], ['Bass DI', 'bass'], ['Synth bass', 'bass'], ['808', 'bass'], ['Drum loop', 'drums'], ['Kick', 'drums'], ['Pad', 'pad'], ['Acoustic gtr', 'guitar'], ['Piano', 'keys'], ['Audio 3', undefined]];
+    for (const [n, t] of names) expect(sourceTypeOf(n), n).toBe(t);
   });
 
   it('maps knob travel along the param curve and back', () => {
@@ -125,8 +177,22 @@ describe('fx tools', () => {
     expect(bad).toMatchObject({ ok: false, error: expect.stringMatching(/one of peak, rms/) });
     const nudged = await runTool(c, 'set_param', { track_id: 't1', device_id: id, param: 'attack', value: 1, op: 'nudge' }, 'muse');
     expect((nudged.result as { value: number }).value).toBeCloseTo(10 * 2 ** 0.5, 2);
+    // Muse often sends numbers as strings (fx-gritty-bass fixture, Oct 28)
+    const back = await runTool(c, 'set_param', { track_id: 't1', device_id: id, param: 'attack', value: '-1', op: 'nudge' }, 'muse');
+    expect((back.result as { value: number }).value).toBeCloseTo(10, 2);
+    const added = await runTool(c, 'set_param', { track_id: 't1', device_id: id, param: 'thresh', value: ' 4 ', op: 'add' }, 'muse');
+    expect(added).toMatchObject({ ok: true, result: { value: -40, previous: -55, note: expect.stringMatching(/usual range/) } }); // -51 is past the usual range
+    expect(await runTool(c, 'set_param', { track_id: 't1', device_id: id, param: 'thresh', value: 'lots', op: 'add' }, 'muse')).toMatchObject({ ok: false });
     expect((await runTool(c, 'remove_device', { track_id: 't1', device_id: id }, 'muse')).ok).toBe(true);
     expect(c.store.get().tracks[0].devices).toEqual([]);
+  });
+
+  it('insert_device applies a style preset before the knobs given with it', async () => {
+    // fx-punchy-drums baseline (Oct 28): style "fet" came last and reset attack 10 -> 0.3 ms
+    const c = await ctx();
+    const r = await runTool(c, 'insert_device', { track_id: 't1', device: 'comp', params: { attack: 10, knee: 12, release: 200, style: 'fet' } }, 'muse');
+    expect(r).toMatchObject({ ok: true });
+    expect(c.store.get().tracks[0].devices[0].params).toMatchObject({ style: 'fet', attack: 10, knee: 12, release: 200 });
   });
 
   it('list_devices describes a device for the agent', async () => {

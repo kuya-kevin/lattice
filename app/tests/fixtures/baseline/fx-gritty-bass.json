@@ -1,0 +1,138 @@
+{
+  "name": "fx-gritty-bass",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Give the bass some grit."
+    },
+    {
+      "user": "Too much, back it off a bit."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T00:53:08.594Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Adding some grit to your bass now.",
+        "tool_calls": [
+          {
+            "id": "call_a0ff6a84-1a4f-4c30-8091-de52386a1cde",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"sat\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7065,
+        "completion_tokens": 196
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_7d71e281-3447-4fc2-b505-006566df87a6",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"sat\",\"params\":{\"drive\":12,\"model\":\"tube\"},\"track_id\":\"t3\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7421,
+        "completion_tokens": 106
+      }
+    },
+    {
+      "message": {
+        "content": "Added tube saturation to the Bass DI (drive 12 dB) — listen for gritty edge vs clean low-end and tell me if you want more / less."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 7587,
+        "completion_tokens": 114
+      }
+    },
+    {
+      "message": {
+        "content": "Backing it off a touch.",
+        "tool_calls": [
+          {
+            "id": "call_f589d6d5-61a7-44d0-bd56-20deaaee30ef",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"nudge\",\"param\":\"drive\",\"track_id\":\"t3\",\"value\":\"-1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7804,
+        "completion_tokens": 290
+      }
+    },
+    {
+      "message": {
+        "content": "Dialed the bass saturation back to 9 dB — listen and let me know if that grit sits right now."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 7973,
+        "completion_tokens": 101
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 37850,
+    "completion_tokens": 807
+  }
+}

@@ -59,8 +59,11 @@ export interface VocabMove {
 }
 export interface VocabEntry {
   word: string;
+  aliases?: string[];
   sourceTypes: string[];
   moves: VocabMove[];
+  /** one line for Muse: what the move does, what to listen for */
+  note?: string;
 }
 
 export const CATALOG = catalogJson as unknown as Catalog;

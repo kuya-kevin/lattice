@@ -4,7 +4,7 @@
 import { MuseAgent, type ChatFn } from '../core/agent';
 import type { Bridge } from '../core/bridge';
 import type { PrepManifest } from '../core/midi';
-import { StubSidecar, type ExtractMidiArgs } from '../core/sidecar';
+import { StubSidecar, type CleanupNoiseResult, type ExtractMidiArgs, type QuantizeDrumsArgs, type QuantizeDrumsResult } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
@@ -24,9 +24,27 @@ const offlineMuse: ChatFn = async ({ messages }) => {
  *  which runs the Python sidecar (or returns a fixture manifest under $LATTICE_SIDECAR_MOCK). */
 class WebSidecar extends StubSidecar {
   private audio: Map<string, ArrayBuffer>;
+  /** B3: processed audio by its new source id, for Bridge.loadSourceAudio */
+  readonly processed = new Map<string, ArrayBuffer>();
   constructor(audio: Map<string, ArrayBuffer>) {
     super();
     this.audio = audio;
+  }
+  /** B3: cleanup/quantize through the Vite middleware (/api/sidecar/engineer). */
+  private async engineer<R>(newSourceId: string, job: { op: string; sourceId: string } & Record<string, unknown>): Promise<R> {
+    const wav = this.audio.get(job.sourceId);
+    if (!wav) throw new Error(`no audio for source ${job.sourceId} yet`);
+    const r = await fetch(`/api/sidecar/engineer?args=${encodeURIComponent(JSON.stringify(job))}`, { method: 'POST', body: wav });
+    if (!r.ok) throw new Error((await r.json().catch(() => null))?.error ?? `HTTP ${r.status}`);
+    const result = JSON.parse(decodeURIComponent(r.headers.get('X-Lattice-Result') ?? '{}')) as R;
+    this.processed.set(newSourceId, await r.arrayBuffer());
+    return result;
+  }
+  override cleanupNoise(a: { sourceId: string; newSourceId: string }): Promise<CleanupNoiseResult> {
+    return this.engineer(a.newSourceId, { op: 'cleanup', sourceId: a.sourceId });
+  }
+  override quantizeDrums({ newSourceId, ...a }: QuantizeDrumsArgs): Promise<QuantizeDrumsResult> {
+    return this.engineer(newSourceId, { op: 'quantize', ...a });
   }
   override async extractMidi(a: ExtractMidiArgs): Promise<PrepManifest> {
     const wav = this.audio.get(a.sourceId);
@@ -41,9 +59,12 @@ class WebSidecar extends StubSidecar {
 export function createMockBridge(): Bridge {
   const store = new SessionStore();
   const sourceAudio = new Map<string, ArrayBuffer>(); // [S3 midi]
+  const sidecar = new WebSidecar(sourceAudio);
+  let measurer: Parameters<Bridge['serveMeasure']>[0] | null = null; // B9: set by the page (App)
   const ctx: ToolContext = {
+    measureTrack: (s, trackId) => (measurer ? measurer(s, trackId) : Promise.reject(new Error('the page has not loaded yet'))),
     store,
-    sidecar: new WebSidecar(sourceAudio),
+    sidecar,
     searchFreesound: async () => ({ count: 0, results: [] }),
     chains: new MemoryChainLibrary(), // B10: kept for the page's lifetime only
     versions: new MemoryVersionLibrary(), // B11: same (no autosave in the browser build)
@@ -65,9 +86,10 @@ export function createMockBridge(): Bridge {
       return r.arrayBuffer();
     },
     putSourceAudio: async (id, wav) => void sourceAudio.set(id, wav), // [S3 midi]
-    // B11: audio buffers outlive any restore within the page, so there is nothing to reload
+    // B11: audio buffers outlive any restore within the page, so only processed audio (B3) loads here
     keepSourceAudio: async () => {},
-    loadSourceAudio: async () => null,
+    loadSourceAudio: async (id) => sidecar.processed.get(id)?.slice(0) ?? null,
+    serveMeasure: (fn) => void (measurer = fn),
     sendChat: async (text) => {
       try {
         return { ok: true, turn: await agent.send(text) };

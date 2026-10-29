@@ -56,7 +56,7 @@ export async function renderTrack(s: Session, trackId: string, buffers: Map<stri
   gain.connect(host.input);
   host.output.connect(ctx.destination);
   for (const c of t.clips) {
-    const b = buffers.get(c.sourceId);
+    const b = buffers.get(c.midi ? `midi:${c.id}` : c.sourceId); // MIDI clips play their render (renderer/audio.ts midiBufferId)
     if (!b) continue;
     const src = new AudioBufferSourceNode(ctx, { buffer: b });
     src.connect(gain);

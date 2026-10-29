@@ -5,6 +5,7 @@ import { searchForWorkspaceRoot, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { audioMime, loadLibrary, type Library } from './src/node/library.ts';
 import { putAudio, runSourcePrep, sourcePrepConfig } from './src/node/sourcePrep.ts';
+import { runEngineer } from './src/node/engineer.ts';
 
 /** [S3 midi] dev:web stand-in for the Electron sidecar IPC: POST /api/sidecar/extract-midi?args=<json>
  *  with the source's WAV as the body -> the prep.py manifest (or $LATTICE_SIDECAR_MOCK's). */
@@ -25,6 +26,27 @@ function sidecarMiddleware(): Plugin {
             res.end(JSON.stringify(await runSourcePrep(cfg, args)));
           } catch (e) {
             res.statusCode = 500;
+            res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+          }
+        });
+      });
+      // B3: POST /api/sidecar/engineer?args=<EngineerJob json> with the source's WAV -> the processed
+      // WAV, with the result JSON in the X-Lattice-Result header ($LATTICE_ENGINEER_MOCK=1: input unchanged)
+      server.middlewares.use('/api/sidecar/engineer', (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', async () => {
+          try {
+            if (req.method !== 'POST') throw new Error('POST only');
+            const job = JSON.parse(new URL(req.url ?? '/', 'http://x').searchParams.get('args') ?? '{}');
+            putAudio(cfg, job.sourceId, Buffer.concat(chunks));
+            const { result, wav } = await runEngineer(cfg, job, { mock: process.env.LATTICE_ENGINEER_MOCK === '1' });
+            res.setHeader('Content-Type', 'audio/wav');
+            res.setHeader('X-Lattice-Result', encodeURIComponent(JSON.stringify(result)));
+            res.end(Buffer.from(wav));
+          } catch (e) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
           }
         });

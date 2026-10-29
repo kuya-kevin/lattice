@@ -2,6 +2,7 @@
 // (Muse, Freesound and keys live there). Plain browser: an in-page mock (renderer/mockBridge.ts).
 import type { TurnResult } from './agent';
 import type { LibraryEntry } from './library';
+import type { Features } from './ears';
 import type { Session } from './session';
 import type { ToolOutcome } from './tools';
 
@@ -26,6 +27,9 @@ export interface Bridge {
   /** B11: the encoded audio of a source kept with keepSourceAudio, or null if it isn't known.
    *  Rejects if it was known but its file is gone. */
   loadSourceAudio(sourceId: string): Promise<ArrayBuffer | null>;
+  /** B9: the renderer answers measure_track (it holds the audio): render the track in this
+   *  session as heard and without effects, and measure both. */
+  serveMeasure(fn: (session: Session, trackId: string) => Promise<{ wet: Features; dry: Features }>): void;
   /** Electron only: the on-disk path of a dropped or picked file ('' if it has none). */
   pathForFile?(file: File): string;
   /** Electron only: zoom the whole window (Chromium page zoom, like ⌘+ / ⌘−). Every layout

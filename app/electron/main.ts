@@ -13,7 +13,10 @@ import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } f
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
-import type { ExtractMidiArgs } from '../src/core/sidecar';
+import { runEngineer } from '../src/node/engineer'; // B3
+import type { ExtractMidiArgs, QuantizeDrumsArgs } from '../src/core/sidecar';
+import type { Features } from '../src/core/ears';
+import type { Session } from '../src/core/session';
 
 const appDir = app.getAppPath(); // .../lattice/app
 loadEnv(resolve(appDir, '..', '.env'));
@@ -21,12 +24,24 @@ loadEnv(resolve(appDir, '..', '.env'));
 if (process.env.LATTICE_USER_DATA) app.setPath('userData', resolve(process.env.LATTICE_USER_DATA));
 const projectDir = join(app.getPath('userData'), 'project'); // B11: autosave, versions, audio refs
 
-// [S3 midi] extract_midi runs the Python source-prep sidecar as a child process; the other
-// sidecar methods are still stubs.
+// [S3 midi] extract_midi, and (B3) cleanup_noise / quantize_drums, run the Python sidecar as a
+// child process; the synth and MRT2 methods are still stubs. Processed audio is kept under its
+// new source id, where the renderer loads it (source:load).
 const prepCfg = sourcePrepConfig(resolve(appDir, '..'));
+const engineerMock = { mock: process.env.LATTICE_ENGINEER_MOCK === '1' };
 class AppSidecar extends StubSidecar {
   override extractMidi(a: ExtractMidiArgs) {
     return runSourcePrep(prepCfg, a);
+  }
+  override async cleanupNoise(a: { sourceId: string; newSourceId: string }) {
+    const { result, wav } = await runEngineer(prepCfg, { op: 'cleanup', sourceId: a.sourceId }, engineerMock);
+    sourceAudio.keep(a.newSourceId, { bytes: wav });
+    return result;
+  }
+  override async quantizeDrums({ newSourceId, ...a }: QuantizeDrumsArgs) {
+    const { result, wav } = await runEngineer(prepCfg, { op: 'quantize', ...a }, engineerMock);
+    sourceAudio.keep(newSourceId, { bytes: wav });
+    return result;
   }
 }
 ipcMain.handle('source:put', (_e, id: string, bytes: Uint8Array) => {
@@ -41,7 +56,7 @@ const sourceAudio = new SourceAudioFiles(join(projectDir, 'audio'));
 
 const ctx: ToolContext = {
   store,
-  sidecar: new AppSidecar(), // TODO(sidecar): the remaining methods are stubs
+  sidecar: new AppSidecar(), // TODO(sidecar): the synth and MRT2 methods are stubs
   searchFreesound: async (q, f, n) => {
     const token = process.env.FREESOUND_API_KEY;
     if (!token) throw new Error('FREESOUND_API_KEY is not set');
@@ -49,7 +64,27 @@ const ctx: ToolContext = {
   },
   chains: new FileChainLibrary(join(app.getPath('userData'), 'chains.json')), // B10
   versions: new FileVersionLibrary(join(projectDir, 'versions')), // B11
+  measureTrack: (session, trackId) => askRenderer(session, trackId), // B9
 };
+
+// B9: measure_track renders in the renderer, which holds the audio; ask it and wait for the answer
+let measureSeq = 0;
+const measureWaits = new Map<number, (r: { ok: boolean; result?: any; error?: string }) => void>();
+ipcMain.on('measure:res', (_e, reqId: number, r) => measureWaits.get(reqId)?.(r));
+function askRenderer(session: Session, trackId: string): Promise<{ wet: Features; dry: Features }> {
+  if (!win) return Promise.reject(new Error('no window to render in'));
+  const reqId = ++measureSeq;
+  return new Promise((ok, fail) => {
+    const timer = setTimeout(() => (measureWaits.delete(reqId), fail(new Error('measuring timed out after 60 s'))), 60_000);
+    measureWaits.set(reqId, (r) => {
+      clearTimeout(timer);
+      measureWaits.delete(reqId);
+      if (r.ok) ok(r.result);
+      else fail(new Error(r.error));
+    });
+    win!.webContents.send('measure:req', reqId, session, trackId);
+  });
+}
 
 let chat: ChatFn | null = null;
 let agent: MuseAgent | null = null;

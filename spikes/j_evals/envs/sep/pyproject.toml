@@ -9,4 +9,5 @@ dependencies = [
     "soundfile",
     "audioread",
     "imageio-ffmpeg",  # static ffmpeg binary; separate.py puts it on PATH (no system ffmpeg)
+    "noisereduce",  # MIT; cleanup_noise fallback (k_source_prep/engineer.py)
 ]

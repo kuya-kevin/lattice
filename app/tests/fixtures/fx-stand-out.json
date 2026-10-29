@@ -1,0 +1,149 @@
+{
+  "name": "fx-stand-out",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Make the vocal stand out in the mix."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T01:08:11.186Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Making the vocal cut through — getting tailored moves for that take.",
+        "tool_calls": [
+          {
+            "id": "call_705c39d0-65d0-4049-8c6c-91a43b9a43c1",
+            "type": "function",
+            "function": {
+              "name": "suggest_moves",
+              "arguments": "{\"track_id\":\"t1\",\"words\":[\"stand out\"]}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7499,
+        "completion_tokens": 156
+      }
+    },
+    {
+      "message": {
+        "content": "Got the vocal chain plan — setting it up now.",
+        "tool_calls": [
+          {
+            "id": "call_fe081af4-5890-44f0-b4bc-2bb39aa18f33",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"eq\",\"params\":{\"b2_freq\":350,\"b3_freq\":3000,\"hp_freq\":100,\"hp_on\":true},\"track_id\":\"t1\"}"
+            }
+          },
+          {
+            "id": "call_6f5a4edd-1b6d-42b1-a1a9-d5a7508690df",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"comp\",\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7898,
+        "completion_tokens": 364
+      }
+    },
+    {
+      "message": {
+        "content": "EQ and compressor are in place — now dialing the exact settings.",
+        "tool_calls": [
+          {
+            "id": "call_81b61d1c-d5ac-4e64-b5c5-74cee0a101a9",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"add\",\"param\":\"b2_gain\",\"track_id\":\"t1\",\"value\":\"-2\"}"
+            }
+          },
+          {
+            "id": "call_b7da7dd1-21cf-4055-93c4-a202abe3b5ac",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"add\",\"param\":\"b3_gain\",\"track_id\":\"t1\",\"value\":\"2.5\"}"
+            }
+          },
+          {
+            "id": "call_5d2279d6-b193-42a5-a070-dde4ed2c0a7e",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d10\",\"op\":\"add\",\"param\":\"thresh\",\"track_id\":\"t1\",\"value\":\"-4\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8287,
+        "completion_tokens": 380
+      }
+    },
+    {
+      "message": {
+        "content": "Added EQ (low-cut, dipped low-mids, lifted presence) and compression on the vocal to hold it forward.\n\nPlay it back — listen for clearer words vs thinness, and tell me if you want a bit more or less."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8781,
+        "completion_tokens": 157
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 32465,
+    "completion_tokens": 1057
+  }
+}

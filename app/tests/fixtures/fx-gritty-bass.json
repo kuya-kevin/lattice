@@ -1,0 +1,178 @@
+{
+  "name": "fx-gritty-bass",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Give the bass some grit."
+    },
+    {
+      "user": "Too much, back it off a bit."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T01:09:17.777Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Adding some grit to that bass — getting the recipe.",
+        "tool_calls": [
+          {
+            "id": "call_4574d7f4-111d-4d2e-a8b7-22d562342441",
+            "type": "function",
+            "function": {
+              "name": "suggest_moves",
+              "arguments": "{\"track_id\":\"t3\",\"words\":[\"grit\"]}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7496,
+        "completion_tokens": 126
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_1af2355a-bcf1-48eb-a387-57fc7fb81cb3",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"sat\",\"params\":{\"model\":\"transistor\"},\"track_id\":\"t3\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7759,
+        "completion_tokens": 184
+      }
+    },
+    {
+      "message": {
+        "content": "First stage is on — dialing in the drive amount.",
+        "tool_calls": [
+          {
+            "id": "call_f2dfbea4-0e02-42f6-86d3-44ce584830b3",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"sat\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7914,
+        "completion_tokens": 112
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_dd371ee6-49cc-4b45-8f5b-e67258be2171",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"add\",\"param\":\"drive\",\"track_id\":\"t3\",\"value\":\"6.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8274,
+        "completion_tokens": 171
+      }
+    },
+    {
+      "message": {
+        "content": "Added transistor saturation to the Bass DI — listen for edge vs too harsh and tell me if you want more/less."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8428,
+        "completion_tokens": 80
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_da235a59-d31a-4ed8-b504-cd07a256bd34",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"op\":\"nudge\",\"param\":\"drive\",\"track_id\":\"t3\",\"value\":\"-1.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8635,
+        "completion_tokens": 163
+      }
+    },
+    {
+      "message": {
+        "content": "Backed the grit off a bit — see if that sits better, say if you want more/less."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8791,
+        "completion_tokens": 63
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 57297,
+    "completion_tokens": 899
+  }
+}

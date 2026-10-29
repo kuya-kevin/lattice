@@ -100,6 +100,7 @@ export function setDeviceParam(
   let target: unknown = raw;
   const op = opts.op ?? 'set';
   if (op !== 'set') {
+    if (typeof raw === 'string' && raw.trim() !== '' && Number.isFinite(Number(raw))) raw = Number(raw); // Muse sends "-1"
     if (typeof prev !== 'number' || typeof raw !== 'number') throw new SessionError(`op "${op}" needs a numeric param and value`);
     target = op === 'add' ? prev + raw : op === 'mul' ? prev * raw : nudge(p, prev, raw);
   }

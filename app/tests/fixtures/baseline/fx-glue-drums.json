@@ -1,0 +1,165 @@
+{
+  "name": "fx-glue-drums",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Glue the drums together a bit."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T00:52:44.576Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Gluing the drums — adding a little bus-style compression.",
+        "tool_calls": [
+          {
+            "id": "call_17ff5e46-a944-493e-8c4f-bc195242fd5a",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"comp\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7067,
+        "completion_tokens": 110
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_012856fa-cb75-499d-be0a-6dbb41547690",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"comp\",\"params\":{\"attack\":10.0,\"detector\":\"rms\",\"knee\":12.0,\"makeup\":2.0,\"ratio\":2.5,\"release\":200.0,\"style\":\"vca\",\"thresh\":-18.0},\"track_id\":\"t5\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7491,
+        "completion_tokens": 230
+      }
+    },
+    {
+      "message": {
+        "content": "The glue preset overrode my timing — fixing that now.",
+        "tool_calls": [
+          {
+            "id": "call_bf3b1c0f-e06e-4466-b7a8-7aa7c251d1a8",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"param\":\"attack\",\"track_id\":\"t5\",\"value\":\"10.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7732,
+        "completion_tokens": 309
+      }
+    },
+    {
+      "message": {
+        "content": "Attack is fixed, now correcting knee and release to match the glue settings.",
+        "tool_calls": [
+          {
+            "id": "call_3cd6d0c4-c2ba-4079-b261-5ec420de3a63",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"param\":\"knee\",\"track_id\":\"t5\",\"value\":\"12.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7892,
+        "completion_tokens": 174
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_6f07bcb7-2a58-41ea-a64a-a11bf243e260",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"param\":\"release\",\"track_id\":\"t5\",\"value\":\"200.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8057,
+        "completion_tokens": 92
+      }
+    },
+    {
+      "message": {
+        "content": "Put a gentle VCA glue comp on the Drum loop — play it back and tell me if you want it tighter or more transparent."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 8197,
+        "completion_tokens": 89
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 46436,
+    "completion_tokens": 1004
+  }
+}

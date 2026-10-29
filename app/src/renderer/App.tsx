@@ -33,6 +33,7 @@ import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
 import { importRef, keepSourceAudio, useSourceAudioReload, type KeepAudio } from './sourceAudio'; // B11
+import { useServeMeasure } from './ears'; // B9
 import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
 import { MusicalTypingButton, MusicalTypingKeyboard, musicalTyping } from './MusicalTyping'; // letter keys play notes
 
@@ -148,6 +149,7 @@ export function App({ bridge }: { bridge: Bridge }) {
     keepSourceAudio(bridge, id, b, keep).catch((e) => setError(`Could not keep audio ${id}: ${e instanceof Error ? e.message : e}`));
   }, [bridge]);
   useSourceAudioReload(bridge, session, addBuffer, setError); // B11
+  useServeMeasure(bridge); // B9: measure_track renders here, where the audio is
 
   // ─── region: [S3 midi] MIDI clip playback (rendered offline, played as audio) ───
   const setMidiRender = useCallback((id: string, b: AudioBuffer) => {

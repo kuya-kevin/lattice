@@ -1,6 +1,6 @@
 # Backlog
 
-Updated 2026-10-27 (late). One entry per remaining task, in priority order. Each says what "done" means,
+Updated 2026-10-28. One entry per remaining task, in priority order. Each says what "done" means,
 which files it touches, and what it depends on, so an agent can be pointed at one entry.
 Rules and commands: `CLAUDE.md`. Status: `HANDOFF.md`. Stream ids (S0–S8): `docs/session-plan.md`.
 
@@ -10,6 +10,7 @@ and update the `HANDOFF.md` status table.
 ## Now
 
 ### B0. DAW bugs and quality of life (ongoing)
+- **Deferred (Oct 28):** paused until the user sends the next list.
 - **What:** the mini-DAW works but is still buggy. The user will send items; list each one here as
   a bullet with a date, and fix them between the bigger entries.
 - **Done when:** each item has a failing Playwright test first, then the fix (`docs/local-testing-workflow.md`).
@@ -78,17 +79,72 @@ and update the `HANDOFF.md` status table.
 - **Done when:** steps 6 and 7 pass.
 - **Files:** `app/src/core/scenario.ts`, `app/src/fx/vocab.json`, `app/src/fx/tools.ts`,
   `app/src/core/agent.ts`, `app/tests/`.
-- **Cost:** about $1 total (at the ~$0.04 per request measured on Oct 27). Ask before each recording
+- **Cost:** about $0.10 total (~$0.001 per call, measured Oct 28). Ask before each recording
   step (`npm run record-fixtures` is denied in settings).
-- **Small fix on the way:** the `vocab.json` note names `tests/fx-catalog.test.ts`; the check is in
-  `tests/fx.test.ts`.
+- **Progress (Oct 28):** steps 1-4 done.
+  - **Cost** is far below the estimate: ~9.5k prompt tokens and ~$0.001 per call. Smoke test $0.011, baseline $0.042.
+  - **Baseline** (no vocabulary; fixtures in `tests/fixtures/baseline/`): 54 calls for 10 phrases, 23 of them
+    `list_devices` lookups. Picks were mostly sensible:
 
+    | Phrase | Muse picked (baseline) | Calls | Issue |
+    |---|---|---|---|
+    | stand out (vocal) | EQ: low cut 100, −2.5 @ 350, +3 @ 3k, +1.5 air; comp 3:1 −18 | 5 | — |
+    | harsh (vocal) | de-esser 7 kHz + EQ −2.5 on bell 3 at its default 2.5 kHz | 8 | read "harsh" as sibilance; no EQ freq chosen |
+    | sibilant (vocal) | de-esser at defaults | 3 | no knob moves |
+    | warm (bass) | EQ low shelf +4 @ 120, high shelf −3; tube sat 6 | 9 | 5 separate set_params |
+    | muddy (bass) | EQ low cut 35, −4 @ 220 | 3 | — |
+    | punchy (drums) | FET comp 4:1 −18, attack 10 **→ 0.3 ms** | 4 | **bug**: style preset overwrote attack |
+    | glue (drums) | VCA comp 2.5:1, knee 12, attack 10, release 200 | 6 | same bug; 3 calls to re-set knobs |
+    | wider + spacious (pad) | width 150, mono below 200; chorus; reverb 3.5 s 30% | 6 | 5 lookups |
+    | grit, then back off (bass) | tube sat 12 dB, then nudge −1 → 9 | 5 | (3 failed calls before the string fix) |
+    | telephone (vocal) | filter HP 400 + filter LP 3.2k | 5 | — |
+  - **Two tool bugs fixed** (tests in `tests/fx.test.ts`): `set_param` rejected numbers sent as strings for
+    add/mul/nudge (Muse always sends `"-1"`); `insert_device` applied a `style` preset after the knobs given with
+    it, so the preset reset them.
+  - **Step 4:** `suggest_moves(words[], track_id?, source_type?, amount?)` in `fx/tools.ts`, lookup in
+    `fx/vocab.ts` (source type from the track name, aliases, per-source entries, amount scaling, lists the
+    track's existing devices). `vocab.json` v2: 31 entries, per-source variants for warm and muddy, aliases and
+    a one-line note each; telephone now band-limits 350 Hz-4 kHz with the EQ plus a little crunch. One line in
+    the system prompt. Tests: `tests/vocab.test.ts` (each of the 10 phrases applies to its track only, nothing
+    clamped), vocab range and lookup tests in `tests/fx.test.ts`.
+  - **Step 5, with vocabulary ($0.038):** Muse called `suggest_moves` first in all 10 and applied the moves as
+    given. 45 calls instead of 54; `list_devices` lookups 3 instead of 23; every final knob equals the vocab value.
+    | Phrase | With `suggest_moves` | Calls (baseline) |
+    |---|---|---|
+    | stand out | EQ low cut 100, −2 @ 350, +2.5 @ 3k; comp thresh −22 | 4 (5) |
+    | harsh | EQ −3 @ 3.5 kHz, Q 1.5 (no de-esser now) | 4 (8) |
+    | sibilant | de-esser 6.5 kHz, thresh −30, range 6 | 4 (3) |
+    | warm bass | EQ low shelf +3 @ 120, high shelf −2; tape sat 6 | 6 (9) |
+    | muddy bass | EQ low cut 30, −4 @ 250 | 4 (3) |
+    | punchy drums | VCA comp 4:1, attack 25, release 80, thresh −24 | 4 (4) |
+    | glue drums | VCA comp 2:1, attack 10, release 200, thresh −21 | 4 (6) |
+    | wider + spacious pad | width 130, mono below 150; reverb decay 2.8 s, mix 28 | 4 (6) |
+    | grit, then back off | transistor sat 12, then nudge → 9 | 7 (5) |
+    | telephone | EQ 350 Hz-4 kHz band, transistor sat 8 | 4 (5) |
+  - **Step 6 done:** `tests/fx-agent.test.ts` replays the 10: `suggest_moves` first, no failed calls, no clamp
+    notes, only the named track edited, every knob in its usual range, punchy keeps its slow attack, "too much" lowers drive.
+  - **Left: step 7, by ear.** The user tries the phrases in the Electron app on real tracks (each request ~$0.004)
+    and marks each good, close or wrong; wrong ones get a vocab fix.
 ### B3. Make cleanup and drum quantize real (S4, part 1)
 - **Do:** replace the `cleanup_noise` and `quantize_drums` stubs with the existing Python
   (`spikes/m_cleanup_models/clean.py` with `spikes/b_cleanup/run_noisereduce.py` as fallback, `spikes/f_engineer/quantize.py`), called the same way
   `extract_midi` is (a child process from `app/src/node/`), returning the processed audio as a new clip or take.
 - **Done when:** both tools change the audio in the app; e2e tests run with a mock manifest
   (like `LATTICE_SIDECAR_MOCK`); the user has listened to one quantized loop.
+- **Progress (Oct 28):** both tools are real. `spikes/k_source_prep/engineer.py` (run by `run_engineer.sh` in the
+  `sep` env, which gained noisereduce) writes a mono WAV of the input's rate and length; `app/src/node/engineer.ts`
+  spawns it (`LATTICE_ENGINEER_MOCK=1` returns the input, for e2e). The tool runs once per audio source on the track,
+  then switches the track's clips to a new `processed` source in one undo step (`replaceTrackSource`); Muse sees
+  `[audio: noise cleaned (Mel-RoFormer denoise)]` on the clip. Quantize puts the grid on the session's bars
+  (phase = clip offset − start). Measured: Mel-RoFormer 32 s on a 33 s voice note (MPS), length exact.
+  **Finding:** noisereduce's default 500 Hz mask smoothing took 6-7 dB off a harmonic tone; 100 Hz loses < 1 dB
+  and still drops the floor ~22 dB (now the fallback's setting; the Oct 28 F1 for noisereduce used the default).
+  Tests: `spikes/k_source_prep/test_engineer.py`, `app/tests/engineer.test.ts`, `app/e2e/engineer.spec.ts`.
+  Left: the processed take is mono (the upload is mono); progress isn't shown during the ~30 s run; the user
+  listens to one quantized loop and one cleaned note in the app.
+  - **Note (Oct 28): no UI yet.** The tools are only reachable through Muse in chat. Add toolbar controls next to
+    Extract MIDI, on the selected clip's track: "Clean noise" (busy state, then method + noise floor change) and
+    "Quantize" (grid 1/4-1/32, strength). Same tools as Muse, so hand edits and one undo step; Playwright first.
 - **Files:** `app/src/core/sidecar.ts`, `app/src/node/`, `app/src/core/tools.ts`, `spikes/b_cleanup`, `spikes/f_engineer`.
 - **Note:** the move of live sidecar code out of `spikes/` is on hold (user decision, Oct 27).
 - **Finding (Oct 28, `spikes/m_cleanup_models`):** cleanup in front of `extract_midi` lowers note F1
@@ -97,37 +153,6 @@ and update the `HANDOFF.md` status table.
   Decided (Oct 28): Mel-RoFormer denoise (`denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt`, via the `sep`
   env) is the default, preferred by ear; ~17 s per 20 s note on MPS, so show progress. noisereduce (~0.2 s) is
   the fallback when the model isn't installed or fails; the tool result says which ran.
-
-### B3a. Run source prep (audio to MIDI) on the Mac
-- **Why:** `extract_midi` only runs on the 3090 box today. `spikes/k_source_prep/run.sh` needs
-  `LATTICE_BIGDISK` and the j_evals `amt` and `sep` envs, which were only built there. The user
-  hasn't tried audio to MIDI yet, and the demo is on the Mac.
-- **Do (on the Mac; no code change expected):**
-  1. Pick a Mac folder for everything heavy, e.g. `~/lattice-data`, and
-     `export LATTICE_BIGDISK=~/lattice-data` (also wherever the app is started, so `sourcePrep.ts`
-     passes it on). `env.sh` puts every cache under it: venvs in `venvs/`, model weights in `hf/`
-     (`HF_HUB_CACHE`), torch weights in `torch/`. Nothing goes to the 3090's disk layout.
-  2. `uv sync` the j_evals `amt`, `sep` and `muscriptor` envs through `env.sh`.
-  3. HF login once, outside `env.sh`: `uvx hf auth login`, with the account that accepted the
-     MuScriptor licence (writes `~/.cache/huggingface/token`; `env.sh` points `HF_TOKEN_PATH` at it).
-  4. First run downloads MuScriptor medium (1.2 GB) into `$LATTICE_BIGDISK/hf/` on the Mac, plus the
-     Mel-RoFormer / htdemucs weights.
-  5. Pilot one voice note with `spikes/k_source_prep/run.sh` and check the manifest says
-     `"transcriber": "muscriptor"` with no fallback warning. MuScriptor picks MPS and float16 by
-     itself; the 3 GB free-VRAM check only runs where `nvidia-smi` exists. Speed on MPS is
-     unmeasured: if a 20 s note takes much longer than ~30 s, note it here before going on.
-  6. Run one voice note end to end from the app. YourMT3+ stays off (needs a 14 GB GPU).
-- **If MuScriptor isn't set up,** the sidecar still works: it falls back to basic-pitch / pyin with a
-  warning in the manifest.
-- **Done when:** the user has run `extract_midi` on two real voice notes in the app and judged the MIDI.
-- **Progress (Oct 28):** steps 1-5 done on the Mac (`LATTICE_BIGDISK=~/lattice-data`; `amt`, `sep`, `muscriptor`
-  envs synced; HF token already there). Two real notes through `run.sh`, both `"transcriber": "muscriptor"`, no
-  fallback warning. 20 s note, warm: **43 s** (analyse 8, separation 21, MuScriptor 11); the first run took 117 s
-  with the weight download. That is over the ~30 s mark: separation is the larger part. Also added a **Piano Roll**
-  (double-click a region, or P) so the user can judge and fix the MIDI in the app: `edit_midi_notes` (user only,
-  one undo step per gesture) and `transpose_midi` (Muse has it too). Left: step 6, the user runs two notes in the
-  app and judges them in the Piano Roll. The app now finds `~/lattice-data` by itself
-  (or `LATTICE_BIGDISK` in `.env`); `LATTICE_BIGDISK=...` on a line of its own isn't exported to `npm run dev`.
 
 ## Next
 
@@ -169,6 +194,24 @@ and update the `HANDOFF.md` status table.
 - **Heavier version:** PE-AV word scores ("is this grittier?"); tracks drive, resonance, attack and
   detune but misses brightness and noise. PE-AV large is untested. Only if the cheap version isn't enough.
 - **Depends on:** B1.
+- **Progress (Oct 28): cheap version built.** `measure_track(track_id)` renders the track as heard and with its
+  effects removed (in the renderer, which holds the audio: an IPC round trip from Electron main, or in-page on
+  the web) and returns both feature sets plus `what_the_fx_do`, the changes largest first, e.g. "air band −21.7 dB
+  vs the least-changed band", "brightness −80%", "loud-quiet spread −13.8 dB, loud and quiet parts closer
+  together". Features (`app/src/core/ears.ts`, pure TS, no model): level, sample peak, crest (10 ms peak over
+  level), loud-quiet spread (400 ms windows), spectral centroid, 7 band levels, stereo width. The system prompt
+  says to call it once after effect moves and report the measured change.
+  - Three readings were wrong on the first try and are fixed, each with a test: band changes measured against
+    the overall level (or the median band) made untouched bands read as boosted after a high cut, so the
+    reference is now the least-changed band; a sample-peak crest read a 10:1 compressor as "more dynamic", so
+    crest uses the loudest 10 ms; and crest vs spread are now described as what they are (peaks standing out
+    vs loud and quiet parts closer together) instead of "compressed / dynamic".
+  - Tests: `tests/ears.test.ts` (known answers on synthetic signals), `tests/vocab.test.ts` (the tool),
+    `e2e/measure.spec.ts` (real effect chain in the page: a high cut reads darker with less air, a compressor
+    reads as closer loud and quiet parts), and an Electron test of the IPC path.
+  - **Left:** recorded scenarios can't measure (Node has no audio engine), so Muse's use of it is checked live:
+    the B1 step 7 phrases in the app exercise it too. Look for Muse quoting the measured change, and fixing a move
+    that measured the wrong way.
 
 ### B6. Demo script and public repo
 - **Positioning (research, Oct 27):** "agentic DAW" is already a crowded category, so don't claim
@@ -244,3 +287,5 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
   `app/tests/versions.test.ts`, `app/e2e/versions.spec.ts`, relaunch test in
   `app/e2e/electron.spec.ts`. Not done: undo history across restarts, a tree view of versions,
   delete or rename a version, multiple projects. A moved import shows an error and plays silent.
+- 2026-10-28: B3a source prep on the Mac. Steps 1-5 as recorded earlier (43 s per 20 s note, warm);
+  step 6: the user ran `extract_midi` on two real voice notes in the app and judged the MIDI acceptable.

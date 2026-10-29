@@ -10,6 +10,7 @@ import { FX_TOOLS } from '../fx/tools';
 import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
 import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
 import { VERSION_TOOLS, versionsLine, type VersionLibrary } from './versions';
+import type { Features } from './ears';
 
 export type JsonSchema = {
   type: 'object';
@@ -26,6 +27,9 @@ export interface ToolContext {
   chains?: ChainLibrary;
   /** saved versions of the session (B11); in memory if omitted */
   versions?: VersionLibrary;
+  /** B9: render a track as heard and without its effects, and measure both (the renderer
+   *  holds the audio); absent where there is no audio (tests, fixtures) */
+  measureTrack?: (session: S.Session, trackId: string) => Promise<{ wet: Features; dry: Features }>;
 }
 
 /** The session summary Muse sees, with saved chains and versions. */
@@ -64,11 +68,48 @@ function edit(ctx: ToolContext, fn: (s: S.Session) => S.Session): S.Session {
   return next;
 }
 
-function trackOfClipSource(s: S.Session, trackId: string): string {
-  const t = S.getTrack(s, trackId);
-  if (!t.clips.length) throw new S.SessionError(`track ${trackId} has no clips`);
-  return t.clips[0].sourceId;
+/** B3: run a sidecar audio process (cleanup, quantize) once per audio source a track plays, then
+ *  switch the track's clips to the processed audio in one store update (one undo step). The
+ *  sidecar runs for seconds, so the result is applied to the session as it is by then. A stub
+ *  result (no sidecar here) changes nothing. */
+async function processTrackAudio<R extends { stub?: true }>(
+  ctx: ToolContext,
+  trackId: string,
+  run: (sourceId: string, newSourceId: string, firstClip: S.Clip) => Promise<R>,
+  describe: (r: R) => string,
+): Promise<{ stub: boolean; sources: (R & { source_id: string; new_source_id?: string })[] }> {
+  const t = S.getTrack(ctx.store.get(), trackId);
+  const first = new Map<string, S.Clip>();
+  for (const c of t.clips) if (!c.midi && !first.has(c.sourceId)) first.set(c.sourceId, c);
+  if (!first.size) throw new S.SessionError(`track ${trackId} has no audio clips`);
+  const done: { sourceId: string; newSourceId: string; r: R }[] = [];
+  for (const [sourceId, clip] of first) {
+    const newSourceId = `src-${Math.random().toString(36).slice(2, 10)}`;
+    done.push({ sourceId, newSourceId, r: await run(sourceId, newSourceId, clip) });
+  }
+  if (done.some((d) => d.r.stub)) return { stub: true, sources: done.map((d) => ({ source_id: d.sourceId, ...d.r })) };
+  let s = ctx.store.get();
+  const applied = new Set<string>();
+  for (const d of done) {
+    const from = s.sources[d.sourceId];
+    const still = s.tracks.find((tr) => tr.id === trackId)?.clips.some((c) => c.sourceId === d.sourceId && !c.midi);
+    if (!from || !still) continue; // deleted or moved away while the sidecar ran
+    const what = describe(d.r);
+    s = S.replaceTrackSource(s, trackId, d.sourceId, {
+      id: d.newSourceId,
+      name: from.name,
+      duration: from.duration,
+      origin: 'processed',
+      derivedFrom: d.sourceId,
+      processed: from.processed ? `${from.processed}; ${what}` : what,
+    });
+    applied.add(d.sourceId);
+  }
+  if (applied.size) ctx.store.set(s);
+  return { stub: false, sources: done.map((d) => ({ source_id: d.sourceId, ...(applied.has(d.sourceId) ? { new_source_id: d.newSourceId } : {}), ...d.r })) };
 }
+
+const GRID_DIV: Record<string, number> = { '1/4': 4, '1/8': 8, '1/16': 16, '1/32': 32 };
 
 const range = (description: string) => ({
   type: 'object',
@@ -310,29 +351,46 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'quantize_drums',
-    description: 'Quantize a drum track to the project tempo: slice at onsets and snap them to a grid (no time-stretch). strength 0-1 (1 = hard snap).',
+    description:
+      'Quantize a drum track\'s audio to the session tempo and bars: slice at each hit and move it toward the grid (no time-stretch). ' +
+      'strength 0-1 (1 = hard snap). Replaces the track\'s audio with the quantized take (undo brings the original back). Takes a few seconds.',
     parameters: obj(
       {
         track_id: str('Drum track id'),
-        grid: str('Grid', { enum: ['1/4', '1/8', '1/16', '1/32'] }),
+        grid: str('Grid', { enum: Object.keys(GRID_DIV) }),
         strength: num('0-1, how far to move each hit toward the grid', { minimum: 0, maximum: 1 }),
       },
       ['track_id', 'grid', 'strength'],
     ),
     run: async (ctx, a) => {
-      const s = ctx.store.get();
-      const sourceId = trackOfClipSource(s, a.track_id);
-      const r = await ctx.sidecar.quantizeDrums({ sourceId, grid: a.grid, strength: a.strength, bpm: s.tempo });
-      return { track_id: a.track_id, bpm: s.tempo, ...r, stub: true };
+      const grid = GRID_DIV[a.grid];
+      if (!grid) throw new S.SessionError(`grid must be one of ${Object.keys(GRID_DIV).join(', ')}`);
+      const strength = Math.min(1, Math.max(0, Number(a.strength)));
+      const bpm = ctx.store.get().tempo;
+      const r = await processTrackAudio(
+        ctx,
+        a.track_id,
+        // grid lines sit on the session's bars: timeline 0 is source time (offset - start) of the first clip
+        (sourceId, newSourceId, c) => ctx.sidecar.quantizeDrums({ sourceId, newSourceId, grid, strength, bpm, phase: c.offset - c.start }),
+        () => `drums quantized to ${a.grid} at ${bpm} BPM, strength ${strength}`,
+      );
+      return { track_id: a.track_id, bpm, grid: a.grid, strength, ...r.sources.length === 1 ? r.sources[0] : { sources: r.sources }, ...(r.stub ? { stub: true } : {}) };
     },
   },
   {
     name: 'cleanup_noise',
-    description: 'Remove steady background noise (hiss, hum, room tone) from a track\'s audio.',
+    description:
+      'Remove steady background noise (hiss, hum, room tone) from a track\'s audio: Mel-RoFormer denoise, or noisereduce when the model is not installed. ' +
+      'Replaces the track\'s audio with the cleaned take (undo brings the original back). Takes about as long as the audio; the result says which method ran.',
     parameters: obj({ track_id: str('Track id') }, ['track_id']),
     run: async (ctx, a) => {
-      const sourceId = trackOfClipSource(ctx.store.get(), a.track_id);
-      return { track_id: a.track_id, ...(await ctx.sidecar.cleanupNoise({ sourceId })), stub: true };
+      const r = await processTrackAudio(
+        ctx,
+        a.track_id,
+        (sourceId, newSourceId) => ctx.sidecar.cleanupNoise({ sourceId, newSourceId }),
+        (x) => `noise cleaned (${x.method})`,
+      );
+      return { track_id: a.track_id, ...r.sources.length === 1 ? r.sources[0] : { sources: r.sources }, ...(r.stub ? { stub: true } : {}) };
     },
   },
 

@@ -5,6 +5,8 @@ import { DEVICE_IDS, describeCatalog, describeSettings, getDevice, latencySecond
 import * as C from './chain';
 import * as S from '../core/session';
 import { chainLibrary } from './savedChains';
+import { compare } from '../core/ears';
+import { AMOUNTS, devicesForWord, lookupWord, scaledMoves, SOURCE_TYPES, sourceTypeOf, type Amount } from './vocab';
 import type { ToolDef } from '../core/tools';
 
 const str = (description: string, extra: object = {}) => ({ type: 'string', description, ...extra });
@@ -30,6 +32,66 @@ export const FX_TOOLS: ToolDef[] = [
     run: (_ctx, a) => ({ catalog: describeCatalog(a.device) }),
   },
   {
+    name: 'suggest_moves',
+    description:
+      'For sound words ("muddy", "punchy", "stand out", "wider", "telephone"), the knob moves that usually fix them: which devices, which knobs, ' +
+      'how far, tuned per source type (a warm bass differs from a warm vocal). Call this before insert_device/set_param for any request in sound words. ' +
+      'Give track_id so the source type comes from the track name, and the result lists the devices the track already has (adjust those with set_param instead of inserting duplicates).',
+    parameters: obj(
+      {
+        words: { type: 'array', items: { type: 'string' }, description: 'The sound words, one per item, e.g. ["wider", "spacious"]' },
+        track_id: str('Track the words are about'),
+        source_type: str('What the track is, if the name does not say', { enum: [...SOURCE_TYPES] }),
+        amount: str('How strong: "a bit", "normal" (default), "a lot"', { enum: AMOUNTS }),
+      },
+      ['words'],
+    ),
+    quiet: true,
+    run: (ctx, a) => {
+      const words: string[] = (Array.isArray(a.words) ? a.words : [a.words]).map(String).filter((w: string) => w.trim());
+      if (!words.length) throw new S.SessionError('give at least one word');
+      const track = a.track_id ? S.getTrack(ctx.store.get(), a.track_id) : undefined;
+      const source: string | undefined = a.source_type ?? (track && sourceTypeOf(track.name));
+      const amount: Amount = AMOUNTS.includes(a.amount) ? a.amount : 'normal';
+      const suggestions = words.map((word) => {
+        const e = lookupWord(word, source);
+        if (!e) return { word, no_match: true, devices_with_this_word: devicesForWord(word) };
+        return { word, matched: e.word, for: e.sourceTypes.join('/'), moves: scaledMoves(e, amount), ...(e.note ? { note: e.note } : {}) };
+      });
+      return {
+        source_type: source ?? 'unknown (pass source_type)',
+        amount,
+        suggestions,
+        ...(track ? { track_devices: track.devices.map((d) => ({ device_id: d.id, device: d.kind, on: d.on })) } : {}),
+        how: 'Insert each device once with insert_device, putting the "set" moves in params; apply "add"/"mul" moves with set_param op add/mul. ' +
+          'Moves for the same device across words go on one device. For "a bit more/less" later, use set_param op nudge.',
+      };
+    },
+  },
+  {
+    name: 'measure_track',
+    description:
+      'Measure a track as heard (with its effects) and without its effects: level, peak, crest (lower = more compressed), loud-quiet spread, ' +
+      'brightness (spectral centroid), level per band (sub, low, low_mid, mid, presence, sibilance, air) and stereo width. ' +
+      '"what_the_fx_do" lists the changes, largest first. You cannot hear: after effect moves, call this once to check they went the way the words ask, ' +
+      'and tell the user the measured change in plain words.',
+    parameters: obj({ track_id: str('Track id') }, ['track_id']),
+    quiet: true,
+    run: async (ctx, a) => {
+      const s = ctx.store.get();
+      const t = S.getTrack(s, a.track_id);
+      if (!t.clips.length) throw new S.SessionError(`track ${a.track_id} has no clips to measure`);
+      if (!ctx.measureTrack) throw new S.SessionError('measuring needs the app with the audio loaded (not available here)');
+      const { wet, dry } = await ctx.measureTrack(s, a.track_id);
+      const on = t.devices.filter((d) => d.on);
+      return {
+        track_id: a.track_id,
+        as_heard: wet,
+        ...(on.length ? { without_fx: dry, what_the_fx_do: compare(dry, wet), chain: on.map((d) => d.kind) } : { what_the_fx_do: ['no effects on this track'] }),
+      };
+    },
+  },
+  {
     name: 'insert_device',
     description:
       'Insert an effect device on a track\'s chain (signal flows in list order). Optionally give a position (0 = first) and starting knob values, ' +
@@ -49,7 +111,10 @@ export const FX_TOOLS: ToolDef[] = [
       let s = s1;
       const clamped: string[] = [];
       // starting values go through set_param's checks so Muse is held to the agent range too
-      for (const [k, v] of Object.entries(a.params ?? {})) {
+      // a preset knob (comp "style") resets others, so it goes first and the explicit values win
+      const preset = getDevice(dev.kind).presetParam;
+      const entries = Object.entries(a.params ?? {}).sort(([x], [y]) => Number(y === preset) - Number(x === preset));
+      for (const [k, v] of entries) {
         const [s2, ch] = C.setDeviceParam(s, a.track_id, dev.id, k, v, { range: by === 'muse' ? 'agent' : 'full' });
         if (ch.clamped) clamped.push(`${k}=${ch.value}`);
         s = s2;

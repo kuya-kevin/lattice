@@ -1,0 +1,153 @@
+{
+  "name": "fx-stand-out",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Make the vocal stand out in the mix."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T00:49:18.427Z",
+  "responses": [
+    {
+      "message": {
+        "content": "I'll shape the vocal to cut through — setting up EQ and compression.",
+        "tool_calls": [
+          {
+            "id": "call_21a90e4c-2448-448c-b494-b3e4f9a85efd",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7068,
+        "completion_tokens": 137
+      }
+    },
+    {
+      "message": {
+        "content": "Let me check the exact controls for those vocal tools.",
+        "tool_calls": [
+          {
+            "id": "call_66109e72-b1d9-4257-8c1c-0dcdf82ba2cb",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"eq\"}"
+            }
+          },
+          {
+            "id": "call_2eb18171-5bf9-450c-a283-c8f5271c754f",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"comp\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7619,
+        "completion_tokens": 162
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_db9a527a-ea1c-4197-b126-adac33ffbf05",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"eq\",\"params\":{\"b2_freq\":350,\"b2_gain\":-2.5,\"b3_freq\":3000,\"b3_gain\":3,\"hp_freq\":100,\"hp_on\":true,\"hs_freq\":12000,\"hs_gain\":1.5},\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 8803,
+        "completion_tokens": 230
+      }
+    },
+    {
+      "message": {
+        "content": "Basic tone is dialed — adding compression to keep it upfront.",
+        "tool_calls": [
+          {
+            "id": "call_46c67d20-1688-47ef-ac49-f5a1323260de",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"comp\",\"params\":{\"attack\":10,\"ratio\":3,\"release\":120,\"style\":\"clean\",\"thresh\":-18},\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9069,
+        "completion_tokens": 134
+      }
+    },
+    {
+      "message": {
+        "content": "Added EQ (low-cut + mud cut, presence/air lift) and compression on the vocal to sit forward — play it back against the bass/drums/pad and tell me if you want it brighter, warmer, or more squashed."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 9340,
+        "completion_tokens": 158
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 41899,
+    "completion_tokens": 821
+  }
+}

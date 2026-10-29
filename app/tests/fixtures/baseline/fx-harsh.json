@@ -1,0 +1,221 @@
+{
+  "name": "fx-harsh",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal take",
+        "duration": 12,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass DI",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drum loop",
+        "duration": 8,
+        "origin": "import"
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-pad",
+        "name": "Pad",
+        "duration": 8,
+        "origin": "import"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "The vocal sounds harsh, can you smooth it out?"
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-29T00:52:01.867Z",
+  "responses": [
+    {
+      "message": {
+        "content": "I'll tame that harshness — setting up a smoother vocal chain.",
+        "tool_calls": [
+          {
+            "id": "call_bb99fbdb-3e0f-4b06-841f-289b7b6d2a17",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7070,
+        "completion_tokens": 150
+      }
+    },
+    {
+      "message": {
+        "content": "Got it — harsh vocal, I'll check the right tools to smooth it.",
+        "tool_calls": [
+          {
+            "id": "call_8e1a98a8-d679-4d9a-af2e-9cfa8c5b2f0b",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"deess\"}"
+            }
+          },
+          {
+            "id": "call_4d40d4fd-89f0-41ef-bda9-5fb9e7d55762",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"eq\"}"
+            }
+          },
+          {
+            "id": "call_492869d6-db75-40c9-92b1-c1d2cf0fce2e",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"comp\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 7620,
+        "completion_tokens": 198
+      }
+    },
+    {
+      "message": {
+        "content": "Harsh usually means sibilance — I'll build a smoothing chain to check.",
+        "tool_calls": [
+          {
+            "id": "call_de8ae128-cb5d-448b-bca9-09c5fa57a79f",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"deess\",\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9093,
+        "completion_tokens": 132
+      }
+    },
+    {
+      "message": {
+        "content": "First piece is on; adding the rest of the smoothing chain.",
+        "tool_calls": [
+          {
+            "id": "call_8274f570-aea8-48ca-9986-5ddf87945570",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"eq\",\"track_id\":\"t1\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9252,
+        "completion_tokens": 98
+      }
+    },
+    {
+      "message": {
+        "content": "Chain is in place — now dialing it in to smooth the harshness.",
+        "tool_calls": [
+          {
+            "id": "call_8d6d610f-469c-460a-82b5-673a475face0",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"param\":\"freq\",\"track_id\":\"t1\",\"value\":\"7000\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9424,
+        "completion_tokens": 195
+      }
+    },
+    {
+      "message": {
+        "content": "Tuning the de-esser and EQ to take the edge off.",
+        "tool_calls": [
+          {
+            "id": "call_09f6a9a1-508c-4980-80ce-5a0ba33ff248",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d9\",\"param\":\"range\",\"track_id\":\"t1\",\"value\":\"8\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9589,
+        "completion_tokens": 181
+      }
+    },
+    {
+      "message": {
+        "content": "De-esser set — now softening the harsh upper mids with EQ.",
+        "tool_calls": [
+          {
+            "id": "call_5e5daabd-8d43-4c3d-b818-ba1f4a5ba7d1",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d10\",\"param\":\"b3_gain\",\"track_id\":\"t1\",\"value\":\"-2.5\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 9749,
+        "completion_tokens": 204
+      }
+    },
+    {
+      "message": {
+        "content": "Added a de-esser (7kHz, 8dB max) + gentle EQ dip on Vocal take to tame harsh sibilance.\n\nPlay it back — listen for whether the S/T sounds are smoother but still clear, and tell me if you want more or less smoothing?"
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 9920,
+        "completion_tokens": 113
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 71717,
+    "completion_tokens": 1271
+  }
+}
