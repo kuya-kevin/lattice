@@ -211,9 +211,7 @@ test('electron: a region trims from both edges in the arrangement (Oct 28 bug re
   };
   await drag('right', -px(1.5));
   await expect.poll(async () => (await clip()).duration).toBe(2.5);
-  // known glitch (Oct 28): a second trim started within ~1 s of the first sometimes never starts
-  // a drag (the playlist is still re-rendering the trimmed region); a human pause is fine
-  await page.waitForTimeout(1500);
+  // straight into the second trim: it used to need a ~1 s pause (Oct 28; e2e/trim-twice.spec.ts)
   await drag('left', px(1));
   await expect.poll(clip).toMatchObject({ start: 1, offset: 1, duration: 1.5 });
 
