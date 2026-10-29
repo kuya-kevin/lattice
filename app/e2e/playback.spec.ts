@@ -70,3 +70,19 @@ test('Space plays/stops while a button, slider or the Add device menu has focus'
   await expect(chat).toHaveValue('a b ');
   expect((await session(page)).transport.playing).toBe(false);
 });
+
+test('Stop leaves the playhead where you heard it, and Play carries on from there', async ({ page }) => {
+  await load(page, 6);
+  const lcd = () =>
+    page.getByTestId('lcd').innerText().then((t) => {
+      const m = t.match(/(\d+):(\d\d\.\d\d)/)!;
+      return Number(m[1]) * 60 + Number(m[2]);
+    });
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(1500);
+  const heard = await lcd(); // while playing the LCD shows what is reaching the speakers
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(300);
+  expect(Math.abs((await lcd()) - heard)).toBeLessThan(0.04); // was ~0.13 ahead (lookahead + output latency)
+  expect(Math.abs((await session(page)).transport.position - heard)).toBeLessThan(0.04);
+});

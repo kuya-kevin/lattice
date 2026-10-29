@@ -90,3 +90,44 @@ describe('session model', () => {
     expect(s.transport).toMatchObject({ playing: false, position: 1.5 });
   });
 });
+
+describe('changeTempo (regions keep their bar positions, as in Logic and GarageBand)', () => {
+  function withMidi() {
+    let { s, t, c } = withClip(); // audio: src1 (10 s) at 1 s
+    const [s1, m] = S.addMidiClip(s, t.id, { name: 'Keys', sourceDuration: 2, start: 4, midi: { instrument: 'piano', notes: [{ pitch: 60, velocity: 100, start: 0.5, duration: 0.25 }] } }); // bar 3 at 120 BPM
+    s = s1;
+    s = S.armPunchIn(s, t.id, 2, 6);
+    return { s, audio: c, midi: m };
+  }
+
+  it('moves region starts with the bars; MIDI notes stretch, audio content does not', () => {
+    const { s, audio, midi } = withMidi();
+    const s2 = S.changeTempo(s, 60); // everything twice as long
+    expect(s2.tempo).toBe(60);
+    const a = S.findClip(s2, audio.id).clip;
+    expect(a).toMatchObject({ start: 2, offset: 0, duration: 10 }); // audio isn't time-stretched
+    const m = S.findClip(s2, midi.id).clip;
+    expect(m).toMatchObject({ start: 8, offset: 0, duration: 4 });
+    expect(m.midi!.notes[0]).toMatchObject({ start: 1, duration: 0.5 });
+    expect(s2.sources[m.sourceId].duration).toBe(4);
+    expect(s2.punchIn).toMatchObject({ start: 4, end: 12 });
+  });
+
+  it('a trimmed MIDI region keeps its trim in beats', () => {
+    const { s, midi } = withMidi();
+    const s1 = S.trimClip(s, midi.id, 4.5, 6); // offset 0.5 into the source
+    const m = S.findClip(S.changeTempo(s1, 240), midi.id).clip;
+    expect(m).toMatchObject({ start: 2.25, offset: 0.25, duration: 0.75 });
+  });
+
+  it('a stopped playhead stays on its bar (a locate, so the engine follows); a playing one is left to the renderer', () => {
+    const s = S.setTransport(withMidi().s, 'locate', 4);
+    expect(S.changeTempo(s, 60).transport).toMatchObject({ position: 8, command: 'locate', rev: s.transport.rev + 1 });
+    const p = S.setTransport(s, 'play', 4);
+    expect(S.changeTempo(p, 60).transport).toEqual(p.transport);
+  });
+
+  it('validates like setTempo', () => {
+    expect(() => S.changeTempo(withMidi().s, 300)).toThrow(/40-240/);
+  });
+});

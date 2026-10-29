@@ -82,7 +82,34 @@ export class ClickScheduler {
   }
 }
 
-/** Audio times of a one-bar count-in starting at `audioTime` (downbeat accented). */
-export function countInClicks(audioTime: number, m: Meter): { time: number; accent: boolean }[] {
-  return Array.from({ length: m.timeSignature[0] }, (_, i) => ({ time: audioTime + i * beatLength(m), accent: i === 0 }));
+/** A one-bar count-in before a take starting at timeline `at`: the clicks fall on the bar grid
+ *  (the beats of the bar leading up to `at`, bar downbeats accented), so the transport's click
+ *  carries straight on after it. The first click sounds `lead` seconds after audio time `now`;
+ *  `downbeat` is the audio time at which `at` must leave the transport. */
+export interface CountInPlan {
+  downbeat: number;
+  clicks: { time: number; accent: boolean }[];
+}
+
+export function planCountIn(at: number, m: Meter, now: number, lead = 0.05): CountInPlan {
+  const beat = beatLength(m);
+  const n = m.timeSignature[0];
+  const first = Math.ceil((at - barLength(m)) / beat - 1e-6); // first grid beat in [at - bar, at)
+  const t0 = now + lead;
+  return {
+    downbeat: t0 + (at - first * beat),
+    clicks: Array.from({ length: n }, (_, i) => ({ time: t0 + i * beat, accent: (((first + i) % n) + n) % n === 0 })),
+  };
+}
+
+/** The bar line before `pos` (a whole bar back from one), not before 0: the , key. */
+export function prevBarLine(pos: number, m: Meter): number {
+  const bar = barLength(m);
+  return Math.max(0, (Math.ceil(pos / bar - 1e-6) - 1) * bar);
+}
+
+/** The bar line after `pos` (a whole bar on from one): the . key. */
+export function nextBarLine(pos: number, m: Meter): number {
+  const bar = barLength(m);
+  return (Math.floor(pos / bar + 1e-6) + 1) * bar;
 }

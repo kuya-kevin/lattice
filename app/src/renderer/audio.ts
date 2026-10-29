@@ -33,6 +33,16 @@ export async function decodeFile(file: File): Promise<AudioBuffer> {
   return ctx.decodeAudioData(await file.arrayBuffer());
 }
 
+/** `duration` seconds of `b` from `from` (clamped to the buffer), or null if that is empty. */
+export function sliceBuffer(b: AudioBuffer, from: number, duration: number): AudioBuffer | null {
+  const a = Math.min(b.length, Math.max(0, Math.round(from * b.sampleRate)));
+  const n = Math.min(b.length - a, Math.round(duration * b.sampleRate));
+  if (n <= 0) return null;
+  const out = new AudioBuffer({ length: n, numberOfChannels: b.numberOfChannels, sampleRate: b.sampleRate });
+  for (let ch = 0; ch < b.numberOfChannels; ch++) out.copyToChannel(b.getChannelData(ch).subarray(a, a + n), ch);
+  return out;
+}
+
 export const dbToGain = (db: number) => Math.pow(10, db / 20);
 
 export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {

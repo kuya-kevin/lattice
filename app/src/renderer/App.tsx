@@ -12,10 +12,12 @@ import { BeatsAndBarsProvider, darkTheme } from '@waveform-playlist/ui-component
 import type { Bridge } from '../core/bridge';
 import { attribution, needsAttribution } from '../core/library';
 import type { Session } from '../core/session';
+import type { Meter } from '../core/metronome';
 import { SNAP_LABELS, SNAP_MODES, type SnapMode } from '../core/snap';
 import { ArrangeInteraction, type DropTarget } from './Arrange';
 import { buffers, dbToGain, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTracks } from './audio';
 import { clicks } from './click';
+import { audioContext, outputDelay, transportHandoff } from './audioClock';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
 import { Icon } from './icons';
@@ -484,7 +486,7 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
   // setCurrentTime, not seekTo: seekTo clamps to the last clip's end, and the playhead may sit
   // past it (Logic; the ruler, '.' and Muse's go_to all can)
   const { play, pause, setCurrentTime } = usePlaylistControls();
-  const { isPlaying, getPlaybackTime, getLookAhead, currentTimeRef } = usePlaybackAnimation();
+  const { isPlaying, getPlaybackTime, getLookAhead, currentTimeRef, visualTimeRef, playbackStartTimeRef, registerFrameCallback, unregisterFrameCallback } = usePlaybackAnimation();
   playheadRef.current = () => currentTimeRef.current ?? session.transport.position;
   const playingRef = useRef(isPlaying);
   playingRef.current = isPlaying;
@@ -492,12 +494,30 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
 
   useEffect(() => {
     if (rev === 0) return;
-    if (command === 'play') play(position);
-    else if (command === 'stop') playingRef.current && pause();
+    if (command === 'play') {
+      if (!transportHandoff.take(position)) play(position); // else the recorder already started it on the beat
+    }
+    else if (command === 'stop' && playingRef.current) {
+      // stop where the listener is (pause() would leave it a lookahead + output latency later)
+      const heard = visualTimeRef.current ?? position;
+      pause();
+      setCurrentTime(heard);
+    }
     else if (playingRef.current) play(position); // locate while playing: continue from there
     else setCurrentTime(position);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rev]);
+
+  // a tempo change keeps the playhead on its bar (changeTempo moves a stopped one; this one is live)
+  const prevTempo = useRef(session.tempo);
+  useEffect(() => {
+    const k = prevTempo.current / session.tempo;
+    prevTempo.current = session.tempo;
+    if (k === 1 || !playingRef.current) return;
+    const heard = getPlaybackTime() - getLookAhead() - outputDelay(audioContext());
+    play(Math.max(0, heard * k));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.tempo]);
 
   // playback ended on its own: tell the session. With indefinitePlayback the transport rolls
   // past the last region (DAW-style), so this is only a fallback for engine-side stops.
@@ -512,8 +532,19 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
   const [beats, unit] = session.timeSignature;
   useEffect(() => {
     if (!isPlaying || !on) return;
-    clicks.start(getPlaybackTime() - getLookAhead(), { tempo: session.tempo, timeSignature: [beats, unit] });
-    return () => clicks.stop();
+    const meter: Meter = { tempo: session.tempo, timeSignature: [beats, unit] };
+    let started = playbackStartTimeRef.current;
+    clicks.start(getPlaybackTime() - getLookAhead(), meter);
+    // a region edit rebuilds the engine and resumes playback from where it was heard: re-anchor
+    registerFrameCallback('click-resync', () => {
+      if (playbackStartTimeRef.current === started) return;
+      started = playbackStartTimeRef.current;
+      clicks.start(getPlaybackTime() - getLookAhead(), meter);
+    });
+    return () => {
+      unregisterFrameCallback('click-resync');
+      clicks.stop();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, on, session.tempo, beats, unit, rev]);
   return null;

@@ -1,19 +1,15 @@
 // The click track: Web Audio oscillator blips scheduled ahead on the audio clock by
 // ClickScheduler (see core/metronome.ts). Shares the playlist's AudioContext so clicks and
 // audio run on the same clock.
-import { getGlobalContext } from '@waveform-playlist/playout';
-import { barLength, ClickScheduler, countInClicks, type Meter } from '../core/metronome';
-
-function audioContext(): AudioContext {
-  return getGlobalContext().rawContext as unknown as AudioContext;
-}
+import { ClickScheduler, planCountIn, type Meter } from '../core/metronome';
+import { audioContext } from './audioClock';
 
 class ClickPlayer {
   private scheduled = new Set<OscillatorNode>();
   private timer: ReturnType<typeof setInterval> | null = null;
   private sched = new ClickScheduler((t, accent) => this.blip(t, accent), { tempo: 120, timeSignature: [4, 4] });
 
-  private blip(time: number, accent: boolean) {
+  private blip(time: number, accent: boolean): OscillatorNode {
     const ctx = audioContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -26,6 +22,7 @@ class ClickPlayer {
     osc.stop(time + 0.06);
     this.scheduled.add(osc);
     osc.onended = () => this.scheduled.delete(osc);
+    return osc;
   }
 
   /** Click along with the timeline: position `pos` is being emitted to the speakers now. */
@@ -51,14 +48,21 @@ class ClickPlayer {
     this.scheduled.clear();
   }
 
-  /** One bar of clicks; resolves when the bar is over (i.e. on the next downbeat). */
-  async countIn(meter: Meter): Promise<void> {
-    const ctx = audioContext();
-    if (ctx.state !== 'running') await ctx.resume();
-    const t0 = ctx.currentTime + 0.05;
-    for (const c of countInClicks(t0, meter)) this.blip(c.time, c.accent);
-    const ms = (t0 + barLength(meter) - ctx.currentTime) * 1000;
-    await new Promise((r) => setTimeout(r, ms));
+  /** Schedule a one-bar count-in on the bar grid before timeline `at` (the context must be
+   *  running). `downbeat` is the audio time `at` must leave the transport; cancel() silences it. */
+  countIn(at: number, meter: Meter): { downbeat: number; cancel: () => void } {
+    const plan = planCountIn(at, meter, audioContext().currentTime);
+    const oscs = plan.clicks.map((c) => this.blip(c.time, c.accent));
+    const cancel = () => {
+      for (const o of oscs) {
+        try {
+          o.stop();
+        } catch {
+          /* already stopped */
+        }
+      }
+    };
+    return { downbeat: plan.downbeat, cancel };
   }
 }
 

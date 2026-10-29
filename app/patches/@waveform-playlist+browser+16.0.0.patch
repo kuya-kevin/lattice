@@ -1,8 +1,144 @@
 diff --git a/node_modules/@waveform-playlist/browser/dist/index.js b/node_modules/@waveform-playlist/browser/dist/index.js
-index 19830be..1806bc5 100644
+index 19830be..0554483 100644
 --- a/node_modules/@waveform-playlist/browser/dist/index.js
 +++ b/node_modules/@waveform-playlist/browser/dist/index.js
-@@ -4198,6 +4198,14 @@ function useSpectrogramIntegration() {
+@@ -2082,6 +2082,14 @@ var WaveformPlaylistProvider = ({
+     samplesPerPixelRef.current = newSamplesPerPixel;
+   }, [samplesPerPixel, duration]);
+   const pendingResumeRef = (0, import_react17.useRef)(null);
++  // [lattice patch] true while a full engine rebuild is in flight (the old engine is disposed and
++  // the new one not built yet): play/pause/stop then go to pendingResumeRef instead of a dead engine.
++  const engineRebuildingRef = (0, import_react17.useRef)(false);
++  // a play() waiting on engine.init(): a rebuild in that window resumes it instead of dropping it
++  const playInFlightRef = (0, import_react17.useRef)(null);
++  // bumped each time a rebuilt engine is in place, so a pending resume runs on it (isReady can
++  // flip false -> true within one render batch and not re-run the effect)
++  const [engineGeneration, setEngineGeneration] = (0, import_react17.useState)(0);
+   (0, import_react17.useEffect)(() => {
+     var _a2, _b2, _c2, _d2;
+     if (isEngineTracks || isDraggingRef.current) {
+@@ -2181,12 +2189,17 @@ var WaveformPlaylistProvider = ({
+     const wasPlaying = isPlayingRef.current;
+     const resumePosition = currentTimeRef.current;
+     if (engineRef.current && wasPlaying) {
++      // [lattice patch] resume from what is being heard (read before stop() resets the transport)
++      const heardPosition = engineRef.current.getAudibleTime ? Math.max(0, engineRef.current.getAudibleTime()) : resumePosition;
+       suppressEngineStopMirrorRef.current = true;
+       engineRef.current.stop();
+       suppressEngineStopMirrorRef.current = false;
+       stopAnimationFrameLoop();
+-      pendingResumeRef.current = { position: resumePosition };
++      pendingResumeRef.current = { position: heardPosition };
++    } else if (engineRef.current && playInFlightRef.current) {
++      pendingResumeRef.current = playInFlightRef.current;
+     }
++    playInFlightRef.current = null;
+     let cancelled = false;
+     const loadAudio = () => __async(null, null, function* () {
+       var _a3, _b3, _c3, _d3, _e;
+@@ -2225,6 +2238,7 @@ var WaveformPlaylistProvider = ({
+           }));
+         });
+         if (engineRef.current) {
++          engineRebuildingRef.current = true;
+           engineRef.current.dispose();
+         }
+         lastTracksVersionRef.current = 0;
+@@ -2308,6 +2322,8 @@ var WaveformPlaylistProvider = ({
+         suppressTracksMirroring = false;
+         lastTracksVersionRef.current = engine.getState().tracksVersion;
+         engineRef.current = engine;
++        engineRebuildingRef.current = false;
++        setEngineGeneration((g) => g + 1);
+         setIsReady(true);
+         const event = new CustomEvent("waveform-playlist:ready", {
+           detail: {
+@@ -2319,6 +2335,7 @@ var WaveformPlaylistProvider = ({
+         prevTracksRef.current = tracks;
+         onReady == null ? void 0 : onReady();
+       } catch (error) {
++        engineRebuildingRef.current = false;
+         if (!engineRef.current && adapterRef.current) {
+           try {
+             adapterRef.current.dispose();
+@@ -2631,7 +2648,7 @@ var WaveformPlaylistProvider = ({
+   ]);
+   (0, import_react17.useEffect)(() => {
+     const resumePlayback = () => __async(null, null, function* () {
+-      if (pendingResumeRef.current && engineRef.current) {
++      if (pendingResumeRef.current && engineRef.current && !engineRebuildingRef.current) {
+         const { position } = pendingResumeRef.current;
+         pendingResumeRef.current = null;
+         const timeNow = getAudioContextTime();
+@@ -2651,11 +2668,17 @@ var WaveformPlaylistProvider = ({
+       setIsPlaying(false);
+       stopAnimationLoop();
+     });
+-  }, [tracks, startAnimationLoop, stopAnimationLoop, getAudioContextTime]);
++  }, [tracks, engineGeneration, startAnimationLoop, stopAnimationLoop, getAudioContextTime]);
+   const play = (0, import_react17.useCallback)(
+     (startTime, playDuration) => __async(null, null, function* () {
+       if (!engineRef.current) return;
+       const actualStartTime = startTime != null ? startTime : currentTimeRef.current;
++      if (engineRebuildingRef.current) {
++        pendingResumeRef.current = { position: actualStartTime };
++        playStartPositionRef.current = actualStartTime;
++        setCurrentTimeRefs(actualStartTime);
++        return;
++      }
+       playStartPositionRef.current = actualStartTime;
+       setCurrentTimeRefs(actualStartTime);
+       suppressEngineStopMirrorRef.current = true;
+@@ -2667,10 +2690,14 @@ var WaveformPlaylistProvider = ({
+       playbackStartTimeRef.current = startTimeNow;
+       audioStartPositionRef.current = actualStartTime;
+       playbackEndTimeRef.current = playDuration !== void 0 ? actualStartTime + playDuration : null;
++      const engine = engineRef.current;
++      playInFlightRef.current = { position: actualStartTime };
+       if (!audioInitializedRef.current) {
+-        yield engineRef.current.init();
++        yield engine.init();
++        if (engineRef.current !== engine || engineRebuildingRef.current) return; // rebuilt meanwhile: the pending resume plays it
+         audioInitializedRef.current = true;
+       }
++      playInFlightRef.current = null;
+       const endTime = playDuration !== void 0 ? actualStartTime + playDuration : void 0;
+       try {
+         engineRef.current.play(actualStartTime, endTime);
+@@ -2679,6 +2706,7 @@ var WaveformPlaylistProvider = ({
+         stopAnimationLoop();
+         return;
+       }
++      isPlayingRef.current = true; // [lattice patch] a rebuild before the next render must see it
+       setIsPlaying(true);
+       startAnimationLoop();
+     }),
+@@ -2686,6 +2714,13 @@ var WaveformPlaylistProvider = ({
+   );
+   const pause = (0, import_react17.useCallback)(() => {
+     if (!engineRef.current) return;
++    playInFlightRef.current = null;
++    if (engineRebuildingRef.current) {
++      pendingResumeRef.current = null;
++      setIsPlaying(false);
++      stopAnimationLoop();
++      return;
++    }
+     const pauseTime = getPlaybackTime();
+     engineRef.current.pause();
+     setIsPlaying(false);
+@@ -2695,7 +2730,9 @@ var WaveformPlaylistProvider = ({
+   }, [stopAnimationLoop, getPlaybackTime, setCurrentTimeRefs]);
+   const stop = (0, import_react17.useCallback)(() => {
+     if (!engineRef.current) return;
+-    engineRef.current.stop();
++    playInFlightRef.current = null;
++    if (engineRebuildingRef.current) pendingResumeRef.current = null;
++    else engineRef.current.stop();
+     setIsPlaying(false);
+     stopAnimationLoop();
+     setCurrentTimeRefs(playStartPositionRef.current);
+@@ -4198,6 +4235,14 @@ function useSpectrogramIntegration() {
  // src/components/PlaylistVisualization.tsx
  var import_jsx_runtime10 = require("react/jsx-runtime");
  var DEFAULT_EMPTY_TRACK_DURATION = 60;
@@ -17,7 +153,7 @@ index 19830be..1806bc5 100644
  var DRAG_SOURCE_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.35)";
  var TracksLayout = import_styled_components6.default.div.attrs((props) => ({
    style: { height: `${props.$height}px` }
-@@ -4553,7 +4561,7 @@ var PlaylistVisualization = ({
+@@ -4553,7 +4598,7 @@ var PlaylistVisualization = ({
        const rawCh = getTrackChannelCount(trackClipPeaks, recordingState, (_a2 = tracks[i]) == null ? void 0 : _a2.id, mono);
        const trackMode = (_f2 = (_e2 = (_c2 = spectrogram == null ? void 0 : spectrogram.trackSpectrogramOverrides.get((_b2 = tracks[i]) == null ? void 0 : _b2.id)) == null ? void 0 : _c2.renderMode) != null ? _e2 : (_d2 = tracks[i]) == null ? void 0 : _d2.renderMode) != null ? _f2 : "waveform";
        const effectiveCh = trackMode === "both" ? rawCh * 2 : rawCh;
@@ -26,7 +162,7 @@ index 19830be..1806bc5 100644
        if (trackY >= cumulativeHeight && trackY < cumulativeHeight + trackHeight) {
          clickedTrackIndex = i;
          break;
-@@ -4604,7 +4612,7 @@ var PlaylistVisualization = ({
+@@ -4604,7 +4649,7 @@ var PlaylistVisualization = ({
        const track = tracks[trackIndex];
        if (!track) return;
        const maxChannels = getTrackChannelCount(trackClipPeaks, recordingState, track.id, mono);
@@ -35,7 +171,7 @@ index 19830be..1806bc5 100644
      });
      return m;
    }, [peaksDataArray, tracks, recordingState, mono, waveHeight, showClipHeaders]);
-@@ -4763,8 +4771,9 @@ var PlaylistVisualization = ({
+@@ -4763,8 +4808,9 @@ var PlaylistVisualization = ({
                      "data-track-id": track.id,
                      "data-track-drag-source": (trackDragPreview == null ? void 0 : trackDragPreview.trackId) === track.id ? "true" : void 0,
                      children: /* @__PURE__ */ (0, import_jsx_runtime10.jsxs)(
@@ -47,10 +183,146 @@ index 19830be..1806bc5 100644
                          backgroundColor: effectiveRenderMode === "piano-roll" ? theme.pianoRollBackgroundColor || "#1a1a2e" : (0, import_ui_components8.waveformColorToCss)(theme.waveOutlineColor),
                          offset: 0,
 diff --git a/node_modules/@waveform-playlist/browser/dist/index.mjs b/node_modules/@waveform-playlist/browser/dist/index.mjs
-index 5fb8246..68fde0d 100644
+index 5fb8246..7ac0005 100644
 --- a/node_modules/@waveform-playlist/browser/dist/index.mjs
 +++ b/node_modules/@waveform-playlist/browser/dist/index.mjs
-@@ -4168,6 +4168,14 @@ function useSpectrogramIntegration() {
+@@ -2000,6 +2000,14 @@ var WaveformPlaylistProvider = ({
+     samplesPerPixelRef.current = newSamplesPerPixel;
+   }, [samplesPerPixel, duration]);
+   const pendingResumeRef = useRef9(null);
++  // [lattice patch] true while a full engine rebuild is in flight (the old engine is disposed and
++  // the new one not built yet): play/pause/stop then go to pendingResumeRef instead of a dead engine.
++  const engineRebuildingRef = useRef9(false);
++  // a play() waiting on engine.init(): a rebuild in that window resumes it instead of dropping it
++  const playInFlightRef = useRef9(null);
++  // bumped each time a rebuilt engine is in place, so a pending resume runs on it (isReady can
++  // flip false -> true within one render batch and not re-run the effect)
++  const [engineGeneration, setEngineGeneration] = useState9(0);
+   useEffect5(() => {
+     var _a2, _b2, _c2, _d2;
+     if (isEngineTracks || isDraggingRef.current) {
+@@ -2099,12 +2107,17 @@ var WaveformPlaylistProvider = ({
+     const wasPlaying = isPlayingRef.current;
+     const resumePosition = currentTimeRef.current;
+     if (engineRef.current && wasPlaying) {
++      // [lattice patch] resume from what is being heard (read before stop() resets the transport)
++      const heardPosition = engineRef.current.getAudibleTime ? Math.max(0, engineRef.current.getAudibleTime()) : resumePosition;
+       suppressEngineStopMirrorRef.current = true;
+       engineRef.current.stop();
+       suppressEngineStopMirrorRef.current = false;
+       stopAnimationFrameLoop();
+-      pendingResumeRef.current = { position: resumePosition };
++      pendingResumeRef.current = { position: heardPosition };
++    } else if (engineRef.current && playInFlightRef.current) {
++      pendingResumeRef.current = playInFlightRef.current;
+     }
++    playInFlightRef.current = null;
+     let cancelled = false;
+     const loadAudio = () => __async(null, null, function* () {
+       var _a3, _b3, _c3, _d3, _e;
+@@ -2143,6 +2156,7 @@ var WaveformPlaylistProvider = ({
+           }));
+         });
+         if (engineRef.current) {
++          engineRebuildingRef.current = true;
+           engineRef.current.dispose();
+         }
+         lastTracksVersionRef.current = 0;
+@@ -2226,6 +2240,8 @@ var WaveformPlaylistProvider = ({
+         suppressTracksMirroring = false;
+         lastTracksVersionRef.current = engine.getState().tracksVersion;
+         engineRef.current = engine;
++        engineRebuildingRef.current = false;
++        setEngineGeneration((g) => g + 1);
+         setIsReady(true);
+         const event = new CustomEvent("waveform-playlist:ready", {
+           detail: {
+@@ -2237,6 +2253,7 @@ var WaveformPlaylistProvider = ({
+         prevTracksRef.current = tracks;
+         onReady == null ? void 0 : onReady();
+       } catch (error) {
++        engineRebuildingRef.current = false;
+         if (!engineRef.current && adapterRef.current) {
+           try {
+             adapterRef.current.dispose();
+@@ -2549,7 +2566,7 @@ var WaveformPlaylistProvider = ({
+   ]);
+   useEffect5(() => {
+     const resumePlayback = () => __async(null, null, function* () {
+-      if (pendingResumeRef.current && engineRef.current) {
++      if (pendingResumeRef.current && engineRef.current && !engineRebuildingRef.current) {
+         const { position } = pendingResumeRef.current;
+         pendingResumeRef.current = null;
+         const timeNow = getAudioContextTime();
+@@ -2569,11 +2586,17 @@ var WaveformPlaylistProvider = ({
+       setIsPlaying(false);
+       stopAnimationLoop();
+     });
+-  }, [tracks, startAnimationLoop, stopAnimationLoop, getAudioContextTime]);
++  }, [tracks, engineGeneration, startAnimationLoop, stopAnimationLoop, getAudioContextTime]);
+   const play = useCallback13(
+     (startTime, playDuration) => __async(null, null, function* () {
+       if (!engineRef.current) return;
+       const actualStartTime = startTime != null ? startTime : currentTimeRef.current;
++      if (engineRebuildingRef.current) {
++        pendingResumeRef.current = { position: actualStartTime };
++        playStartPositionRef.current = actualStartTime;
++        setCurrentTimeRefs(actualStartTime);
++        return;
++      }
+       playStartPositionRef.current = actualStartTime;
+       setCurrentTimeRefs(actualStartTime);
+       suppressEngineStopMirrorRef.current = true;
+@@ -2585,10 +2608,14 @@ var WaveformPlaylistProvider = ({
+       playbackStartTimeRef.current = startTimeNow;
+       audioStartPositionRef.current = actualStartTime;
+       playbackEndTimeRef.current = playDuration !== void 0 ? actualStartTime + playDuration : null;
++      const engine = engineRef.current;
++      playInFlightRef.current = { position: actualStartTime };
+       if (!audioInitializedRef.current) {
+-        yield engineRef.current.init();
++        yield engine.init();
++        if (engineRef.current !== engine || engineRebuildingRef.current) return; // rebuilt meanwhile: the pending resume plays it
+         audioInitializedRef.current = true;
+       }
++      playInFlightRef.current = null;
+       const endTime = playDuration !== void 0 ? actualStartTime + playDuration : void 0;
+       try {
+         engineRef.current.play(actualStartTime, endTime);
+@@ -2597,6 +2624,7 @@ var WaveformPlaylistProvider = ({
+         stopAnimationLoop();
+         return;
+       }
++      isPlayingRef.current = true; // [lattice patch] a rebuild before the next render must see it
+       setIsPlaying(true);
+       startAnimationLoop();
+     }),
+@@ -2604,6 +2632,13 @@ var WaveformPlaylistProvider = ({
+   );
+   const pause = useCallback13(() => {
+     if (!engineRef.current) return;
++    playInFlightRef.current = null;
++    if (engineRebuildingRef.current) {
++      pendingResumeRef.current = null;
++      setIsPlaying(false);
++      stopAnimationLoop();
++      return;
++    }
+     const pauseTime = getPlaybackTime();
+     engineRef.current.pause();
+     setIsPlaying(false);
+@@ -2613,7 +2648,9 @@ var WaveformPlaylistProvider = ({
+   }, [stopAnimationLoop, getPlaybackTime, setCurrentTimeRefs]);
+   const stop = useCallback13(() => {
+     if (!engineRef.current) return;
+-    engineRef.current.stop();
++    playInFlightRef.current = null;
++    if (engineRebuildingRef.current) pendingResumeRef.current = null;
++    else engineRef.current.stop();
+     setIsPlaying(false);
+     stopAnimationLoop();
+     setCurrentTimeRefs(playStartPositionRef.current);
+@@ -4168,6 +4205,14 @@ function useSpectrogramIntegration() {
  // src/components/PlaylistVisualization.tsx
  import { Fragment as Fragment3, jsx as jsx10, jsxs as jsxs2 } from "react/jsx-runtime";
  var DEFAULT_EMPTY_TRACK_DURATION = 60;
@@ -65,7 +337,7 @@ index 5fb8246..68fde0d 100644
  var DRAG_SOURCE_SHADOW = "0 4px 12px rgba(0, 0, 0, 0.35)";
  var TracksLayout = styled4.div.attrs((props) => ({
    style: { height: `${props.$height}px` }
-@@ -4523,7 +4531,7 @@ var PlaylistVisualization = ({
+@@ -4523,7 +4568,7 @@ var PlaylistVisualization = ({
        const rawCh = getTrackChannelCount(trackClipPeaks, recordingState, (_a2 = tracks[i]) == null ? void 0 : _a2.id, mono);
        const trackMode = (_f2 = (_e2 = (_c2 = spectrogram == null ? void 0 : spectrogram.trackSpectrogramOverrides.get((_b2 = tracks[i]) == null ? void 0 : _b2.id)) == null ? void 0 : _c2.renderMode) != null ? _e2 : (_d2 = tracks[i]) == null ? void 0 : _d2.renderMode) != null ? _f2 : "waveform";
        const effectiveCh = trackMode === "both" ? rawCh * 2 : rawCh;
@@ -74,7 +346,7 @@ index 5fb8246..68fde0d 100644
        if (trackY >= cumulativeHeight && trackY < cumulativeHeight + trackHeight) {
          clickedTrackIndex = i;
          break;
-@@ -4574,7 +4582,7 @@ var PlaylistVisualization = ({
+@@ -4574,7 +4619,7 @@ var PlaylistVisualization = ({
        const track = tracks[trackIndex];
        if (!track) return;
        const maxChannels = getTrackChannelCount(trackClipPeaks, recordingState, track.id, mono);
@@ -83,7 +355,7 @@ index 5fb8246..68fde0d 100644
      });
      return m;
    }, [peaksDataArray, tracks, recordingState, mono, waveHeight, showClipHeaders]);
-@@ -4733,8 +4741,9 @@ var PlaylistVisualization = ({
+@@ -4733,8 +4778,9 @@ var PlaylistVisualization = ({
                      "data-track-id": track.id,
                      "data-track-drag-source": (trackDragPreview == null ? void 0 : trackDragPreview.trackId) === track.id ? "true" : void 0,
                      children: /* @__PURE__ */ jsxs2(

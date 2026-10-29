@@ -18,6 +18,25 @@ and update the `HANDOFF.md` status table.
   - 2026-10-27, done: delete a sound from Ideas (× on hover, or Delete/Backspace on a focused card; asks if clips use it; undoable).
   - 2026-10-27, done: click or drag the bar ruler to move the playhead (snapped). Also fixed: the playhead
     snapped back to the end of the audio when sent past it (`go_to`, `.`), because the engine's `seekTo` clamps.
+  - 2026-10-28, done: record timing. The count-in was 111 ms late into the transport and not on the bar grid;
+    MIDI notes landed ~100 ms late; mic takes had no latency compensation; the count-in couldn't be cancelled.
+    All fixed and measured (`e2e/record-timing.spec.ts`, `src/core/recordTiming.ts`). Still open: a user-set
+    recording delay (browsers rarely report mic latency), and punching in while playing without a restart.
+  - 2026-10-28, done: playback across region edits. A trim/move/duplicate/delete rebuilds waveform-playlist's
+    engine; Play during the rebuild (Muse's "trim it and play") was silent and could stay broken, and an edit
+    while playing stopped the audio while the UI still showed playing. Patched the provider (play/stop wait for
+    the new engine; it resumes from the heard position) and the click re-anchors (`e2e/playback-edits.spec.ts`).
+  - 2026-10-28, done: cycle recording. The transport looped but the take didn't, so notes after the wrap
+    landed past the cycle end. Now MIDI passes merge into one region over the cycle and a mic take keeps the
+    latest pass, as in GarageBand (`foldMidiTake` / `cycleMicTake` in `src/core/recordTiming.ts`). Not yet: take folders.
+  - 2026-10-28, done: tempo changes keep regions on their bars (`changeTempo`): MIDI notes stretch, audio
+    regions move but aren't time-stretched, and the cycle area, punch range and playhead follow
+    (`e2e/tempo-change.spec.ts`). `extract_midi` adopting a detected tempo still only relabels the grid.
+  - 2026-10-28, done: Stop leaves the playhead where it was heard; it jumped ~0.13 s on (lookahead + output
+    latency), so the next Play skipped that much. Muse's `stop` (no position) still leaves the session's
+    position stale, though the engine stops in the right place.
+  - 2026-10-28, done: , and . go to the previous / next bar line (they moved a bar from wherever the
+    playhead was, keeping the offset).
 
 ### B1. Words to knob moves: wire `vocab.json` into Muse (S2)
 - **Why:** the pitch is "you don't need to know which knob".

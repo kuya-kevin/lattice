@@ -90,6 +90,18 @@ describe('tool layer', () => {
     expect((await runTool(c, 'quantize_drums', { track_id: 't1', grid: '1/8', strength: 1, bpm: 100 }, 'muse')).error).toMatch(/unknown argument/);
   });
 
+  it('set_tempo keeps regions on their bars (MIDI stretches), and undo puts them back', async () => {
+    const c = await withTrack(); // Drums clip at 0
+    await runTool(c, 'move_clip', { clip_id: c.store.get().tracks[0].clips[0].id, start: 2 }, 'user'); // bar 2 at 120
+    await runTool(c, 'record_midi', { track_id: 't1', start: 4, duration: 2, notes: [{ pitch: 60, velocity: 100, start: 0.5, duration: 0.5 }] }, 'user');
+    expect(await runTool(c, 'set_tempo', { bpm: 60 }, 'muse')).toMatchObject({ ok: true, result: { tempo: 60 } });
+    const [audio, midi] = c.store.get().tracks[0].clips;
+    expect([audio.start, audio.duration]).toEqual([4, 8]);
+    expect([midi.start, midi.duration, midi.midi!.notes[0].start]).toEqual([8, 4, 1]);
+    await runTool(c, 'undo', {}, 'user');
+    expect(c.store.get().tracks[0].clips.map((x) => x.start)).toEqual([2, 4]);
+  });
+
   it('go_to moves the playhead without changing play state', async () => {
     const c = await withTrack();
     await runTool(c, 'play', { from: 3 }, 'muse');

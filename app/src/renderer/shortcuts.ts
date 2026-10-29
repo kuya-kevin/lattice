@@ -10,7 +10,7 @@ export const SHORTCUTS: { keys: string; action: ShortcutAction; label: string }[
   { keys: 'K', action: 'metronome', label: 'Click on/off' },
   { keys: '⇧K', action: 'countIn', label: 'Count-in on/off' },
   { keys: 'C', action: 'cycle', label: 'Cycle on/off' },
-  { keys: ', / .', action: 'barBack', label: 'Back / forward one bar' },
+  { keys: ', / .', action: 'barBack', label: 'Previous / next bar line' },
   { keys: 'T', action: 'tapTempo', label: 'Tap tempo' },
 ];
 

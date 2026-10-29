@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barLength, beatLength, ClickScheduler, countInClicks, formatBarsBeats, formatTime, toBarsBeats } from '../src/core/metronome';
+import { barLength, beatLength, ClickScheduler, planCountIn, formatBarsBeats, formatTime, nextBarLine, prevBarLine, toBarsBeats } from '../src/core/metronome';
 
 const m44 = { tempo: 120, timeSignature: [4, 4] as [number, number] };
 const m68 = { tempo: 120, timeSignature: [6, 8] as [number, number] };
@@ -65,12 +65,74 @@ describe('ClickScheduler (lookahead scheduling)', () => {
     expect(s.tick(5)).toBe(0);
   });
 
-  it('count-in: one bar, downbeat accented', () => {
-    expect(countInClicks(1, m44)).toEqual([
-      { time: 1, accent: true },
-      { time: 1.5, accent: false },
-      { time: 2, accent: false },
-      { time: 2.5, accent: false },
+});
+
+describe('planCountIn (one bar on the bar grid, ending where the take starts)', () => {
+  const pos = (p: ReturnType<typeof planCountIn>, at: number) => p.clicks.map((c) => ({ pos: Math.round((at - (p.downbeat - c.time)) * 1000) / 1000, accent: c.accent }));
+
+  it('from a bar line: the bar before it, downbeat accented, first click `lead` from now', () => {
+    const p = planCountIn(4, m44, 10, 0.05);
+    expect(p.clicks.map((c) => Math.round(c.time * 1e6) / 1e6)).toEqual([10.05, 10.55, 11.05, 11.55]);
+    expect(p.downbeat).toBeCloseTo(12.05, 9); // the take starts one beat after the last click
+    expect(pos(p, 4)).toEqual([
+      { pos: 2, accent: true },
+      { pos: 2.5, accent: false },
+      { pos: 3, accent: false },
+      { pos: 3.5, accent: false },
     ]);
+  });
+
+  it('from mid-beat: clicks stay on the grid, so the transport click carries straight on', () => {
+    const p = planCountIn(19.151, m44, 0, 0.05);
+    expect(pos(p, 19.151)).toEqual([
+      { pos: 17.5, accent: false },
+      { pos: 18, accent: true }, // bar 10 downbeat
+      { pos: 18.5, accent: false },
+      { pos: 19, accent: false },
+    ]);
+    expect(p.clicks[0].time).toBeCloseTo(0.05, 9);
+    expect(p.downbeat - p.clicks[3].time).toBeCloseTo(0.151, 9); // 19 -> 19.151
+  });
+
+  it('from the very top: the count-in bar is before zero', () => {
+    const p = planCountIn(0, m44, 1, 0);
+    expect(pos(p, 0)).toEqual([
+      { pos: -2, accent: true },
+      { pos: -1.5, accent: false },
+      { pos: -1, accent: false },
+      { pos: -0.5, accent: false },
+    ]);
+    expect(p.downbeat).toBeCloseTo(3, 9);
+  });
+
+  it('6/8 counts six eighths', () => {
+    const p = planCountIn(1.5, m68, 0, 0);
+    expect(p.clicks).toHaveLength(6);
+    expect(p.clicks.map((c) => c.accent)).toEqual([true, false, false, false, false, false]);
+    expect(p.downbeat).toBeCloseTo(1.5, 9);
+  });
+});
+
+describe('prevBarLine / nextBarLine (the , and . keys, as in Logic and GarageBand)', () => {
+  const m = { tempo: 120, timeSignature: [4, 4] as [number, number] }; // 2 s bars
+
+  it('go to the bar line before / after the playhead', () => {
+    expect(nextBarLine(1.196, m)).toBe(2);
+    expect(prevBarLine(3.196, m)).toBe(2);
+  });
+
+  it('from a bar line, move a whole bar', () => {
+    expect(nextBarLine(2, m)).toBe(4);
+    expect(prevBarLine(4, m)).toBe(2);
+    expect(prevBarLine(4.0000001, m)).toBe(2); // float noise on a bar line counts as on it
+  });
+
+  it('stop at the start', () => {
+    expect(prevBarLine(0.5, m)).toBe(0);
+    expect(prevBarLine(0, m)).toBe(0);
+  });
+
+  it('follow the meter', () => {
+    expect(nextBarLine(1, { tempo: 120, timeSignature: [6, 8] })).toBe(1.5);
   });
 });

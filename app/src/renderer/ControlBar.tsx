@@ -4,10 +4,12 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePlaybackAnimation, usePlaylistControls, usePlaylistState } from '@waveform-playlist/browser';
 import { useMicrophoneAccess, useRecording } from '@waveform-playlist/recording';
-import { barLength, formatBarsBeats, formatTime, type Meter } from '../core/metronome';
+import { barLength, beatLength, formatBarsBeats, formatTime, nextBarLine, prevBarLine, type Meter } from '../core/metronome';
 import { TAP_RESET_MS, tapTempo, type TapState } from '../core/tapTempo';
 import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, type Session } from '../core/session';
-import { newSourceId } from './audio';
+import { newSourceId, sliceBuffer } from './audio';
+import { audioContext, inputDelay, outputDelay, transportHandoff, waitForAudioTime, withLookAhead } from './audioClock';
+import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, trimTake, type Cycle, type TransportAnchor } from '../core/recordTiming';
 import { clicks } from './click';
 import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
@@ -25,20 +27,31 @@ interface Props {
 
 export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const { isPlaying, currentTimeRef } = usePlaybackAnimation();
+  const { isPlaying, currentTimeRef, visualTimeRef } = usePlaybackAnimation();
   const { setLoopEnabled, setLoopRegion } = usePlaylistControls();
   const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
   const meter: Meter = { tempo: session.tempo, timeSignature: session.timeSignature };
   const rec = useRecorder(session, run, addBuffer, meter);
   const now = () => currentTimeRef.current ?? 0;
+  /** What is reaching the speakers now (the playhead the LCD shows); now() runs a lookahead ahead. */
+  const heard = () => visualTimeRef.current ?? now();
   // Tap tempo previews in the LCD and commits once when the taps stop: one undo step, one hand edit
   const taps = useRef<TapState>();
   const tapTimer = useRef<ReturnType<typeof setTimeout>>();
   const [tapBpm, setTapBpm] = useState<number | null>(null); // shown while tapping
   useEffect(() => () => clearTimeout(tapTimer.current), []);
 
+  // the cycle area is in seconds: keep it on its bars when the tempo changes
+  const prevTempo = useRef(session.tempo);
+  useEffect(() => {
+    const k = prevTempo.current / session.tempo;
+    prevTempo.current = session.tempo;
+    if (k !== 1 && loopEnd > loopStart) setLoopRegion(loopStart * k, loopEnd * k);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.tempo]);
+
   const actions: Record<ShortcutAction, () => void> = {
-    playStop: () => (isPlaying ? run('stop', { at: now() }) : run('play', { from: now() })),
+    playStop: () => rec.cancelCountIn() || (isPlaying ? run('stop', { at: heard() }) : run('play', { from: now() })),
     goToStart: () => run('go_to', { position: 0 }),
     record: () => rec.toggle(),
     metronome: () => run('set_metronome', { on: !session.metronome.on }),
@@ -47,8 +60,8 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
       if (!(loopEnd > loopStart)) setLoopRegion(0, 4 * barLength(meter)); // default: bars 1-4
       setLoopEnabled(!isLoopEnabled);
     },
-    barBack: () => run('go_to', { position: Math.max(0, now() - barLength(meter)) }),
-    barForward: () => run('go_to', { position: now() + barLength(meter) }),
+    barBack: () => run('go_to', { position: prevBarLine(heard(), meter) }),
+    barForward: () => run('go_to', { position: nextBarLine(heard(), meter) }),
     tapTempo: () => {
       taps.current = tapTempo(taps.current, performance.now());
       const { bpm } = taps.current;
@@ -265,6 +278,20 @@ function KeyField({ value, onCommit }: { value: string | null; onCommit: (key: s
   );
 }
 
+/** A take in progress. `anchor` ties the timeline to the audio clock (the transport, or the
+ *  count-in's downbeat until the transport starts), so notes and mic audio land where they
+ *  were heard rather than where the transport was scheduling. */
+interface Take {
+  trackId: string;
+  added: boolean; // the take made its track (removed again if nothing was recorded)
+  start: number;
+  anchor: TransportAnchor;
+  cycle: Cycle | null; // the transport loops this while recording
+  punchTimer?: ReturnType<typeof setTimeout>;
+  midi?: MidiTake;
+  mic?: { recStart: number; inputDelay: number };
+}
+
 /** A MIDI take from the Musical Typing keyboard: the notes heard so far, and whether the
  *  transport has started rolling (so a stop ends the take). */
 interface MidiTake {
@@ -275,44 +302,78 @@ interface MidiTake {
 }
 
 /** Recording: onto the punch-in track if armed, else the record-armed track, else the
- *  selected track, else a new one. With Musical Typing on, the take is MIDI: the transport
- *  rolls and the notes played become a MIDI clip (record_midi); otherwise it is the mic.
- *  With count-in on, one bar of clicks plays first; with the click on, it plays during the take. */
+ *  selected track, else a new one. With Musical Typing on, the take is MIDI (record_midi);
+ *  otherwise it is the mic (record_take). Either way the transport rolls, so the click follows it.
+ *  With count-in on, one bar of clicks on the bar grid plays first and the transport starts
+ *  exactly on the downbeat; R or Space during it cancels. */
 function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: AudioBuffer) => void, meter: Meter) {
   const mic = useMicrophoneAccess();
   const rec = useRecording(mic.stream);
-  const { isPlaying, currentTimeRef } = usePlaybackAnimation();
-  const { setRecordingActive } = usePlaylistControls();
+  const { isPlaying, currentTimeRef, playbackStartTimeRef, getLookAhead } = usePlaybackAnimation();
+  const { play, setRecordingActive } = usePlaylistControls();
   const [countingIn, setCountingIn] = useState(false);
   const [midiFor, setMidiFor] = useState<number | null>(null); // seconds into a MIDI take
-  const take = useRef<{ trackId: string; start: number; ownClick: boolean; midi?: MidiTake } | null>(null);
-  const latest = useRef({ session, meter });
-  latest.current = { session, meter };
+  const take = useRef<Take | null>(null);
+  const busy = useRef(false); // between pressing record and the take starting
+  const cancelCountIn = useRef<(() => void) | null>(null);
+  const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
+  const latest = useRef({ session, meter, cycle: null as Cycle | null });
+  latest.current = { session, meter, cycle: isLoopEnabled && loopEnd > loopStart ? { start: loopStart, end: loopEnd } : null };
 
-  const finishMidi = async (t: { trackId: string; start: number; midi?: MidiTake }) => {
-    t.midi!.unsubscribe();
-    setMidiFor(null);
-    const end = Math.max(t.start, currentTimeRef.current ?? t.start);
-    run('stop', { at: end });
-    const notes = takeToNotes(t.midi!.played, t.start, end);
-    const inst = t.midi!.instrument;
-    const sample = inst && { instrument: inst.name, sample: { source_id: inst.sample.sourceId, offset: inst.sample.offset, duration: inst.sample.duration, root: inst.sample.root } };
-    if (notes.length) await run('record_midi', { track_id: t.trackId, start: t.start, duration: end - t.start, notes, ...sample });
+  /** Start the engine at `at` and return where it is on the audio clock: exactly at audio time
+   *  `downbeat` if given, else as soon as it can. play() starts the engine `lookAhead` after the
+   *  call, so for a downbeat that lookahead is shortened to land on it; call this less than one
+   *  lookahead before the downbeat (a longer one would leave the engine's position unreadable
+   *  until then). The engine can lag a freshly added track, so retry briefly. */
+  const startTransport = async (at: number, downbeat?: number): Promise<TransportAnchor> => {
+    const la = getLookAhead();
+    for (let i = 0; i < 20; i++) {
+      const before = playbackStartTimeRef.current;
+      const now = audioContext().currentTime;
+      const lead = downbeat === undefined ? la : Math.min(la, Math.max(0, downbeat - now));
+      await withLookAhead(lead, () => play(at));
+      if (playbackStartTimeRef.current !== before) {
+        transportHandoff.mark(at);
+        run('play', { from: at }); // tell the session (TransportSync leaves the engine alone)
+        return { ctxTime: now + lead, pos: at };
+      }
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    run('play', { from: at });
+    return { ctxTime: audioContext().currentTime + la, pos: at };
   };
 
-  const finish = async () => {
+  const finish = async (end?: number) => {
     const t = take.current;
     if (!t) return;
     take.current = null;
-    if (t.midi) return finishMidi(t);
+    clearTimeout(t.punchTimer);
+    const ctx = audioContext();
+    // linear: counted on past each cycle wrap; onCycle() maps it back to the timeline
+    const stopAt = Math.max(t.start, end ?? heardPosition(ctx.currentTime, t.anchor, outputDelay(ctx)));
+    if (t.midi) {
+      t.midi.unsubscribe();
+      setMidiFor(null);
+      run('stop', { at: onCycle(stopAt, t.cycle) });
+      const region = foldMidiTake(t.midi.played, t.start, stopAt, t.cycle);
+      const notes = takeToNotes(region.played, region.start, region.end);
+      const inst = t.midi.instrument;
+      const sample = inst && { instrument: inst.name, sample: { source_id: inst.sample.sourceId, offset: inst.sample.offset, duration: inst.sample.duration, root: inst.sample.root } };
+      if (notes.length) await run('record_midi', { track_id: t.trackId, start: region.start, duration: region.end - region.start, notes, ...sample });
+      else if (t.added) run('delete_track', { track_id: t.trackId });
+      return;
+    }
     const b = await rec.stopRecording();
-    if (t.ownClick) clicks.stop();
     setRecordingActive(false);
-    run('stop', { at: currentTimeRef.current ?? t.start });
-    if (!b) return;
+    run('stop', { at: onCycle(stopAt, t.cycle) });
+    if (!b || !t.mic) return;
+    const { trim, start } = trimTake({ anchor: t.anchor, recStart: t.mic.recStart, outputDelay: outputDelay(ctx), inputDelay: t.mic.inputDelay });
+    const keep = cycleMicTake(start, stopAt, t.cycle, beatLength(latest.current.meter));
+    const audio = sliceBuffer(b, trim + keep.offset, keep.duration);
+    if (!audio) return;
     const id = newSourceId();
-    addBuffer(id, b);
-    await run('record_take', { source_id: id, track_id: t.trackId, start: t.start, duration: b.duration });
+    addBuffer(id, audio);
+    await run('record_take', { source_id: id, track_id: t.trackId, start: keep.start, duration: audio.duration });
   };
   const finishRef = useRef(finish);
   finishRef.current = finish;
@@ -330,63 +391,90 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     return () => clearInterval(id);
   }, [midiFor === null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const startMidi = async () => {
-    const { session: s, meter: m } = latest.current;
-    let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
-    if (!trackId) trackId = (await run('add_track', { name: 'Keys' })).result?.track_id ?? null;
-    if (!trackId) return;
-    const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;
-    if (s.metronome.countIn) {
-      setCountingIn(true);
-      await clicks.countIn(m);
-      setCountingIn(false);
-    }
-    const played: PlayedNote[] = [];
-    const unsubscribe = musicalTyping.onNote((e) => {
-      if (e.type === 'on') played.push({ pitch: e.pitch, velocity: e.velocity, start: e.time, end: null });
-      else {
-        for (let i = played.length - 1; i >= 0; i--) {
-          if (played[i].pitch === e.pitch && played[i].end === null) {
-            played[i].end = e.time;
-            break;
-          }
-        }
-      }
-    });
-    // the take keeps the instrument it was played with (a sampled clip, or the piano)
-    take.current = { trackId, start: at, ownClick: false, midi: { played, unsubscribe, rolling: false, instrument: musicalTyping.instrument() } };
-    setMidiFor(0);
-    run('play', { from: at }); // the transport rolls (even past the last region) and is the take's clock
-    if (s.punchIn) setTimeout(() => finishRef.current(), (s.punchIn.end - s.punchIn.start) * 1000);
-  };
-
   const start = async () => {
-    if (musicalTyping.get().on) return startMidi();
-    if (!mic.stream) {
+    const midi = musicalTyping.get().on;
+    if (!midi && !mic.stream) {
       await mic.requestAccess();
       return; // the stream arrives on the next render; press record again
     }
-    const { session: s, meter: m } = latest.current;
+    const { session: s, meter: m, cycle: loop } = latest.current;
     let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
-    if (!trackId) trackId = (await run('add_track', { name: 'Recording' })).result?.track_id ?? null;
+    const added = !trackId;
+    if (!trackId) trackId = (await run('add_track', { name: midi ? 'Keys' : 'Recording' })).result?.track_id ?? null;
     if (!trackId) return;
     const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;
+    const ctx = audioContext();
+    if (ctx.state !== 'running') await ctx.resume();
+
+    // the mic starts first and runs through the count-in, so its start-up never delays the downbeat
+    let micTake: Take['mic'];
+    if (!midi) {
+      if (!(await rec.startRecording())) return;
+      micTake = { recStart: ctx.currentTime, inputDelay: inputDelay(mic.stream) };
+    }
+    // MIDI listens from the count-in on, so a note played a hair early still lands on beat 1
+    let anchor: TransportAnchor = { ctxTime: ctx.currentTime + getLookAhead(), pos: at };
+    const played: PlayedNote[] = [];
+    const unsubscribe = midi
+      ? musicalTyping.onNote((e) => {
+          const time = heardPosition(ctx.currentTime, anchor, outputDelay(ctx));
+          if (e.type === 'on') played.push({ pitch: e.pitch, velocity: e.velocity, start: time, end: null });
+          else {
+            for (let i = played.length - 1; i >= 0; i--) {
+              if (played[i].pitch === e.pitch && played[i].end === null) {
+                played[i].end = time;
+                break;
+              }
+            }
+          }
+        })
+      : () => {};
+
     if (s.metronome.countIn) {
+      const ci = clicks.countIn(at, m);
+      anchor = { ctxTime: ci.downbeat, pos: at };
+      const abort = new AbortController();
+      cancelCountIn.current = () => {
+        ci.cancel();
+        abort.abort();
+      };
       setCountingIn(true);
-      await clicks.countIn(m);
+      // wake half a lookahead early: startTransport then lands the engine exactly on the downbeat
+      const ok = await waitForAudioTime(ctx, ci.downbeat - getLookAhead() / 2, abort.signal);
+      cancelCountIn.current = null;
       setCountingIn(false);
+      if (!ok) {
+        unsubscribe();
+        if (!midi) await rec.stopRecording();
+        if (added) run('delete_track', { track_id: trackId });
+        return;
+      }
     }
-    if (!(await rec.startRecording())) return;
-    // TODO: latency compensation and pre-roll (useIntegratedRecording has both)
-    const hasAudio = s.tracks.some((x) => x.clips.length);
-    take.current = { trackId, start: at, ownClick: !hasAudio && s.metronome.on };
-    if (hasAudio) {
-      setRecordingActive(true, trackId);
-      run('play', { from: at }); // the click follows playback (TransportSync)
-    } else if (s.metronome.on) {
-      clicks.start(at, m); // nothing to play back: click on its own
+    anchor = await startTransport(at, s.metronome.countIn ? anchor.ctxTime : undefined);
+    const cycle = loop && at < loop.end ? loop : null; // the engine only loops from before the cycle end
+    const t: Take = { trackId, added, start: at, anchor, cycle, mic: micTake };
+    if (midi) {
+      t.midi = { played, unsubscribe, rolling: true, instrument: musicalTyping.instrument() }; // startTransport has it rolling
+      setMidiFor(0);
+    } else setRecordingActive(true, trackId);
+    // punch out when the punch end reaches the speakers
+    if (s.punchIn) {
+      const end = s.punchIn.end;
+      t.punchTimer = setTimeout(() => finishRef.current(end), (ctxTimeAt(end, anchor) + outputDelay(ctx) - ctx.currentTime) * 1000);
     }
-    if (s.punchIn) setTimeout(() => finishRef.current(), (s.punchIn.end - s.punchIn.start) * 1000);
+    take.current = t;
+  };
+
+  const toggle = async () => {
+    if (cancelCountIn.current) return cancelCountIn.current();
+    if (take.current) return finish();
+    if (busy.current) return;
+    busy.current = true;
+    try {
+      await start();
+    } finally {
+      busy.current = false;
+    }
   };
 
   return {
@@ -397,6 +485,8 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     micReady: !!mic.stream,
     micError: mic.error?.message,
     enableMic: () => mic.requestAccess(),
-    toggle: () => (take.current ? finish() : countingIn ? undefined : start()),
+    toggle,
+    /** Cancel a count-in in progress; true if there was one. */
+    cancelCountIn: () => (cancelCountIn.current ? (cancelCountIn.current(), true) : false),
   };
 }

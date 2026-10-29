@@ -116,3 +116,18 @@ for (const [name, size] of [['wide', { width: 1400, height: 800 }], ['narrow', {
     await page.screenshot({ path: `screenshots/controlbar-${name}.png` });
   });
 }
+
+test(', and . jump to the bar lines (Logic, GarageBand)', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Track', exact: true }).click();
+  await page.locator('body').click({ position: { x: 5, y: 600 } });
+  await page.evaluate(() => window.lattice!.runTool('go_to', { position: 1.3 })); // 1 3 2
+  await expect(page.getByTestId('lcd-bars')).toHaveText('1 3 3');
+  await page.keyboard.press('.');
+  await expect.poll(async () => (await page.evaluate(() => window.lattice!.getSession())).transport.position).toBe(2);
+  await page.keyboard.press('.');
+  await expect.poll(async () => (await page.evaluate(() => window.lattice!.getSession())).transport.position).toBe(4);
+  await page.keyboard.press(',');
+  await expect.poll(async () => (await page.evaluate(() => window.lattice!.getSession())).transport.position).toBe(2);
+  await expect(page.getByTestId('lcd-bars')).toHaveText('2 1 1');
+});

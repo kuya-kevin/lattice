@@ -302,6 +302,36 @@ export function setTempo(s: Session, bpm: number): Session {
   return { ...s, tempo: Math.round(bpm * 100) / 100 };
 }
 
+/** A tempo change the way Logic and GarageBand make one: regions keep their bar positions
+ *  (starts scale), MIDI stretches with the bars (notes, length, trim and its source length),
+ *  and audio plays as recorded (no time-stretch). The punch-in range and a stopped playhead
+ *  move with the bars too.
+ *  setTempo alone only relabels the grid (for adopting a detected tempo). */
+export function changeTempo(s: Session, bpm: number): Session {
+  const s1 = setTempo(s, bpm);
+  const k = s.tempo / s1.tempo;
+  if (k === 1) return s1;
+  const r6 = (x: number) => Math.round(x * k * 1e6) / 1e6;
+  const midiSources = new Set(s.tracks.flatMap((t) => t.clips.filter((c) => c.midi).map((c) => c.sourceId)));
+  const sources = { ...s1.sources };
+  for (const id of midiSources) if (sources[id]) sources[id] = { ...sources[id], duration: r6(sources[id].duration) };
+  return {
+    ...s1,
+    sources,
+    tracks: s1.tracks.map((t) => ({
+      ...t,
+      clips: t.clips.map((c) =>
+        c.midi
+          ? { ...c, start: r6(c.start), offset: r6(c.offset), duration: r6(c.duration), midi: { ...c.midi, notes: c.midi.notes.map((n) => ({ ...n, start: r6(n.start), duration: r6(n.duration) })) } }
+          : { ...c, start: r6(c.start) },
+      ),
+    })),
+    punchIn: s1.punchIn && { ...s1.punchIn, start: r6(s1.punchIn.start), end: r6(s1.punchIn.end) },
+    // while playing, the session's position is stale; the renderer moves the live playhead
+    transport: s.transport.playing ? s1.transport : setTransport(s1, 'locate', s.transport.position * k).transport,
+  };
+}
+
 export function setTimeSignature(s: Session, beats: number, unit: number): Session {
   if (!Number.isInteger(beats) || beats < 1 || beats > 16 || ![2, 4, 8, 16].includes(unit)) {
     throw new SessionError('time signature needs 1-16 beats over 2, 4, 8 or 16');

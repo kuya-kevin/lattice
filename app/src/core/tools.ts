@@ -273,9 +273,11 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'set_tempo',
-    description: `Set the project tempo in BPM (${S.TEMPO_RANGE[0]}-${S.TEMPO_RANGE[1]}). Drives the click, the bar/beat grid and quantize.`,
+    description:
+      `Set the project tempo in BPM (${S.TEMPO_RANGE[0]}-${S.TEMPO_RANGE[1]}). Drives the click, the bar/beat grid and quantize. ` +
+      'Regions keep their bar positions: MIDI stretches with the tempo, audio moves but plays as recorded.',
     parameters: obj({ bpm: num('Beats per minute') }, ['bpm']),
-    run: (ctx, a) => ({ tempo: edit(ctx, (s) => S.setTempo(s, a.bpm)).tempo }),
+    run: (ctx, a) => ({ tempo: edit(ctx, (s) => S.changeTempo(s, a.bpm)).tempo }),
   },
   {
     name: 'set_time_signature',

@@ -46,7 +46,8 @@ test('extracts MIDI tracks from a voice note and plays them', async ({ page }) =
   await expect(page.locator(`[data-track-row][data-track-id="${melodyId}"] [data-clip-container]`)).toHaveCount(1);
   await expect(page.locator(`[data-track-row][data-track-id="${s.tracks[2].id}"] [data-clip-container]`)).toHaveCount(1);
 
-  // quantize to quarter notes at 90 BPM through the tool layer (0.5 s -> 0.667 s), then undo
+  // 90 BPM keeps the notes on their beats (0.5 s -> 0.667 s), quantize to quarter notes through the
+  // tool layer, then undo both
   const clipId = s.tracks[1].clips[0].id;
   const r = await page.evaluate(async (id) => {
     await window.lattice!.runTool('set_tempo', { bpm: 90 });
@@ -54,6 +55,7 @@ test('extracts MIDI tracks from a voice note and plays them', async ({ page }) =
   }, clipId);
   expect(r.ok).toBe(true);
   await expect.poll(async () => (await session(page)).tracks[1].clips[0].midi!.notes[1].start).toBeCloseTo(0.6667, 3);
+  await page.getByRole('button', { name: 'Undo' }).click();
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect.poll(async () => (await session(page)).tracks[1].clips[0].midi!.notes[1].start).toBe(0.5);
 
