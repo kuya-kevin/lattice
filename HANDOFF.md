@@ -24,8 +24,10 @@ are in `CLAUDE.md`; direction is in `idea.md`.
 
 ## Tests (2026-10-28)
 
-- Vitest: 132 passing in 17 files. `npx tsc --noEmit` clean.
-- Playwright: 41 web tests in 13 specs plus 5 Electron (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). All passed Oct 28 (after B11). Electron tests launch with a fresh `LATTICE_USER_DATA` folder each.
+- Vitest: 162 passing in 18 files. `npx tsc --noEmit` clean.
+- Playwright: 61 web tests in 19 specs plus 5 Electron (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). All passed Oct 28 (late, after rebasing B10/B11 onto the Audio Editor and Piano Roll work). Electron tests launch with a fresh `LATTICE_USER_DATA` folder each.
+- **After a pull that changes `app/patches/`:** if Play does nothing ("TonePlayout not initialized"), the old patch is still applied. Run `rm -rf node_modules/@waveform-playlist/browser && npm install` in `app/`. This was the cause of two `playback-edits` failures on Oct 28.
+- Fixed Oct 28: in the Audio Editor, a trim followed by dragging the region body did nothing (the trim's text selection started a native drag). `user-select: none` on `.ae-canvas`. The Piano Roll's `.pr-canvas` has no such rule; check it by hand.
 
 ## Spend
 
