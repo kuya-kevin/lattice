@@ -7,7 +7,7 @@ import { SessionStore } from '../src/core/store';
 import { StubSidecar } from '../src/core/sidecar';
 import { museToolSpecs, runTool, type ToolContext } from '../src/core/tools';
 import * as S from '../src/core/session';
-import { MemoryVersionLibrary, shownVersions } from '../src/core/versions';
+import { loggedVersions, MemoryVersionLibrary, shownVersions } from '../src/core/versions';
 import { changeStat, diffSessions, type Change } from '../src/core/versionDiff';
 import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
 
@@ -96,6 +96,29 @@ describe('versions (B11)', () => {
     expect(autos).toHaveLength(1);
     expect(autos[0].name).toBe('Before Muse: "add more drive please, a lot more…"');
     expect(seen[0]).toContain('Versions: "clean"; 1 auto (list_versions shows them).');
+  });
+
+  it('hand edits after a Muse turn get their own row, apart from what Muse did', async () => {
+    const c = await ctx();
+    let n = 0;
+    const chat: ChatFn = async () =>
+      n++ === 0
+        ? { message: { content: '', tool_calls: [{ id: 'k1', type: 'function', function: { name: 'set_gain', arguments: JSON.stringify({ track_id: 't1', gain_db: -3 }) } }] }, finish_reason: 'tool_calls' }
+        : { message: { content: 'done' }, finish_reason: 'stop' };
+    const agent = new MuseAgent(c, chat);
+    await agent.send('turn it down');
+    expect(c.versions!.list().map((v) => v.name)).toEqual(['After Muse: "turn it down"', 'Before Muse: "turn it down"']);
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'sat' }, 'user');
+    const r = (await runTool(c, 'list_versions', { changes: true }, 'user')) as any;
+    const [after, before] = r.result.versions;
+    expect(after.changes.map((x: Change) => x.text)).toEqual([expect.stringContaining('on ')]);
+    expect(before.changes.map((x: Change) => x.text)).toEqual([expect.stringContaining('volume 0 dB → −3 dB')]);
+    expect(loggedVersions(r.result.versions)).toHaveLength(2);
+    // the next turn starts from an unchanged "After Muse": both rows stay, the empty one is hidden in the log
+    await runTool(c, 'undo', {}, 'user');
+    await agent.send('again');
+    const rows = ((await runTool(c, 'list_versions', { changes: true }, 'user')) as any).result.versions;
+    expect(rows.map((v: any) => v.name)).toContain('Before Muse: "again"');
   });
 });
 

@@ -71,8 +71,17 @@ export class MuseAgent {
   ) {}
 
   async send(text: string): Promise<TurnResult> {
-    const { store } = this.ctx;
     autoVersion(this.ctx, `Before Muse: "${shorten(text)}"`); // B11: so "go back to before X" works
+    try {
+      return await this.turn(text);
+    } finally {
+      // so the Versions log keeps the user's hand edits after this turn apart from Muse's own
+      autoVersion(this.ctx, `After Muse: "${shorten(text)}"`);
+    }
+  }
+
+  private async turn(text: string): Promise<TurnResult> {
+    const { store } = this.ctx;
     this.history.push({ role: 'user', content: buildUserTurn(text, museSummary(this.ctx), store.takeUserEdits()) });
     const steps: StepRecord[] = [];
     const usage: Usage = { prompt_tokens: 0, completion_tokens: 0 };

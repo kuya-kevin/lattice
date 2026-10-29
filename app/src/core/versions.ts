@@ -48,14 +48,25 @@ export function versionLibrary(ctx: { versions?: VersionLibrary }): VersionLibra
   return (ctx.versions ??= new MemoryVersionLibrary());
 }
 
-/** Save an automatic version, unless the session is the same as the newest version. */
+/** The auto version at the end of a Muse turn is named `After Muse: "<request>"`: what comes
+ *  after it is the user's own edits. */
+export const isAfterMuse = (v: VersionMeta) => v.auto && v.name.startsWith('After Muse:');
+
+/** Save an automatic version, unless the session is the same as the newest version. A "Before
+ *  Muse" one is still saved after an unchanged "After Muse" one, so each request keeps its row. */
 export function autoVersion(ctx: ToolContext, name: string): VersionMeta | null {
   const lib = versionLibrary(ctx);
   const s = ctx.store.get();
   const last = lib.list()[0];
   if (!s.tracks.length && !last) return null;
-  if (last && sameContent(lib.get(last.id)!.session, s)) return null;
+  if (last && sameContent(lib.get(last.id)!.session, s) && !(isAfterMuse(last) && name.startsWith('Before Muse:'))) return null;
   return lib.save({ name, auto: true, session: s });
+}
+
+/** The Versions log hides an "After Muse" version nothing was done after (Muse's next turn or
+ *  nothing yet): it would only repeat the row of its request. */
+export function loggedVersions<V extends VersionMeta & { changes: Change[] }>(list: V[]): V[] {
+  return list.filter((v) => !isAfterMuse(v) || v.changes.length);
 }
 
 /** The Versions list: every named version plus the newest `autoLimit` auto ones (all if `showAll`). */
@@ -106,7 +117,7 @@ export const VERSION_TOOLS: ToolDef[] = [
   {
     name: 'restore_version',
     description:
-      'Go back to a saved version (by id or name), replacing the current tracks, devices and clips. The current state stays one undo step away. An automatic version is saved before each of your turns, named after the request that followed it.',
+      'Go back to a saved version (by id or name), replacing the current tracks, devices and clips. The current state stays one undo step away. An automatic version is saved before and after each of your turns, named after the request ("Before Muse: ..." / "After Muse: ...").',
     parameters: obj({ version: str('Version id (e.g. "v3") or name') }, ['version']),
     run: (ctx, a) => {
       const v = findVersion(versionLibrary(ctx), String(a.version));
@@ -117,7 +128,7 @@ export const VERSION_TOOLS: ToolDef[] = [
   {
     name: 'list_versions',
     description:
-      'List saved versions, newest first (id, name, auto = saved automatically before a Muse turn). With changes: true, each also lists ' +
+      'List saved versions, newest first (id, name, auto = saved automatically before and after each of your turns). With changes: true, each also lists ' +
       'what changed after it (up to the next newer version, or now for the newest): what restoring it takes away.',
     parameters: obj({ changes: { type: 'boolean', description: 'Include what changed after each version' } }),
     quiet: true,

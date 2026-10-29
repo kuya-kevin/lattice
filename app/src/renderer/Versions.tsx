@@ -3,11 +3,12 @@
 // New session) are listed too, the newest 20 unless "Show all".
 // Read like a commit log: each version shows what changed after it (+ added, − removed,
 // ~ changed; list_versions with changes), i.e. what restoring it takes away. A Muse version's
-// changes are mostly what Muse did for that request.
+// changes are what Muse did for that request; an "After Muse" one (saved at the end of the turn)
+// lists the user's own edits after it, and is hidden while there are none.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '../core/session';
 import { changeStat, type Change } from '../core/versionDiff';
-import { shownVersions, type VersionMeta } from '../core/versions';
+import { isAfterMuse, loggedVersions, shownVersions, type VersionMeta } from '../core/versions';
 import { Icon } from './icons';
 import './Versions.css';
 
@@ -26,8 +27,11 @@ export function whenOf(iso: string, now = new Date()) {
   return `${d.toLocaleDateString([], { month: 'short', day: 'numeric' })} ${time}`;
 }
 
-/** An auto version before a Muse turn is named `Before Muse: "<request>"`. */
-const museRequest = (name: string) => /^Before Muse: "(.*)"?$/s.exec(name)?.[1]?.replace(/"$/, '') ?? null;
+/** Auto versions around a Muse turn are named `Before Muse: "<request>"` / `After Muse: "<request>"`. */
+const museRequest = (name: string) => {
+  const m = /^(Before|After) Muse: "(.*)"?$/s.exec(name);
+  return m ? { when: m[1], ask: m[2].replace(/"$/, '') } : null;
+};
 
 const SIGN: Record<Change['op'], string> = { '+': '+', '-': '−', '~': '~' };
 const PREVIEW = 2; // change lines shown before "N more"
@@ -72,7 +76,7 @@ export function VersionsMenu({ session, run }: { session: Session; run: Run }) {
   const save = async () => {
     if (await act('save_version', { name })) setName('');
   };
-  const { shown, hidden } = shownVersions(versions, showAll);
+  const { shown, hidden } = shownVersions(loggedVersions(versions), showAll);
 
   return (
     <div className="versions" ref={ref}>
@@ -90,26 +94,27 @@ export function VersionsMenu({ session, run }: { session: Session; run: Run }) {
             {!shown.length && <li className="versions-empty">No versions yet. Muse saves one before each of its turns.</li>}
             {shown.map((v) => {
               const ask = museRequest(v.name);
+              const after = isAfterMuse(v) ? 'your edits after this' : 'after this';
               const stat = changeStat(v.changes);
               const more = expanded.has(v.id);
               const lines = more ? v.changes : v.changes.slice(0, PREVIEW);
               return (
-                <li key={v.id} className={`version-row${v.auto ? ' auto' : ''}${ask !== null ? ' muse' : ''}`} data-testid={`version-${v.id}`}>
+                <li key={v.id} className={`version-row${v.auto ? ' auto' : ''}${ask ? ' muse' : ''}`} data-testid={`version-${v.id}`}>
                   <div className="version-head">
                     <i className="version-dot" aria-hidden />
                     <span className="version-name" title={v.name}>
-                      {ask !== null ? <>Before Muse: <q>{ask}</q></> : v.name}
+                      {ask ? <>{ask.when} Muse: <q>{ask.ask}</q></> : v.name}
                     </span>
                     <small>{whenOf(v.savedAt)}</small>
                   </div>
                   <div className="version-body">
                     {v.changes.length ? (
                       <>
-                        <span className="version-stat" data-testid="version-stat" aria-label={`${stat['+']} added, ${stat['-']} removed, ${stat['~']} changed after this`}>
+                        <span className="version-stat" data-testid="version-stat" aria-label={`${stat['+']} added, ${stat['-']} removed, ${stat['~']} changed ${after}`}>
                           {stat['+'] > 0 && <b className="add">+{stat['+']}</b>}
                           {stat['-'] > 0 && <b className="del">−{stat['-']}</b>}
                           {stat['~'] > 0 && <b className="mod">~{stat['~']}</b>}
-                          <span>after this</span>
+                          <span>{after}</span>
                         </span>
                         <ul className="version-changes" data-testid="version-changes">
                           {lines.map((c, i) => (
