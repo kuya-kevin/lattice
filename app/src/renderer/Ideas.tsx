@@ -114,7 +114,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
                 <span className="idea-name">{src.name}</span>
                 <span className="idea-dur">{fmtDur(src.duration)}</span>
               </span>
-              <MiniWave sourceId={src.id} version={audioVersion} />
+              <MiniWave sourceId={src.id} version={audioVersion} color={color} />
               <span className="idea-meta">
                 {ORIGIN[src.origin] ?? src.origin}
                 {uses.length ? ` · on ${[...new Set(uses.map((u) => u.t.name))].join(', ')}` : trying ? ' · on Musical Typing' : ' · not on a track'}
@@ -124,7 +124,8 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
             {versions.length > 1 && (
               <div className="idea-versions" data-testid="idea-versions">
                 <button className="idea-versions-toggle" aria-expanded={open === root} onClick={() => setOpen(open === root ? null : root)}>
-                  {versionLabel(src)} · {versions.length} versions <span aria-hidden>{open === root ? '▴' : '▾'}</span>
+                  <span className="ver-cur" title={versionLabel(src)}>{versionLabel(src)}</span>
+                  <span className="ver-count">{versions.length} versions <span aria-hidden>{open === root ? '▴' : '▾'}</span></span>
                 </button>
                 {open === root && (
                   <ul>
@@ -168,8 +169,9 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   );
 }
 
-/** Bar-style peak overview of a source, drawn once per buffer. */
-function MiniWave({ sourceId, version }: { sourceId: string; version: number }) {
+/** Bar-style peak overview of a source, drawn once per buffer and again when the card's colour
+ *  changes (a canvas keeps the colour it was painted with). */
+function MiniWave({ sourceId, version, color }: { sourceId: string; version: number; color: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const c = ref.current;
@@ -201,8 +203,8 @@ function MiniWave({ sourceId, version }: { sourceId: string; version: number }) 
     const ro = new ResizeObserver(draw); // redraw when the Ideas column is resized
     ro.observe(c);
     return () => ro.disconnect();
-  }, [sourceId, version]);
-  return <canvas ref={ref} className="idea-wave" aria-hidden />;
+  }, [sourceId, version, color]);
+  return <canvas ref={ref} className="idea-wave" data-color={color} aria-hidden />;
 }
 
 /** Bezier wires from each idea card to the track headers of the tracks that use it. Positions

@@ -127,8 +127,15 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .idea-credit { font-size: 10.5px; color: var(--solo); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .idea { position: relative; }
 /* a sound's versions (original, cleaned, ...): a toggle under the card, then one row each */
-.idea-versions { margin-top: -6px; padding: 8px 10px 6px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-card) var(--r-card); background: var(--island); font-size: 11.5px; }
-.idea-versions-toggle { width: 100%; padding: 2px 0; border: 0; background: none; color: var(--muted); text-align: left; font-size: 11.5px; }
+.idea-versions { padding: 6px 10px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 var(--r-card) var(--r-card); background: var(--island); font-size: 11.5px; }
+/* card + versions read as one box: square seam, a hairline between, one selection ring round both */
+.idea:has(> .idea-versions) > .idea-card { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.idea:has(> .idea-versions) > .idea-card.sel { box-shadow: none; border-bottom-color: var(--line); }
+.idea:has(> .idea-card.sel) > .idea-versions { border-color: var(--c); }
+.idea:has(> .idea-versions):has(> .idea-card.sel) { border-radius: var(--r-card); box-shadow: 0 0 0 3px color-mix(in srgb, var(--c) 18%, transparent); }
+.idea-versions-toggle { display: flex; gap: 6px; width: 100%; padding: 2px 0; border: 0; background: none; color: var(--muted); text-align: left; font-size: 11.5px; }
+.idea-versions-toggle .ver-cur { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.idea-versions-toggle .ver-count { flex: none; }
 .idea-versions-toggle:hover { color: var(--text); }
 .idea-versions ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 4px; }
 .idea-version { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 6px; }

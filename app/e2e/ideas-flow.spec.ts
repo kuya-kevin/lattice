@@ -150,3 +150,27 @@ test('Piano Roll: a note click plays the region\'s sample; dragging on empty gri
   await expect(page.locator('[data-testid="pr-note"].sel')).toHaveCount(2);
   await expect(notes.nth(2)).not.toHaveClass(/sel/);
 });
+
+test('a sound taken off its track and put back lights its card waveform in the track colour again', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({ name: 'hum.wav', mimeType: 'audio/wav', buffer: sineWav() });
+  await expect.poll(async () => (await session(page)).tracks.length).toBe(1);
+  const { id: clip, sourceId } = (await session(page)).tracks[0].clips[0];
+  /** The waveform's middle bar against the card's dot (the dot is always the current colour). */
+  const match = () =>
+    page.evaluate(() => {
+      const c = document.querySelector<HTMLCanvasElement>('.idea-wave')!;
+      const px = c.getContext('2d')!.getImageData(0, Math.floor(c.height / 2), c.width, 1).data;
+      let i = 0;
+      while (i < px.length && px[i + 3] < 255) i += 4; // the first solid pixel of a bar
+      const dot = getComputedStyle(document.querySelector('.idea-head .dot')!).backgroundColor;
+      return dot === `rgb(${px[i]}, ${px[i + 1]}, ${px[i + 2]})`;
+    });
+  await expect.poll(match).toBe(true);
+  await page.evaluate((id) => window.lattice!.runTool('delete_clip', { clip_id: id }), clip);
+  await expect(page.locator('.idea-meta')).toContainText('not on a track');
+  await expect.poll(match).toBe(true); // greyed out
+  await page.evaluate((id) => window.lattice!.runTool('place_sound', { source_id: id, track_id: 't1', start: 0 }), sourceId);
+  await expect(page.locator('.idea-meta')).toContainText('on hum');
+  await expect.poll(match).toBe(true); // lit again
+});
