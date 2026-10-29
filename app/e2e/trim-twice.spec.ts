@@ -1,6 +1,6 @@
 // Two trims back to back: the second must start a drag even while the playlist is still
-// re-rendering the region the first one trimmed (Oct 28 glitch; no longer reproduces as of Oct 29,
-// 25 web + 8 Electron runs, likely since the provider patch for playback across edits).
+// re-rendering the region the first one trimmed (Oct 28 glitch: it needed ~1 s; as of Oct 29 50 ms
+// is enough, in web and Electron, likely since the provider patch for playback across edits).
 import { expect, test } from '@playwright/test';
 
 function sineWav(seconds = 4, sr = 22050, hz = 220): Buffer {
@@ -32,6 +32,9 @@ test('a second trim right after the first still drags', async ({ page }) => {
     await page.mouse.up();
   };
   await drag('right', -px(1.5));
-  await drag('left', px(1)); // no pause, not even for the first trim to land
+  // faster than a hand can let go and grab the other edge; a press within a few ms of the release is
+  // dropped (dnd-kit), from 30 ms on it starts every time (Oct 29: 0 ms 0/20, 30-1200 ms 30/30)
+  await page.waitForTimeout(50);
+  await drag('left', px(1));
   await expect.poll(clip, { timeout: 3000 }).toMatchObject({ start: 1, offset: 1, duration: 1.5 });
 });

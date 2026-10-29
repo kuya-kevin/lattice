@@ -9,8 +9,9 @@ Changed:
 - Versions: an "After Muse" auto version is saved at the end of each Muse turn, so hand edits after it
   get their own row ("your edits after this"); it is hidden while nothing follows it.
 - Muse's `stop` without a position: the renderer writes back where playback stopped.
-- A second trim straight after the first: no longer reproduces (25 web + 8 Electron runs, likely fixed
-  by the Oct 28 provider patch). Regression test `e2e/trim-twice.spec.ts`; the Electron test's 1.5 s wait is gone.
+- A second trim straight after the first: a 50 ms pause is enough now (it needed ~1 s; likely fixed by the
+  Oct 28 provider patch). Only a press within a few ms of the release is dropped, which no hand can do.
+  Regression test `e2e/trim-twice.spec.ts`; the Electron test's 1.5 s wait is gone.
 - Drum pad is now **Sample pad**: any sound on a pad; a pad takes the sound's name unless renamed
   (double-click a pad, tool `rename_pad`); audio files dropped from the Finder fill pads from the one
   dropped on; double-click the kit card's name to rename it; drag the card onto the arrangement for an
