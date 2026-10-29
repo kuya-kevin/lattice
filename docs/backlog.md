@@ -60,6 +60,12 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
   - 2026-10-28, done: versions of a processed sound. A sound and its cleanup / quantize versions share
     one Ideas card showing the one in use; its Versions list plays each and switches the clips
     (tool `use_audio_version`, Muse too; the summary names a processed clip's original).
+  - 2026-10-29, done (batch of 3, branch `worktree-a-daw`): an Ideas sound played as a MIDI take's
+    instrument now shows as on that track (label, colour, wire); deleting it sends those takes back to
+    the piano. The Piano Roll / Audio Editor resizes from its bottom edge (persisted). The Versions menu
+    reads like a commit log: each version lists what changed after it (+ / − / ~, `core/versionDiff.ts`;
+    `list_versions` with `changes: true`). Not yet: hand edits after a Muse turn show under that request;
+    `Versions.css` uses a local green (no green token; lane S).
   - 2026-10-28, partly: "can't trim clips" did not reproduce (arrangement and Audio Editor trims pass in
     web and Electron). The arrangement's trim edges were invisible 8 px zones: now 10 px and lit on hover.
     Open: a second trim started within ~1 s of the previous one sometimes never starts a drag (playlist
