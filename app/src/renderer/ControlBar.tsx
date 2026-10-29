@@ -15,6 +15,7 @@ import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 import { musicalTyping } from './MusicalTyping';
 import { VersionsMenu } from './Versions'; // B11
+import { setRecordingActive } from './pushToTalk'; // B2
 import { takeToNotes, type PlayedNote, type TypingSample } from '../core/musicalTyping';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -33,6 +34,8 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
   const meter: Meter = { tempo: session.tempo, timeSignature: session.timeSignature };
   const rec = useRecorder(session, run, addBuffer, meter);
+  const recBusy = rec.isRecording || rec.countingIn;
+  useEffect(() => setRecordingActive(recBusy), [recBusy]); // B2: push-to-talk waits while recording
   const now = () => currentTimeRef.current ?? 0;
   /** What is reaching the speakers now (the playhead the LCD shows); now() runs a lookahead ahead. */
   const heard = () => visualTimeRef.current ?? now();

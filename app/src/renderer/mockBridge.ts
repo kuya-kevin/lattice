@@ -90,6 +90,12 @@ export function createMockBridge(): Bridge {
     keepSourceAudio: async () => {},
     loadSourceAudio: async (id) => sidecar.processed.get(id)?.slice(0) ?? null,
     serveMeasure: (fn) => void (measurer = fn),
+    // B2: dev:web transcribes through the Vite middleware (/api/stt), which holds the key
+    transcribe: async (wav) => {
+      const r = await fetch('/api/stt', { method: 'POST', body: wav });
+      const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+      return r.ok ? { ok: true, text: body.text } : { ok: false, error: body.error ?? `HTTP ${r.status}` };
+    },
     sendChat: async (text) => {
       try {
         return { ok: true, turn: await agent.send(text) };

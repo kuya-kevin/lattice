@@ -387,7 +387,13 @@ export function App({ bridge }: { bridge: Bridge }) {
 
         {/* ─── region: floating chrome (top bar, Muse, library, tool rail, zoom) ─── */}
         <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
-        <ChatPanel bridge={bridge} open={museOpen} onOpenChange={setMuseOpen} context={museContext} />
+        <ChatPanel
+          bridge={bridge}
+          open={museOpen}
+          onOpenChange={setMuseOpen}
+          context={museContext}
+          pausePlayback={() => sessionRef.current?.transport.playing && run('stop', { at: playheadRef.current() })}
+        />
         <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
           <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} />
         </aside>

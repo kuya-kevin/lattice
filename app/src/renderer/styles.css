@@ -391,6 +391,18 @@ select.lcd-field option { background: var(--island); }
 }
 .prompt .send:disabled { opacity: 1; background: var(--island-3); color: var(--muted); }
 .prompt .hide-prompt { color: var(--muted); }
+/* B2 push-to-talk: the mic button, and the status line just above the prompt bar */
+.prompt .mic { color: var(--muted); }
+.prompt .mic.on { color: var(--rec); }
+.ptt-status {
+  position: fixed; bottom: 110px; z-index: 19; left: 0; right: 0; margin: 0 auto; width: max-content; max-width: 80vw;
+  display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 999px; font-size: 13px;
+}
+.ptt-status .live { color: var(--rec); }
+.ptt-status.note { color: var(--muted); }
+.ptt-meter { width: 64px; height: 4px; border-radius: 2px; background: var(--island-3); overflow: hidden; }
+.ptt-meter i { display: block; height: 100%; background: var(--accent); }
+.msg .spoken-icon { color: var(--muted); margin-right: 6px; vertical-align: -1px; }
 .prompt .hide-prompt:hover { color: var(--text); }
 /* the prompt bar tucked away: a small pill in the same spot */
 .prompt-pill {

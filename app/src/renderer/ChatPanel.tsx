@@ -1,16 +1,26 @@
 // Muse on the canvas: the conversation floats on the left (collapsible) and the prompt bar sits
 // at the bottom centre. The prompt bar can be tucked away into a small "Ask Muse" pill (the
-// choice is remembered); sending opens the conversation.
+// choice is remembered); sending opens the conversation. B2: hold ` or the mic button to speak a
+// message instead; playback pauses, and the transcript is sent as soon as you let go.
 import { useEffect, useRef, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import type { StepRecord } from '../core/agent';
+import { clipLength } from '../core/stt';
 import { Icon } from './icons';
+import { recordingActive, startCapture, type Capture } from './pushToTalk';
+import { isPushToTalkKey } from './shortcuts';
 
 interface Entry {
   role: 'user' | 'muse' | 'error';
   text: string;
   steps?: StepRecord[];
+  /** B2: came from push-to-talk */
+  spoken?: boolean;
 }
+
+/** a push-to-talk hold in progress: the mic opens asynchronously, so `live` arrives later */
+type Held = { since: number; capture: Promise<Capture>; live?: Capture };
+type Talk = { phase: 'listening' } | { phase: 'transcribing' } | { phase: 'note'; text: string } | null;
 
 interface Props {
   bridge: Bridge;
@@ -18,6 +28,8 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** what Muse is looking at, shown as a chip in the prompt bar (e.g. the selected track) */
   context?: string | null;
+  /** B2: stop the transport while the mic is open (the speakers would reach it) */
+  pausePlayback?: () => void;
 }
 
 const PROMPT_HIDDEN_KEY = 'lattice.promptHidden';
@@ -30,7 +42,7 @@ function loadPromptHidden(): boolean {
   }
 }
 
-export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
+export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }: Props) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -49,18 +61,100 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
     requestAnimationFrame(() => inputRef.current?.focus());
   };
 
-  const send = async () => {
-    const msg = text.trim();
+  const send = async (raw = text, spoken = false) => {
+    const msg = raw.trim();
     if (!msg || busy) return;
-    setText('');
+    if (!spoken) setText('');
     setBusy(true);
     onOpenChange(true);
-    setEntries((e) => [...e, { role: 'user', text: msg }]);
+    setEntries((e) => [...e, { role: 'user', text: msg, spoken }]);
     const r = await bridge.sendChat(msg);
     setEntries((e) => [...e, r.ok ? { role: 'muse', text: r.turn.reply, steps: r.turn.steps } : { role: 'error', text: r.error }]);
     setBusy(false);
     queueMicrotask(() => listRef.current?.scrollTo(0, listRef.current.scrollHeight));
   };
+
+  // ---- B2 push-to-talk ----
+  const [talk, setTalk] = useState<Talk>(null);
+  const [meter, setMeter] = useState({ level: 0, seconds: 0 });
+  const held = useRef<Held | null>(null);
+  const noteTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(noteTimer.current), []);
+  const note = (msg: string) => {
+    setTalk({ phase: 'note', text: msg });
+    clearTimeout(noteTimer.current);
+    noteTimer.current = setTimeout(() => setTalk((t) => (t?.phase === 'note' ? null : t)), 2500);
+  };
+  const startTalk = () => {
+    if (held.current) return;
+    if (busy) return note('Muse is still working on the last message');
+    if (recordingActive()) return note('Can’t listen while recording');
+    pausePlayback?.();
+    const h: Held = { since: performance.now(), capture: startCapture(() => void talkRef.current.stop()) };
+    held.current = h;
+    setTalk({ phase: 'listening' });
+    h.capture.then(
+      (c) => (h.live = c),
+      (e) => {
+        if (held.current === h) held.current = null;
+        note(`Mic unavailable: ${e instanceof Error ? e.message : String(e)}`);
+      },
+    );
+  };
+  const stopTalk = async () => {
+    const h = held.current;
+    if (!h) return;
+    held.current = null;
+    const seconds = (performance.now() - h.since) / 1000;
+    const capture = await h.capture.catch(() => null);
+    if (!capture) return;
+    if (clipLength(seconds) === 'too short') {
+      capture.cancel();
+      return note('Too short: hold ` while you speak');
+    }
+    setTalk({ phase: 'transcribing' });
+    try {
+      const r = await bridge.transcribe((await capture.stop()).wav);
+      if (!r.ok) throw new Error(r.error);
+      setTalk(null);
+      send(r.text, true);
+    } catch (e) {
+      setTalk(null);
+      onOpenChange(true);
+      setEntries((x) => [...x, { role: 'error', text: `Couldn’t transcribe: ${e instanceof Error ? e.message : String(e)}` }]);
+    }
+  };
+  const talkRef = useRef({ start: startTalk, stop: stopTalk });
+  talkRef.current = { start: startTalk, stop: stopTalk };
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => {
+      if (!isPushToTalkKey(e)) return;
+      e.preventDefault();
+      if (!e.repeat) talkRef.current.start();
+    };
+    const up = (e: KeyboardEvent) => e.code === 'Backquote' && talkRef.current.stop();
+    const blur = () => talkRef.current.stop();
+    window.addEventListener('keydown', down, true);
+    window.addEventListener('keyup', up, true);
+    window.addEventListener('blur', blur);
+    return () => {
+      window.removeEventListener('keydown', down, true);
+      window.removeEventListener('keyup', up, true);
+      window.removeEventListener('blur', blur);
+    };
+  }, []);
+  const listening = talk?.phase === 'listening';
+  useEffect(() => {
+    if (!listening) return;
+    let raf = 0;
+    const tick = () => {
+      const h = held.current;
+      if (h) setMeter({ level: h.live?.level() ?? 0, seconds: (performance.now() - h.since) / 1000 });
+      raf = requestAnimationFrame(tick);
+    };
+    tick();
+    return () => cancelAnimationFrame(raf);
+  }, [listening]);
 
   return (
     <>
@@ -83,8 +177,8 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
             </div>
           )}
           {entries.map((e, i) => (
-            <div key={i} className={`msg ${e.role}`}>
-              <div className="text">{linkify(e.text)}</div>
+            <div key={i} className={`msg ${e.role}${e.spoken ? ' spoken' : ''}`} title={e.spoken ? 'Spoken (push-to-talk)' : undefined}>
+              <div className="text">{e.spoken && <Icon name="mic" size={12} className="spoken-icon" />}{linkify(e.text)}</div>
               {e.steps && e.steps.length > 0 && (
                 <ul className="steps">
                   {e.steps.map((s, j) => (
@@ -100,6 +194,17 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
         </div>
       </aside>
 
+      {talk && (
+        <div className={`ptt-status island ${talk.phase}`} data-testid="ptt-status" role="status">
+          {talk.phase === 'listening' ? (
+            <>
+              <Icon name="mic" size={14} className="live" />
+              Listening… {meter.seconds.toFixed(1)} s
+              <span className="ptt-meter"><i style={{ width: `${Math.round(meter.level * 100)}%` }} /></span>
+            </>
+          ) : talk.phase === 'transcribing' ? 'Transcribing…' : talk.text}
+        </div>
+      )}
       {promptHidden && (
         <button type="button" className="prompt-pill island" onClick={showPrompt} title="Show the Muse prompt bar" aria-label="Show Muse prompt">
           <Icon name="spark" size={14} className="spark" />Ask Muse
@@ -134,6 +239,21 @@ export function ChatPanel({ bridge, open, onOpenChange, context }: Props) {
           {context && <span className="chip ctx" title="Muse sees this selection">{context}</span>}
           <span className="spacer" />
           <button type="button" className="ibtn sm hide-prompt" onClick={() => setPromptHidden(true)} title="Hide the prompt bar" aria-label="Hide Muse prompt"><Icon name="chev" size={14} /></button>
+          <button
+            type="button"
+            className={`ibtn sm mic${listening ? ' on' : ''}`}
+            aria-label="Hold to talk to Muse"
+            title="Hold to talk to Muse (or hold `)"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              startTalk();
+            }}
+            onPointerUp={() => stopTalk()}
+            onPointerCancel={() => stopTalk()}
+          >
+            <Icon name="mic" size={15} />
+          </button>
           <button type="submit" className="send" disabled={busy || !text.trim()}><Icon name="send" size={16} />Send</button>
         </div>
       </form>

@@ -13,6 +13,7 @@ const bridge: Bridge = {
   },
   runTool: (name, args) => ipcRenderer.invoke('tool:run', name, args),
   sendChat: (text) => ipcRenderer.invoke('chat:send', text),
+  transcribe: (wav) => ipcRenderer.invoke('stt:transcribe', new Uint8Array(wav)), // B2
   listLibrary: () => ipcRenderer.invoke('library:list'),
   loadLibraryAudio: async (id) => {
     const bytes: Uint8Array = await ipcRenderer.invoke('library:audio', id);

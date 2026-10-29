@@ -140,8 +140,37 @@ and update the `HANDOFF.md` status table.
     | telephone | EQ 350 Hz-4 kHz band, transistor sat 8 | 4 (5) |
   - **Step 6 done:** `tests/fx-agent.test.ts` replays the 10: `suggest_moves` first, no failed calls, no clamp
     notes, only the named track edited, every knob in its usual range, punchy keeps its slow attack, "too much" lowers drive.
-  - **Left: step 7, by ear.** The user tries the phrases in the Electron app on real tracks (each request ~$0.004)
-    and marks each good, close or wrong; wrong ones get a vocab fix.
+  - **Step 7, by ear (Oct 28, live in the app, phrases stacked on the same tracks):**
+    | # | Phrase | User | What happened |
+    |---|---|---|---|
+    | 1 | stand out | — | **hit MAX_STEPS (10)**: 6 calls to apply, then measured, looked up comp, set makeup 2.8, measured again |
+    | 2 | harsh | ok | EQ −3 @ 3.5k; reported brightness 893 → 805 Hz |
+    | 3 | sibilant | n/a | needs a recording with real S sounds |
+    | 4 | warm bass | ok (needs a better instrument) | applied, measured, then cut hs_gain −2 a second time |
+    | 5 | muddy bass | bad (needs a better instrument) | −4 @ 250 Hz; reported low-mids −5 dB |
+    | 6 | punchy drums | good | slow-attack comp; then makeup **+10.2 dB** to undo the level drop it measured |
+    | 7 | glue drums | bad | **hit MAX_STEPS**: retuned the punchy comp instead of adding glue, chased thresh −18 → −28 |
+    | 8 | wider + spacious pad | ok | applied as given; "width up slightly" |
+    | 9 | grit, then back off | ok / no audible difference | nudge −1 = drive 12 → 9 dB with auto gain: too small to hear |
+    | 10 | telephone | good | reused the vocal's EQ (stand-out and harsh moves still on), added crunch |
+    Muse quoted measured changes in every finished reply (B9 works live). Problems: applying moves one knob
+    per call eats the 10-step budget; compressor moves lower the level, so Muse chases it with makeup; the
+    measurement compares against no effects, not against the last change, so stacked phrases are muddled;
+    "back it off" is too small on drive.
+  - **Next (tabled Oct 28), a listening eval before more vocab rules.** Every vocab number is still a guess, so
+    settle them by ear instead of hand-picking more:
+    1. Inputs from the user in `data/fx_eval/inputs/` (git-ignored): isolated, dry, time-aligned stems from one
+       song, 8-15 s WAV: `vocal.wav` (clear S sounds), `bass.wav` (body at 200-300 Hz), `drums.wav`
+       (uncompressed, real dynamics), `pad.wav` (stereo). Optional: a harsher vocal, a clean bass.
+    2. Vocab eval (free, no Muse): apply each phrase's moves and render through the real chain in headless
+       Chromium to `out/fx_eval/<run>/<case>/` (before + one WAV per variant). Open questions become blind
+       A/B variants: glue retunes the existing comp vs a second comp; comp auto gain on vs off; "back it off"
+       as −1 nudge vs half the drive. Judge page on the `spikes/e_eval` pattern; marks good/close/wrong + note
+       to `out/eval/fx_ratings.jsonl`. Winners go into `vocab.json`.
+    3. Then `apply_moves` (lookup + apply + measure in one call, one undo step; MAX_STEPS stays 10), and
+       `measure_track` reporting the change since the last measurement as well as vs no effects.
+    4. Agent eval: the same cases through Muse, recorded once live (~$0.05, ask first), replayed free;
+       Muse's calls, reply and measurements saved next to the audio.
 ### B3. Make cleanup and drum quantize real (S4, part 1)
 - **Do:** replace the `cleanup_noise` and `quantize_drums` stubs with the existing Python
   (`spikes/m_cleanup_models/clean.py` with `spikes/b_cleanup/run_noisereduce.py` as fallback, `spikes/f_engineer/quantize.py`), called the same way
@@ -241,29 +270,21 @@ and update the `HANDOFF.md` status table.
 
 ## Later / optional
 
-### B2. Voice commands: push-to-talk and the wake word "Hey Muse" (S6) — tabled Oct 27
-- **Do:** two ways to start a spoken command, one pipeline after that:
-  1. **Push-to-talk:** hold a hotkey, speak, release.
-  2. **Wake word:** the musician says "Hey Muse", then the command; the clip ends on
-     about 1 s of silence (voice activity detection).
-  Either way the clip goes to Muse 1.2 audio input for transcription, and the text becomes a normal
-  chat turn. The transcript shows in the chat panel so a mishearing is visible.
+### B2. Voice commands: the wake word "Hey Muse" (S6) — push-to-talk done Oct 28
+- **Do:** the musician says "Hey Muse", then the command; the clip ends on about 1 s of silence.
+  After that it is the push-to-talk pipeline (Done, 2026-10-28): Muse Voice Transcribe, then a chat turn.
 - **Wake word constraints:**
   - It must be spotted **locally**, always on. Streaming the mic to Meta would cost money all the
     time and send everything the musician says or plays.
-  - Candidates (licence first; nothing installed yet): sherpa-onnx keyword spotting (Apache-2.0;
-    the keyword is plain text, no training; has WASM and Node builds), openWakeWord (Apache-2.0,
-    Python; needs a custom model trained for "muse"), Vosk with a one-word grammar (Apache-2.0),
-    Porcupine (proprietary, free tier with an access key). The Web Speech API isn't an option: it
-    doesn't work in Electron.
+  - The hackathon rule allows only Meta models at runtime, so the spotter must be a Meta model or
+    non-ML code. Earlier candidates (sherpa-onnx, openWakeWord, Vosk, Porcupine) are all non-Meta.
+    Muse Voice Transcribe's realtime `ENDPOINTING` mode (built-in voice activity detection) could end
+    the clip once "Hey Muse" is heard, but only while the mic streams to Meta.
   - **Decided (Oct 27): "Hey Muse".** "Muse" alone is short and close to "music", "news", "use".
   - Music playing through speakers, and a vocal take being recorded, will both reach the mic.
     Pause listening while a track is armed or recording, and test with playback on.
-- **Done when:** both triggers reach the agent and run a tool, in Electron. Tests use recorded
-  transcription fixtures (no Meta calls); one manual check with real calls. False-trigger count
+- **Done when:** the wake word reaches the agent and runs a tool, in Electron. The false-trigger count
   over a few minutes of playback is written down.
-- **Files:** `app/src/renderer/ChatPanel.tsx`, `app/src/core/bridge.ts`, `app/electron/`, `app/src/node/muse.ts`.
-
 
 ### B7. Remaining sidecar tools (S4, part 2)
 `set_synth_knobs`, `fit_synth_to_reference` (`spikes/c_recreate`), `generate_mrt2` (`spikes/d_mrt2`,
@@ -282,6 +303,18 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 
 ## Done
 
+- 2026-10-28: B2 push-to-talk. Hold `` ` `` (or the mic button in the prompt bar), speak, and let go.
+  Playback pauses while the mic is open, which is blocked while a track records; a hold under 0.3 s is
+  ignored, and clips stop at 30 s. The clip (16 kHz mono WAV) goes to **Muse Voice Transcribe**
+  (`muse-voice-transcribe-1.0`, `POST /v1/asr/transcribe`, `PUSH_TO_TALK`; $0.18/hr, billed per
+  second) in the main process (the Vite middleware `/api/stt` in dev:web). The transcript is sent as
+  a chat turn and shows with a mic icon. No new session tool: it is only another way to type.
+  A local dev model was tried and dropped: wav2vec2 (Meta) through transformers.js misheard
+  ("PANCIER", "THRE DE BE") and needed a 360 MB download; Meta's model was exact on the same clip
+  in 1.3-1.5 s. Tests: `app/tests/stt.test.ts` (recorded response in `tests/fixtures/stt/`),
+  `app/e2e/push-to-talk.spec.ts` (fake mic, `$LATTICE_STT_MOCK`), one Electron IPC test. One live
+  run through the browser path (`say` clip → fake mic → Meta) transcribed word for word. Not yet
+  done: a by-voice check in Electron with the speakers on.
 - 2026-10-27: S1 effects engine + verification; device panel; S3 audio to MIDI wired in; canvas UI;
   sound library; clip moves and snap; musical typing and sampler; repo docs reorganised (`CLAUDE.md`,
   this backlog, `spikes/README.md`).

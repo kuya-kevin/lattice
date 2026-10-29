@@ -14,6 +14,7 @@ import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
 import { runEngineer } from '../src/node/engineer'; // B3
+import { transcriberFromEnv } from '../src/node/stt'; // B2
 import type { ExtractMidiArgs, QuantizeDrumsArgs } from '../src/core/sidecar';
 import type { Features } from '../src/core/ears';
 import type { Session } from '../src/core/session';
@@ -136,6 +137,16 @@ ipcMain.handle('chat:send', async (_e, text: string) => {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   } finally {
     busy = false;
+  }
+});
+
+// B2: push-to-talk clips -> Muse Voice Transcribe ($LATTICE_STT_MOCK: fixed text, no call)
+const transcribe = transcriberFromEnv(process.env, join(appDir, 'logs', 'muse-usage.jsonl'));
+ipcMain.handle('stt:transcribe', async (_e, wav: Uint8Array) => {
+  try {
+    return { ok: true, text: (await transcribe(wav)).text };
+  } catch (e) {
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }
 });
 

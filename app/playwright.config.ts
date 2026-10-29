@@ -22,6 +22,8 @@ export default defineConfig({
       LATTICE_SIDECAR_MOCK: resolve(import.meta.dirname, 'tests/fixtures/source_prep/manifest.json'),
       // B3: cleanup_noise / quantize_drums return the input audio with a mock result
       LATTICE_ENGINEER_MOCK: '1',
+      // B2: push-to-talk clips "transcribe" to this text without calling Meta
+      LATTICE_STT_MOCK: 'list the tracks',
     },
   },
 });

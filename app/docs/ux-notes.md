@@ -301,6 +301,15 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
   Escape or a click outside. Logic's closest feature is Project Alternatives
   (unverified from memory; check on the Mac).
 
+## Push-to-talk (B2, Oct 28)
+
+- **Hold `` ` `` or the prompt bar's mic button,** speak, and let go: the transcript is sent to Muse
+  straight away, so there is no step to confirm it (the user's choice; Undo and Versions take a bad
+  turn back). Playback pauses while you hold, because the speakers reach the mic. `` ` `` was chosen
+  because the transport keys and Musical Typing (letters, `;`, `'`, Tab) leave it free. It works only
+  while the window has focus, because Electron's global shortcuts can't see a key release. Not
+  modelled on Logic or GarageBand, which have no voice commands.
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html

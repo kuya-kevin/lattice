@@ -74,6 +74,11 @@ export function shortcutFor(e: KeyLike): ShortcutAction | null {
   }
 }
 
+/** B2: hold ` (backquote) to talk to Muse. Musical Typing doesn't claim it, so it works there too. */
+export function isPushToTalkKey(e: KeyLike): boolean {
+  return e.code === 'Backquote' && !e.metaKey && !e.ctrlKey && !e.altKey && !isTyping(e.target);
+}
+
 // ---- edit and window key commands (handled in App; Logic Pro defaults unless noted) ----
 
 export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'togglePianoRoll' | 'toggleSnap' | 'musicalTyping';

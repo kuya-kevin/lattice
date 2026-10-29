@@ -1,0 +1,5 @@
+{
+  "recorded": "2026-10-28, muse-voice-transcribe-1.0, PUSH_TO_TALK, macOS `say` clip (16 kHz mono WAV, 3.4 s), $0.00017",
+  "sent": "make the drums punchier and turn the vocal down three d b",
+  "response": {"sessionId":"voyager/transcribe/D939AB544DB04DD3BE0993C2376308B0","transcript":"Make the drums drums punchier and turn the vocal down 3 dB..","audioDurationMs":3360,"turns":[]}
+}

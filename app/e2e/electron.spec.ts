@@ -229,3 +229,13 @@ test('electron: a region trims from both edges in the arrangement (Oct 28 bug re
   await expect.poll(async () => (await clip()).duration).toBe(1);
   await app.close();
 });
+
+test('electron: push-to-talk clips reach the transcriber over IPC (B2, $LATTICE_STT_MOCK, no Meta call)', async () => {
+  // only the transcription hop: holding ` here would send the text to live Muse
+  const app = await electron.launch({ args: ['.'], env: { ...process.env, LATTICE_STT_MOCK: 'make the drums punchier' } as Record<string, string> });
+  const page = await app.firstWindow();
+  const r = await page.evaluate(() => window.lattice!.transcribe(new Uint8Array(44).buffer));
+  expect(r).toEqual({ ok: true, text: 'make the drums punchier' });
+  await expect(page.getByRole('button', { name: 'Hold to talk to Muse' })).toBeVisible();
+  await app.close();
+});

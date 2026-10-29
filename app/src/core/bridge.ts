@@ -14,6 +14,8 @@ export interface Bridge {
   runTool(name: string, args: Record<string, unknown>): Promise<ToolOutcome>;
   /** Send a chat message to Muse; resolves when Muse answers (or fails). */
   sendChat(text: string): Promise<{ ok: true; turn: TurnResult } | { ok: false; error: string }>;
+  /** B2: a push-to-talk clip (16 kHz mono WAV) -> its transcript (Muse Voice Transcribe). */
+  transcribe(wav: ArrayBuffer): Promise<{ ok: true; text: string } | { ok: false; error: string }>;
   /** Sound library items (Freesound sets + voice notes). `file` is left out on the wire. */
   listLibrary(): Promise<LibraryEntry[]>;
   /** The encoded audio file (wav/mp3) of a library item, for decoding in the renderer. */

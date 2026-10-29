@@ -6,6 +6,9 @@ import { defineConfig } from 'vitest/config';
 import { audioMime, loadLibrary, type Library } from './src/node/library.ts';
 import { putAudio, runSourcePrep, sourcePrepConfig } from './src/node/sourcePrep.ts';
 import { runEngineer } from './src/node/engineer.ts';
+import { config as loadDotenv } from 'dotenv';
+import { transcriberFromEnv } from './src/node/stt.ts';
+import type { Transcribe } from './src/core/stt.ts';
 
 /** [S3 midi] dev:web stand-in for the Electron sidecar IPC: POST /api/sidecar/extract-midi?args=<json>
  *  with the source's WAV as the body -> the prep.py manifest (or $LATTICE_SIDECAR_MOCK's). */
@@ -55,6 +58,33 @@ function sidecarMiddleware(): Plugin {
   };
 }
 
+/** B2: dev:web stand-in for the Electron transcription IPC: POST /api/stt with a push-to-talk
+ *  WAV -> { text } from Muse Voice Transcribe ($LATTICE_STT_MOCK: fixed text, no call). */
+function sttMiddleware(): Plugin {
+  let transcribe: Transcribe | null = null;
+  // the key is loaded on the first clip, not when the config loads (Vitest reads this file too)
+  const get = () => (transcribe ??= (loadDotenv({ path: resolve(import.meta.dirname, '..', '.env'), quiet: true }), transcriberFromEnv(process.env, resolve(import.meta.dirname, 'logs', 'muse-usage.jsonl'))));
+  return {
+    name: 'lattice-stt',
+    configureServer(server) {
+      server.middlewares.use('/api/stt', (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', async () => {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            if (req.method !== 'POST') throw new Error('POST only');
+            res.end(JSON.stringify({ text: (await get()(new Uint8Array(Buffer.concat(chunks)))).text }));
+          } catch (e) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+          }
+        });
+      });
+    },
+  };
+}
+
 /** dev:web stand-in for the Electron library IPC: GET /api/library (item list) and
  *  GET /api/library/audio/<id> (the file). Data dir: $LATTICE_DATA_DIR, else ../data. */
 function libraryMiddleware(): Plugin {
@@ -96,7 +126,7 @@ const realNodeModules = (() => {
 })();
 
 export default defineConfig({
-  plugins: [react(), libraryMiddleware(), sidecarMiddleware()],
+  plugins: [react(), libraryMiddleware(), sidecarMiddleware(), sttMiddleware()],
   base: './', // so the built page loads from file:// in Electron
   server: { port: 5199, strictPort: false, fs: { allow: [searchForWorkspaceRoot(process.cwd()), realNodeModules] } },
   build: { outDir: 'dist', emptyOutDir: true },
