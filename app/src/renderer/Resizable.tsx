@@ -1,21 +1,25 @@
 // Resizable canvas layout: drag handles for the Ideas column width, the Arrangement board's
-// width and the board / device chain split, plus the track lane height (vertical zoom).
+// width, the board / device chain split and the region editor's height (its bottom edge),
+// plus the track lane height (vertical zoom).
 // Sizes persist in localStorage when it is there; the app works the same without it.
 import { useEffect, useState, type CSSProperties } from 'react';
 import { Icon } from './icons';
+import './Resizable.css';
 
 export type LayoutSizes = {
   ideasW: number; // Ideas column width (px)
   boardW: number | null; // Arrangement board width (px); null = fill the space left
   boardH: number | null; // board height above the device chain (px); null = fit the tracks
+  editorH: number | null; // Piano Roll / Audio Editor height (px); null = their own default
   waveHeight: number; // waveform height per lane (px); the lane adds a 22 px region header
 };
 
-export const DEFAULT_SIZES: LayoutSizes = { ideasW: 264, boardW: null, boardH: null, waveHeight: 84 };
+export const DEFAULT_SIZES: LayoutSizes = { ideasW: 264, boardW: null, boardH: null, editorH: null, waveHeight: 84 };
 export const LIMITS = {
   ideasW: [200, 520],
   boardW: [560, 3200],
   boardH: [180, 4000],
+  editorH: [160, 1600],
   waveHeight: [32, 192],
 } as const;
 /** Lane height steps for the toolbar's − / + (Option-scroll over the lanes is continuous). */
@@ -29,11 +33,12 @@ function load(): LayoutSizes {
     const raw = JSON.parse(localStorage.getItem(KEY) ?? 'null');
     if (!raw || typeof raw !== 'object') return DEFAULT_SIZES;
     const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
-    const ideasW = num(raw.ideasW), boardW = num(raw.boardW), boardH = num(raw.boardH), wave = num(raw.waveHeight);
+    const ideasW = num(raw.ideasW), boardW = num(raw.boardW), boardH = num(raw.boardH), editorH = num(raw.editorH), wave = num(raw.waveHeight);
     return {
       ideasW: ideasW === null ? DEFAULT_SIZES.ideasW : clamp(ideasW, LIMITS.ideasW),
       boardW: boardW === null ? null : clamp(boardW, LIMITS.boardW),
       boardH: boardH === null ? null : clamp(boardH, LIMITS.boardH),
+      editorH: editorH === null ? null : clamp(editorH, LIMITS.editorH),
       waveHeight: wave === null ? DEFAULT_SIZES.waveHeight : clamp(wave, LIMITS.waveHeight),
     };
   } catch {
@@ -70,6 +75,7 @@ export function useLayoutSizes() {
     '--ideas-w': `${sizes.ideasW}px`,
     ...(sizes.boardW !== null ? { '--board-w': `${sizes.boardW}px` } : {}),
     ...(sizes.boardH !== null ? { '--board-h': `${sizes.boardH}px` } : {}),
+    ...(sizes.editorH !== null ? { '--editor-h': `${sizes.editorH}px` } : {}),
   } as CSSProperties;
   return { sizes, set, worldStyle };
 }
@@ -166,6 +172,20 @@ export function SplitHandle({ layout }: { layout: Layout }) {
       start={(h) => (h.previousElementSibling as HTMLElement).getBoundingClientRect().height}
       onSize={(hgt) => layout.set({ boardH: clamp(hgt, LIMITS.boardH) })} // the chain below moves down; the canvas grows
       onReset={() => layout.set({ boardH: null })}
+    />
+  );
+}
+
+/** Handle on the region editor's bottom edge (Piano Roll or Audio Editor showing): drag it to
+ *  make the editor taller or shorter, like the board above it. */
+export function EditorHandle({ layout }: { layout: Layout }) {
+  const editor = (h: HTMLElement) => h.previousElementSibling?.querySelector<HTMLElement>('.piano-roll, .audio-editor');
+  return (
+    <ResizeHandle
+      axis="y" label="Resize editor height" className="rz-editor" testId="rz-editor"
+      start={(h) => editor(h)?.getBoundingClientRect().height ?? 320}
+      onSize={(hgt) => layout.set({ editorH: clamp(hgt, LIMITS.editorH) })}
+      onReset={() => layout.set({ editorH: null })}
     />
   );
 }

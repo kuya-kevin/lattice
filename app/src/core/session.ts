@@ -236,7 +236,10 @@ export function deleteSource(s: Session, sourceId: string): Session {
     ...s,
     sources,
     ...(kits ? { kits } : {}),
-    tracks: s.tracks.map((t) => (t.clips.some((c) => gone.has(c.id)) ? { ...t, clips: t.clips.filter((c) => !gone.has(c.id)) } : t)),
+    // MIDI takes played with it keep their notes and go back to the piano
+    tracks: s.tracks.map((t) => (t.clips.some((c) => gone.has(c.id) || c.midi?.sample?.sourceId === sourceId)
+      ? { ...t, clips: t.clips.filter((c) => !gone.has(c.id)).map((c) => (c.midi?.sample?.sourceId === sourceId ? { ...c, midi: { notes: c.midi.notes, instrument: 'piano' } } : c)) }
+      : t)),
     selection: s.selection.clipId && gone.has(s.selection.clipId) ? { ...s.selection, clipId: null } : s.selection,
   };
 }

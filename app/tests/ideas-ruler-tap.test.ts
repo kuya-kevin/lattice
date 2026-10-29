@@ -33,6 +33,19 @@ describe('delete_sound', () => {
     expect(c.store.get().tracks.flatMap((t) => t.clips)).toHaveLength(3);
   });
 
+  it('MIDI takes played with the sound keep their notes and go back to the piano', async () => {
+    const c = ctx();
+    await runTool(c, 'import_audio', { source_id: 'a', name: 'Synth', duration: 2 }, 'user');
+    const t = c.store.get().tracks[0];
+    const notes = [{ pitch: 60, velocity: 100, start: 0, duration: 0.5 }];
+    const rec = await runTool(c, 'record_midi', { track_id: t.id, start: 4, duration: 1, notes, instrument: 'Synth', sample: { source_id: 'a', offset: 0, duration: 2, root: 60 } }, 'user');
+    expect(rec.ok).toBe(true);
+    await runTool(c, 'delete_sound', { source_id: 'a' }, 'user');
+    const clips = c.store.get().tracks.flatMap((x) => x.clips);
+    expect(clips).toHaveLength(1);
+    expect(clips[0].midi).toEqual({ instrument: 'piano', notes });
+  });
+
   it('rejects an unknown sound', async () => {
     const r = await runTool(ctx(), 'delete_sound', { source_id: 'nope' }, 'user');
     expect(r.ok).toBe(false);

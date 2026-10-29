@@ -8,6 +8,7 @@ import { StubSidecar } from '../src/core/sidecar';
 import { museToolSpecs, runTool, type ToolContext } from '../src/core/tools';
 import * as S from '../src/core/session';
 import { MemoryVersionLibrary, shownVersions } from '../src/core/versions';
+import { changeStat, diffSessions, type Change } from '../src/core/versionDiff';
 import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
 
 const ctx = async (): Promise<ToolContext> => {
@@ -154,5 +155,49 @@ describe('project files (Electron)', () => {
     expect(new TextDecoder().decode(b.read('s2')!)).toBe('RIFF-rec');
     expect(b.ref('s3')).toEqual({ library: 'fs:123' });
     expect(b.read('missing')).toBeNull();
+  });
+});
+
+describe('version changes (Versions log)', () => {
+  it('lists tracks, devices, knobs, clips and tempo in plain words', async () => {
+    const c = await ctx();
+    const before = c.store.get();
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'eq' }, 'user');
+    await runTool(c, 'set_gain', { track_id: 't1', gain_db: -3 }, 'user');
+    await runTool(c, 'add_track', { name: 'pad' }, 'user');
+    await runTool(c, 'set_tempo', { bpm: 90 }, 'user');
+    const changes = diffSessions(before, c.store.get());
+    const texts = changes.map((x) => `${x.op} ${x.text}`);
+    expect(texts).toEqual(expect.arrayContaining(['+ Channel EQ on Vox', '~ Vox volume 0 dB → −3 dB', '+ track “pad”', '~ tempo 120 → 90 BPM']));
+    expect(changeStat(changes)).toMatchObject({ '+': 2, '-': 0, '~': 2 });
+    // view state is not a change
+    await runTool(c, 'select', { track_id: 't1' }, 'user');
+    expect(diffSessions(c.store.get(), { ...c.store.get(), selection: { trackId: null, clipId: null } })).toEqual([]);
+  });
+
+  it('a knob move names the knob and both values; removing names what went', async () => {
+    const c = await ctx();
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'utility' }, 'user');
+    const a = c.store.get();
+    const dev = a.tracks[0].devices[0];
+    const b = { ...a, tracks: [{ ...a.tracks[0], devices: [{ ...dev, params: { ...dev.params, gain: 6 } }], clips: [] }] };
+    const texts = diffSessions(a, b).map((x) => `${x.op} ${x.text}`);
+    expect(texts.find((t) => t.startsWith('~ Vox Utility: Gain'))).toMatch(/Gain .*0.* → .*6/);
+    expect(texts).toContain('- clip “Vox” on Vox');
+  });
+
+  it('list_versions with changes: each version lists what came after it, the newest up to now', async () => {
+    const c = await ctx();
+    await runTool(c, 'save_version', { name: 'bare' }, 'user');
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'eq' }, 'user');
+    await runTool(c, 'save_version', { name: 'eq' }, 'user');
+    await runTool(c, 'add_track', { name: 'pad' }, 'user');
+    const r = await runTool(c, 'list_versions', { changes: true }, 'user');
+    const v = (r.result as any).versions;
+    expect(v.map((x: any) => x.name)).toEqual(['eq', 'bare']);
+    expect(v[0].changes.map((x: Change) => x.text)).toEqual(['track “pad”']);
+    expect(v[1].changes.map((x: Change) => x.text)).toEqual(['Channel EQ on Vox']);
+    // without the flag the list stays short (what Muse usually reads)
+    expect(((await runTool(c, 'list_versions', {}, 'user')).result as any).versions[0].changes).toBeUndefined();
   });
 });

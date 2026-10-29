@@ -1,0 +1,4 @@
+/* Region editor height (Resizable.tsx EditorHandle): the dragged height overrides the Piano
+   Roll's and Audio Editor's own (styles.css); their empty hints keep fitting their text. */
+.smart-controls .piano-roll:not(.empty) { height: var(--editor-h, 320px); }
+.smart-controls .audio-editor:not(.empty) { height: var(--editor-h, 260px); }

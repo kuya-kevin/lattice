@@ -24,7 +24,7 @@ import { Icon } from './icons';
 import { IdeaWires, Ideas, ideaSources } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
 import { libraryBuffer } from './libraryAudio';
-import { ColumnHandles, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
+import { ColumnHandles, EditorHandle, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
 import { editShortcutFor, type EditAction } from './shortcuts';
 import { SmartControls, type EditorTab } from './SmartControls';
 import { PianoRoll } from './PianoRoll'; // [S3 midi] note editor in the editor area
@@ -392,6 +392,7 @@ export function App({ bridge }: { bridge: Bridge }) {
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
                 </SmartControls>
               )}
+              {smartOpen && session.tracks.length > 0 && editorTab === 'notes' && <EditorHandle layout={layout} />}
               {/* ─── end region: Smart Controls ─── */}
             </div>
           </div>

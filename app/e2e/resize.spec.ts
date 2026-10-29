@@ -285,3 +285,32 @@ test('each track resizes on its own by dragging its bottom edge; Height −/+ sc
   await page.screenshot({ path: `${SHOTS}/track-heights-after.png` });
   expect(errors).toEqual([]);
 });
+
+test('the region editor resizes by dragging its bottom edge; persists; double-click resets', async ({ page }) => {
+  await load(page);
+  const clip = (await session(page)).tracks[0].clips[0].id;
+  await page.evaluate((id) => window.lattice!.runTool('select', { track_id: 't1', clip_id: id }), clip);
+  await page.getByRole('tab', { name: 'Audio Editor' }).click();
+  const editor = page.getByTestId('audio-editor');
+  await expect(editor).toBeVisible();
+  const h0 = Math.round((await box(editor)).height);
+  expect(h0).toBe(260);
+  const handle = page.getByTestId('rz-editor');
+  const toBottom = () => page.locator('.canvas').evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await toBottom();
+  await drag(page, handle, 0, 150);
+  expect(Math.round((await box(editor)).height)).toBe(410);
+  // the editor's lane follows the new height (it draws to what it is given)
+  await expect.poll(async () => Math.round((await box(editor.locator('canvas').first())).height)).toBeGreaterThan(300);
+  expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lattice.layout.v1')!).editorH)).toBe(410);
+  await page.screenshot({ path: `${SHOTS}/editor-taller.png` });
+
+  await toBottom();
+  await drag(page, handle, 0, -2000);
+  expect(Math.round((await box(editor)).height)).toBe(160); // the minimum
+  await handle.dblclick();
+  expect(Math.round((await box(editor)).height)).toBe(260);
+  // the device chain tab has no editor handle
+  await page.getByRole('tab', { name: 'Device chain' }).click();
+  await expect(handle).toHaveCount(0);
+});

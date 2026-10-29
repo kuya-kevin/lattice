@@ -28,6 +28,7 @@ function writeJson(file: string, data: unknown) {
 
 export class FileVersionLibrary implements VersionLibrary {
   private index: VersionMeta[]; // oldest first
+  private cache = new Map<string, Session>(); // versions never change once saved
 
   constructor(private dir: string) {
     this.index = readJson<{ versions: VersionMeta[] }>(join(dir, 'index.json'), 'versions')?.versions ?? [];
@@ -39,7 +40,8 @@ export class FileVersionLibrary implements VersionLibrary {
 
   get(id: string): Version | undefined {
     const meta = this.index.find((v) => v.id === id);
-    const session = meta && readJson<Session>(join(this.dir, `${id}.json`), 'version');
+    const session = meta && (this.cache.get(id) ?? readJson<Session>(join(this.dir, `${id}.json`), 'version'));
+    if (meta && session) this.cache.set(id, session);
     return meta && session ? { ...meta, session } : undefined;
   }
 

@@ -73,6 +73,9 @@ test('library + puts a sound in Ideas on no track; it plays on Musical Typing; R
   s = await session(page);
   expect(s.tracks[0].name).toBe('Fixture Sub Bass');
   expect(s.tracks[0].clips[0].midi).toMatchObject({ instrument: 'Fixture Sub Bass', sample: { sourceId: src.id } });
+  // the card now belongs to that track: it says so and a wire runs to the track header
+  await expect(page.locator('.idea-meta')).toContainText('on Fixture Sub Bass');
+  await expect(page.locator('svg.wires path')).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 

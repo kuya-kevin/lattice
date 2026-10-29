@@ -1,0 +1,34 @@
+/* Versions log (Versions.tsx): each version with what changed after it, like `git log --stat`.
+   Layout rules from styles.css (.versions-*) stay; this widens the menu and lays out the rows. */
+.versions-menu.versions-log { width: 420px; --add: #6fd39a; }
+.versions-log .versions-list { max-height: min(560px, calc(100vh - 220px)); gap: 0; }
+.versions-log .version-row { display: block; padding: 8px 8px 8px 22px; position: relative; border-radius: var(--r-ctl); }
+/* the timeline: a hairline down the left, a dot per version (filled = named, hollow = auto, accent = Muse) */
+.versions-log .version-row::before { content: ''; position: absolute; left: 10px; top: 0; bottom: 0; width: 1px; background: var(--line); }
+.versions-log .version-row:first-child::before { top: 14px; }
+.versions-log .version-row:last-child::before { bottom: calc(100% - 14px); }
+.versions-log .version-dot { position: absolute; left: 6px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--text); box-shadow: 0 0 0 3px var(--island); }
+.versions-log .version-row.auto .version-dot { background: var(--island); border: 1.5px solid var(--faint); }
+.versions-log .version-row.muse .version-dot { border-color: var(--accent); }
+.versions-log .version-head { display: flex; align-items: baseline; gap: 8px; }
+.versions-log .version-row .version-name {
+  flex: 1; min-width: 0; white-space: normal; overflow: hidden;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.35;
+}
+.versions-log .version-row:not(.auto) .version-name { font-weight: 600; }
+.versions-log .version-name q { color: var(--text); }
+.versions-log .version-head small { flex: none; }
+.versions-log .version-body { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; row-gap: 3px; margin-top: 4px; align-items: start; }
+.versions-log .version-stat { grid-column: 1; display: flex; gap: 6px; align-items: baseline; font: 11px var(--font-data); color: var(--faint); }
+.versions-log .version-stat b { font-weight: 600; }
+.versions-log .add { color: var(--add); }
+.versions-log .del { color: var(--rec); }
+.versions-log .mod { color: var(--solo); }
+.versions-log .version-changes { grid-column: 1; list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; font-size: 12px; color: var(--muted); }
+.versions-log .version-changes li { display: flex; gap: 6px; min-width: 0; }
+.versions-log .version-changes li b { flex: none; width: 10px; font: 600 11px/18px var(--font-data); }
+.versions-log .version-changes li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.versions-log .version-changes li:hover span { white-space: normal; }
+.versions-log .version-more { grid-column: 1; justify-self: start; background: none; border: 0; padding: 0; height: auto; color: var(--accent); font-size: 11.5px; }
+.versions-log .version-restore { grid-column: 2; grid-row: 1 / span 3; align-self: start; opacity: 0.55; }
+.versions-log .version-row:hover .version-restore, .versions-log .version-restore:focus-visible { opacity: 1; }

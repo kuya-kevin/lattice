@@ -40,11 +40,20 @@ export function ideaGroups(s: Session): { root: string; versions: Source[] }[] {
   return [...groups].map(([root, versions]) => ({ root, versions }));
 }
 
-/** Colour of the first track that uses a source (cards and wires take the track's colour). */
+/** Colour of the first track that uses a source (cards and wires take the track's colour). A
+ *  MIDI take played with the sound as its instrument uses it too. */
 function usage(s: Session, sourceId: string | Set<string>) {
-  const has = (id: string) => (typeof sourceId === 'string' ? id === sourceId : sourceId.has(id));
-  const uses = s.tracks.flatMap((t, i) => t.clips.filter((c) => has(c.sourceId)).map((c) => ({ t, i, c })));
+  const has = (id?: string) => !!id && (typeof sourceId === 'string' ? id === sourceId : sourceId.has(id));
+  const uses = s.tracks.flatMap((t, i) => t.clips.filter((c) => has(c.sourceId) || has(c.midi?.sample?.sourceId)).map((c) => ({ t, i, c })));
   return { uses, color: uses.length ? trackColor(uses[0].i) : 'var(--faint)' };
+}
+
+/** What deleting a sound does to the arrangement. */
+function confirmText(clips: number, takes: number) {
+  const out = [];
+  if (clips) out.push(`Also removes ${clips} clip${clips > 1 ? 's' : ''} from the arrangement.`);
+  if (takes) out.push(`${takes} MIDI take${takes > 1 ? 's' : ''} played with it go${takes > 1 ? '' : 'es'} back to the piano.`);
+  return out.join(' ');
 }
 
 /** What a version is, for the Versions list. */
@@ -166,7 +175,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
             <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
             {confirm === src.id && (
               <div className="idea-confirm" data-testid="idea-confirm" role="alertdialog" aria-label={`Delete ${src.name}?`} onKeyDown={(e) => e.key === 'Escape' && setConfirm(null)}>
-                <span>Delete “{src.name}”? Also removes {uses.length} clip{uses.length > 1 ? 's' : ''} from the arrangement.</span>
+                <span>Delete “{src.name}”? {confirmText(uses.filter((u) => !u.c.midi).length, uses.filter((u) => u.c.midi).length)}</span>
                 <span className="idea-confirm-actions">
                   <button onClick={() => setConfirm(null)}>Cancel</button>
                   <button className="danger" autoFocus onClick={() => remove(src.id)}>Delete</button>

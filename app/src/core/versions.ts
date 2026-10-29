@@ -3,6 +3,7 @@
 // copied: every version points at the same sources. Electron keeps versions on disk
 // (node/projectFiles.ts); web and tests keep them in memory.
 import * as S from './session';
+import { diffSessions, type Change } from './versionDiff';
 import type { ToolContext, ToolDef } from './tools';
 
 export interface VersionMeta {
@@ -58,7 +59,7 @@ export function autoVersion(ctx: ToolContext, name: string): VersionMeta | null 
 }
 
 /** The Versions list: every named version plus the newest `autoLimit` auto ones (all if `showAll`). */
-export function shownVersions(list: VersionMeta[], showAll: boolean, autoLimit = 20): { shown: VersionMeta[]; hidden: number } {
+export function shownVersions<V extends VersionMeta>(list: V[], showAll: boolean, autoLimit = 20): { shown: V[]; hidden: number } {
   if (showAll) return { shown: list, hidden: 0 };
   let autos = 0;
   const shown = list.filter((v) => !v.auto || ++autos <= autoLimit);
@@ -115,10 +116,27 @@ export const VERSION_TOOLS: ToolDef[] = [
   },
   {
     name: 'list_versions',
-    description: 'List saved versions, newest first (id, name, auto = saved automatically before a Muse turn).',
-    parameters: obj({}),
+    description:
+      'List saved versions, newest first (id, name, auto = saved automatically before a Muse turn). With changes: true, each also lists ' +
+      'what changed after it (up to the next newer version, or now for the newest): what restoring it takes away.',
+    parameters: obj({ changes: { type: 'boolean', description: 'Include what changed after each version' } }),
     quiet: true,
-    run: (ctx) => ({ versions: versionLibrary(ctx).list().map((v) => ({ id: v.id, name: v.name, auto: v.auto, saved_at: v.savedAt })) }),
+    run: (ctx, a) => {
+      const lib = versionLibrary(ctx);
+      const list = lib.list();
+      // newest first: each version's "after" is the one before it in the list, or the live session
+      let after = ctx.store.get();
+      return {
+        versions: list.map((v) => {
+          const row = { id: v.id, name: v.name, auto: v.auto, saved_at: v.savedAt };
+          if (!a.changes) return row;
+          const at = lib.get(v.id)?.session;
+          const changes: Change[] = at ? diffSessions(at, after) : [];
+          if (at) after = at;
+          return { ...row, changes };
+        }),
+      };
+    },
   },
   {
     name: 'new_session',

@@ -42,6 +42,13 @@ test('save two versions, restore the first, then start a new session', async ({ 
   await expect.poll(kinds).toEqual(['eq', 'comp']);
   await save('with comp');
   await expect(menu.locator('.version-row .version-name')).toHaveText(['with comp', 'clean']); // newest first
+  // each version says what came after it: "clean" was followed by the compressor; the newest by nothing
+  const clean1 = menu.locator('.version-row', { hasText: 'clean' });
+  await expect(clean1.getByTestId('version-stat')).toHaveText(/\+1\s*after this/);
+  await expect(clean1.getByTestId('version-changes')).toHaveText(/Compressor on vox/);
+  await expect(menu.locator('.version-row', { hasText: 'with comp' })).toContainText('No changes after this');
+  await panel.getByTestId('fx-add').selectOption('eq');
+  await expect(menu.locator('.version-row', { hasText: 'with comp' }).getByTestId('version-changes')).toHaveText(/Channel EQ on vox/); // live: up to now
 
   await menu.locator('.version-row', { hasText: 'clean' }).getByRole('button', { name: 'Restore' }).click();
   await expect.poll(kinds).toEqual(['eq']);
