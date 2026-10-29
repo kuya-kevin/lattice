@@ -8,6 +8,7 @@ import { StubSidecar, type ExtractMidiArgs } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
+import { MemoryVersionLibrary } from '../core/versions';
 
 /** Offline stand-in: lists the tracks once, then answers with what it saw. */
 const offlineMuse: ChatFn = async ({ messages }) => {
@@ -45,6 +46,7 @@ export function createMockBridge(): Bridge {
     sidecar: new WebSidecar(sourceAudio),
     searchFreesound: async () => ({ count: 0, results: [] }),
     chains: new MemoryChainLibrary(), // B10: kept for the page's lifetime only
+    versions: new MemoryVersionLibrary(), // B11: same (no autosave in the browser build)
   };
   const agent = new MuseAgent(ctx, offlineMuse);
   return {
@@ -63,6 +65,9 @@ export function createMockBridge(): Bridge {
       return r.arrayBuffer();
     },
     putSourceAudio: async (id, wav) => void sourceAudio.set(id, wav), // [S3 midi]
+    // B11: audio buffers outlive any restore within the page, so there is nothing to reload
+    keepSourceAudio: async () => {},
+    loadSourceAudio: async () => null,
     sendChat: async (text) => {
       try {
         return { ok: true, turn: await agent.send(text) };

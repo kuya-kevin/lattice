@@ -71,7 +71,7 @@ export class SessionStore {
     const snap = this.past.pop();
     if (!snap) return null;
     this.future.push({ session: this.session, label: snap.label });
-    this.set(this.restore(snap.session));
+    this.set(this.restored(snap.session));
     return snap.label;
   }
 
@@ -79,11 +79,13 @@ export class SessionStore {
     const snap = this.future.pop();
     if (!snap) return null;
     this.past.push({ session: this.session, label: snap.label });
-    this.set(this.restore(snap.session));
+    this.set(this.restored(snap.session));
     return snap.label;
   }
 
-  private restore(target: Session): Session {
+  /** `target` as the next session: its arrangement and mix, with today's view state (see undo).
+   *  Also used to restore a saved version (B11). */
+  restored(target: Session): Session {
     const cur = this.session;
     const ids = new Set(target.tracks.flatMap((t) => [t.id, ...t.clips.map((c) => c.id)]));
     const keep = (id: string | null) => (id && ids.has(id) ? id : null);

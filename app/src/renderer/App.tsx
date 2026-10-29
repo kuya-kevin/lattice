@@ -32,6 +32,7 @@ import { AudioEditor } from './AudioEditor'; // audio regions up close, same tab
 import { TrackHeader, trackColor } from './TrackHeader';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
+import { importRef, keepSourceAudio, useSourceAudioReload, type KeepAudio } from './sourceAudio'; // B11
 import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
 import { MusicalTypingButton, MusicalTypingKeyboard, musicalTyping } from './MusicalTyping'; // letter keys play notes
 
@@ -138,11 +139,15 @@ export function App({ bridge }: { bridge: Bridge }) {
     [bridge],
   );
 
-  const addBuffer = useCallback((id: string, b: AudioBuffer) => {
+  /** `keep`: how the main process finds this audio again after a restart (B11); recordings
+   *  are encoded by default. */
+  const addBuffer = useCallback((id: string, b: AudioBuffer, keep: KeepAudio = 'encode') => {
     buffers.set(id, b);
     setAudioVersion((v) => v + 1);
     uploadSourceAudio(bridge, id, b); // [S3 midi] so extract_midi (user or Muse) can read it
+    keepSourceAudio(bridge, id, b, keep).catch((e) => setError(`Could not keep audio ${id}: ${e instanceof Error ? e.message : e}`));
   }, [bridge]);
+  useSourceAudioReload(bridge, session, addBuffer, setError); // B11
 
   // ─── region: [S3 midi] MIDI clip playback (rendered offline, played as audio) ───
   const setMidiRender = useCallback((id: string, b: AudioBuffer) => {
@@ -173,14 +178,14 @@ export function App({ bridge }: { bridge: Bridge }) {
         try {
           const b = await decodeFile(file);
           const id = newSourceId();
-          addBuffer(id, b);
+          addBuffer(id, b, await importRef(bridge, file));
           await run('import_audio', { source_id: id, name: file.name.replace(/\.[^.]+$/, ''), duration: b.duration, origin: 'import' });
         } catch (e) {
           setError(`Could not import ${file.name}: ${e instanceof Error ? e.message : e}`);
         }
       }
     },
-    [addBuffer, run],
+    [bridge, addBuffer, run],
   );
 
   // ─── region: sound library drops ───
@@ -190,7 +195,7 @@ export function App({ bridge }: { bridge: Bridge }) {
         const [items, b] = await Promise.all([bridge.listLibrary(), libraryBuffer(bridge, id)]);
         const item = items.find((i) => i.id === id);
         const sourceId = newSourceId();
-        addBuffer(sourceId, b);
+        addBuffer(sourceId, b, { library: id });
         await run('place_audio', {
           source_id: sourceId,
           name: (item?.name ?? id).replace(/\.(wav|mp3|aiff?|flac|ogg|m4a)$/i, ''),

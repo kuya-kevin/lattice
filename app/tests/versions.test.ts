@@ -1,0 +1,158 @@
+import { mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { MuseAgent, type ChatFn } from '../src/core/agent';
+import { SessionStore } from '../src/core/store';
+import { StubSidecar } from '../src/core/sidecar';
+import { museToolSpecs, runTool, type ToolContext } from '../src/core/tools';
+import * as S from '../src/core/session';
+import { MemoryVersionLibrary, shownVersions } from '../src/core/versions';
+import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
+
+const ctx = async (): Promise<ToolContext> => {
+  const c: ToolContext = { store: new SessionStore(), sidecar: new StubSidecar(), searchFreesound: async () => ({ count: 0, results: [] }), versions: new MemoryVersionLibrary() };
+  await runTool(c, 'import_audio', { source_id: 'a', name: 'Vox', duration: 4 }, 'user');
+  c.store.takeUserEdits();
+  return c;
+};
+const tmp = () => mkdtempSync(join(tmpdir(), 'lattice-project-'));
+const kinds = (c: ToolContext) => c.store.get().tracks[0].devices.map((d) => d.kind);
+
+describe('versions (B11)', () => {
+  it('are exposed to Muse, except new_session', () => {
+    const names = museToolSpecs().map((t) => t.function.name);
+    expect(names).toEqual(expect.arrayContaining(['save_version', 'restore_version', 'list_versions']));
+    expect(names).not.toContain('new_session');
+  });
+
+  it('save two versions, restore the first by name or id; restore is one undo step', async () => {
+    const c = await ctx();
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'eq' }, 'user');
+    const v1 = await runTool(c, 'save_version', { name: 'clean' }, 'user');
+    expect(v1).toMatchObject({ ok: true, result: { id: 'v1', name: 'clean' } });
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'sat' }, 'user');
+    await runTool(c, 'save_version', { name: 'dirty' }, 'muse');
+    const tracksAt1 = c.versions!.get('v1')!.session.tracks;
+
+    const r = await runTool(c, 'restore_version', { version: 'clean' }, 'muse');
+    expect(r).toMatchObject({ ok: true, result: { restored: 'v1', name: 'clean' } });
+    expect(c.store.get().tracks).toEqual(tracksAt1);
+    c.store.undo();
+    expect(kinds(c)).toEqual(['eq', 'sat']);
+    await runTool(c, 'restore_version', { version: 'v1' }, 'user');
+    expect(kinds(c)).toEqual(['eq']);
+  });
+
+  it('restore keeps ids fresh and the transport where it is', async () => {
+    const c = await ctx();
+    await runTool(c, 'save_version', { name: 'a' }, 'user');
+    await runTool(c, 'add_track', { name: 'B' }, 'user');
+    await runTool(c, 'go_to', { position: 3 }, 'user');
+    const seq = c.store.get().seq;
+    await runTool(c, 'restore_version', { version: 'a' }, 'user');
+    expect(c.store.get().seq).toBe(seq);
+    expect(c.store.get().transport.position).toBe(3);
+    expect(c.store.get().tracks).toHaveLength(1);
+  });
+
+  it('list newest first with named/auto flags; errors are clear', async () => {
+    const c = await ctx();
+    expect(await runTool(c, 'save_version', { name: ' ' }, 'user')).toMatchObject({ ok: false, error: expect.stringMatching(/name/) });
+    expect(await runTool(c, 'restore_version', { version: 'nope' }, 'muse')).toMatchObject({ ok: false, error: expect.stringMatching(/no version "nope"/) });
+    await runTool(c, 'save_version', { name: 'one' }, 'user');
+    c.versions!.save({ name: 'Before Muse: "x"', auto: true, session: c.store.get() });
+    const l = await runTool(c, 'list_versions', {}, 'muse');
+    expect(l).toMatchObject({ ok: true, result: { versions: [{ id: 'v2', auto: true }, { id: 'v1', name: 'one', auto: false }] } });
+    const s0 = c.store.get();
+    await runTool(c, 'save_version', { name: 'two' }, 'user');
+    expect(c.store.get()).toBe(s0); // saving leaves the session and undo alone
+  });
+
+  it('new_session saves the old one as an auto version and starts empty (undoable)', async () => {
+    const c = await ctx();
+    const r = await runTool(c, 'new_session', {}, 'user');
+    expect(r).toMatchObject({ ok: true, result: { saved_as: 'v1' } });
+    expect(c.store.get().tracks).toEqual([]);
+    expect(c.versions!.list()[0]).toMatchObject({ auto: true, name: 'Before new session' });
+    c.store.undo();
+    expect(c.store.get().tracks).toHaveLength(1);
+  });
+
+  it('Muse gets an auto version before each turn (not when nothing changed) and sees versions in its summary', async () => {
+    const c = await ctx();
+    const seen: string[] = [];
+    const chat: ChatFn = async ({ messages }) => {
+      seen.push(String(messages[messages.length - 1].content));
+      return { message: { content: 'ok' }, finish_reason: 'stop' };
+    };
+    const agent = new MuseAgent(c, chat);
+    await runTool(c, 'save_version', { name: 'clean' }, 'user');
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'sat' }, 'user');
+    await agent.send('add more drive please, a lot more than before');
+    await agent.send('again');
+    const autos = c.versions!.list().filter((v) => v.auto);
+    expect(autos).toHaveLength(1);
+    expect(autos[0].name).toBe('Before Muse: "add more drive please, a lot more…"');
+    expect(seen[0]).toContain('Versions: "clean"; 1 auto (list_versions shows them).');
+  });
+});
+
+it('the Versions list shows named versions and the newest 20 auto ones', () => {
+  const lib = new MemoryVersionLibrary();
+  lib.save({ name: 'keep', auto: false, session: S.emptySession() });
+  for (let i = 0; i < 25; i++) lib.save({ name: `auto ${i}`, auto: true, session: S.emptySession() });
+  const { shown, hidden } = shownVersions(lib.list(), false);
+  expect(shown).toHaveLength(21);
+  expect(shown[0].name).toBe('auto 24');
+  expect(shown.at(-1)!.name).toBe('keep');
+  expect(hidden).toBe(5);
+  expect(shownVersions(lib.list(), true).shown).toHaveLength(26);
+});
+
+describe('project files (Electron)', () => {
+  it('FileVersionLibrary keeps versions across instances and loads bodies on demand', () => {
+    const dir = join(tmp(), 'versions');
+    const a = new FileVersionLibrary(dir);
+    const s = { ...S.emptySession(), tempo: 97 };
+    expect(a.save({ name: 'x', auto: false, session: s }).id).toBe('v1');
+    a.save({ name: 'y', auto: true, session: S.emptySession() });
+    const b = new FileVersionLibrary(dir);
+    expect(b.list().map((v) => v.id)).toEqual(['v2', 'v1']);
+    expect(b.get('v1')!.session.tempo).toBe(97);
+    expect(b.save({ name: 'z', auto: false, session: s }).id).toBe('v3');
+  });
+
+  it('autosave writes the session after edits settle and loadAutosave reads it back', async () => {
+    const file = join(tmp(), 'session.json');
+    const store = new SessionStore();
+    const auto = new SessionAutosave(file, store, 20);
+    const c: ToolContext = { store, sidecar: new StubSidecar(), searchFreesound: async () => ({ count: 0, results: [] }) };
+    await runTool(c, 'import_audio', { source_id: 'a', name: 'Vox', duration: 4 }, 'user');
+    await runTool(c, 'insert_device', { track_id: 't1', device: 'eq' }, 'user');
+    expect(loadAutosave(file)).toBeNull(); // not yet: debounced
+    await new Promise((r) => setTimeout(r, 60));
+    const back = loadAutosave(file)!;
+    expect(back.tracks).toEqual(store.get().tracks);
+    expect(back.transport.playing).toBe(false);
+    auto.dispose();
+    writeFileSync(file, '{broken');
+    expect(loadAutosave(file)).toBeNull();
+  });
+
+  it('SourceAudioFiles: imports by path, recordings as WAVs in the folder, library by id', () => {
+    const dir = tmp();
+    const orig = join(dir, 'take.wav');
+    writeFileSync(orig, 'RIFF-import');
+    const a = new SourceAudioFiles(join(dir, 'audio'));
+    a.keep('s1', { path: orig });
+    a.keep('s2', { bytes: new TextEncoder().encode('RIFF-rec') });
+    a.keep('s3', { library: 'fs:123' });
+    const b = new SourceAudioFiles(join(dir, 'audio'));
+    expect(b.ref('s1')).toEqual({ path: orig });
+    expect(new TextDecoder().decode(b.read('s1')!)).toBe('RIFF-import');
+    expect(new TextDecoder().decode(b.read('s2')!)).toBe('RIFF-rec');
+    expect(b.ref('s3')).toEqual({ library: 'fs:123' });
+    expect(b.read('missing')).toBeNull();
+  });
+});

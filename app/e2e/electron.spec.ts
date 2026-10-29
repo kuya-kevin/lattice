@@ -1,9 +1,20 @@
 // Launches the built Electron app (run `npm run build` first) and checks the IPC bridge:
 // import -> main-process session -> renderer. Sends no chat, so no Meta calls.
-import { existsSync, writeFileSync } from 'node:fs';
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { _electron as electronApp, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
 test.skip(!existsSync('dist-electron/main.cjs') || !existsSync('dist/index.html'), 'run `npm run build` first');
+
+const freshUserData = () => mkdtempSync(join(tmpdir(), 'lattice-userdata-'));
+/** Launch with its own userData folder (B11 autosaves there), fresh unless one is given. */
+const electron = {
+  launch: (opts: Parameters<typeof electronApp.launch>[0] & { userData?: string }) => {
+    const { userData = freshUserData(), env, ...rest } = opts;
+    return electronApp.launch({ ...rest, env: { ...(env ?? process.env), LATTICE_USER_DATA: userData } as Record<string, string> });
+  },
+};
 
 test('electron app imports audio through the main-process session', async () => {
   const app = await electron.launch({ args: ['.'] });
@@ -93,5 +104,52 @@ test('electron serves the sound library over IPC (fixture data dir)', async () =
   const bytes = await page.evaluate(async () => (await window.lattice!.loadLibraryAudio('fs:103')).byteLength);
   expect(bytes).toBe(44 + 0.4 * 8000 * 2);
   await expect(page.evaluate(() => window.lattice!.loadLibraryAudio('../../etc/passwd'))).rejects.toThrow();
+  await app.close();
+});
+
+test('electron: the session and its audio come back after a relaunch; versions too (B11)', async () => {
+  const userData = freshUserData();
+  const n = 22050;
+  const wav = Buffer.alloc(44 + n * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + n * 2, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(22050, 24); wav.writeUInt32LE(44100, 28);
+  wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(n * 2, 40);
+  for (let i = 0; i < n; i++) wav.writeInt16LE(Math.round(Math.sin((2 * Math.PI * 220 * i) / 22050) * 6000), 44 + i * 2);
+  const onDisk = join(mkdtempSync(join(tmpdir(), 'lattice-import-')), 'vox.wav');
+  writeFileSync(onDisk, wav);
+
+  let app = await electron.launch({ args: ['.'], userData });
+  let page = await app.firstWindow();
+  const session = () => page.evaluate(() => window.lattice!.getSession());
+  const audioIds = () => page.evaluate(() => ((window as any).latticeDebug?.audioIds() ?? []) as string[]);
+  const deviceCount = async () => (await session()).tracks.flatMap((t) => t.devices).length;
+  await page.getByTestId('file-input').setInputFiles(onDisk); // kept by path
+  await page.getByTestId('file-input').setInputFiles({ name: 'synth.wav', mimeType: 'audio/wav', buffer: wav }); // no path: kept as bytes
+  await expect.poll(async () => (await session()).tracks.length).toBe(2);
+  await page.getByTestId('device-panel').getByTestId('fx-add').selectOption('eq');
+  await expect.poll(deviceCount).toBe(1);
+  await page.getByTestId('versions-open').click();
+  await page.getByTestId('version-name').fill('one eq');
+  await page.getByTestId('version-name').press('Enter');
+  await expect(page.locator('.version-row', { hasText: 'one eq' })).toHaveCount(1);
+  const saved = await session();
+  await page.getByTestId('device-panel').getByTestId('fx-add').selectOption('comp');
+  await expect.poll(deviceCount).toBe(2);
+  const before = await session();
+  const autosaved = () => JSON.parse(readFileSync(join(userData, 'project', 'session.json'), 'utf8')).session.tracks;
+  await expect.poll(() => { try { return autosaved(); } catch { return null; } }).toEqual(before.tracks); // 500 ms debounce
+  await app.close();
+  const refs = Object.values(JSON.parse(readFileSync(join(userData, 'project', 'audio', 'refs.json'), 'utf8')).refs);
+  expect(refs).toEqual(expect.arrayContaining([{ path: onDisk }, { file: expect.stringMatching(/\.audio$/) }]));
+
+  app = await electron.launch({ args: ['.'], userData });
+  page = await app.firstWindow();
+  await expect(page.getByTestId('versions-open')).toBeVisible(); // renderer is up
+  await expect.poll(async () => (await session()).tracks).toEqual(before.tracks);
+  await expect.poll(async () => (await audioIds()).sort()).toEqual(Object.keys(before.sources).sort());
+  await page.getByTestId('versions-open').click();
+  await page.locator('.version-row', { hasText: 'one eq' }).getByRole('button', { name: 'Restore' }).click();
+  await expect.poll(async () => (await session()).tracks).toEqual(saved.tracks);
+  await expect(page.locator('.error')).toHaveCount(0);
   await app.close();
 });

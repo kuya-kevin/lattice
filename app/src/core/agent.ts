@@ -1,9 +1,8 @@
 // The Muse agent loop: user message -> Muse (with tools) -> run tool calls -> feed results
 // back -> repeat until Muse answers in text or MAX_STEPS is hit. The chat function is
 // injected: live Meta API in the Electron main process, recorded fixtures in tests.
-import { summarize } from './session';
-import { chainLibrary } from '../fx/savedChains';
-import { museToolSpecs, runTool, type ToolContext, type ToolOutcome } from './tools';
+import { museSummary, museToolSpecs, runTool, type ToolContext, type ToolOutcome } from './tools';
+import { autoVersion } from './versions';
 
 export const MAX_STEPS = 10;
 
@@ -70,7 +69,8 @@ export class MuseAgent {
 
   async send(text: string): Promise<TurnResult> {
     const { store } = this.ctx;
-    this.history.push({ role: 'user', content: buildUserTurn(text, summarize(store.get(), { savedChains: chainLibrary(this.ctx).list().map((c) => c.name) }), store.takeUserEdits()) });
+    autoVersion(this.ctx, `Before Muse: "${shorten(text)}"`); // B11: so "go back to before X" works
+    this.history.push({ role: 'user', content: buildUserTurn(text, museSummary(this.ctx), store.takeUserEdits()) });
     const steps: StepRecord[] = [];
     const usage: Usage = { prompt_tokens: 0, completion_tokens: 0 };
 
@@ -106,4 +106,12 @@ export class MuseAgent {
 /** Cost at contributor rates for muse-spark-1.3-contributor ($0.10 / $0.20 per M tokens). */
 export function costUsd(u: Usage): number {
   return (u.prompt_tokens * 0.1 + u.completion_tokens * 0.2) / 1e6;
+}
+
+/** A request cut to about 36 characters at a word boundary, for an auto version's name. */
+function shorten(text: string, max = 36): string {
+  const t = text.trim().replace(/\s+/g, ' ');
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  return `${cut.slice(0, cut.lastIndexOf(' ') > 0 ? cut.lastIndexOf(' ') : max)}…`;
 }

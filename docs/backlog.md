@@ -170,19 +170,6 @@ and update the `HANDOFF.md` status table.
   detune but misses brightness and noise. PE-AV large is untested. Only if the cheap version isn't enough.
 - **Depends on:** B1.
 
-### B11. Autosave and named versions
-- **Why:** lost projects after a crash are the top complaint about DAWs (research, Oct 27), and
-  "history is a tree of versions" is already in the pitch (`idea.md`). Today undo history
-  (`src/core/store.ts`, 100 steps) is memory only, and nothing is written to disk.
-- **Do:** write the session JSON to the user-data folder after each edit (debounced). Add a
-  "Save version" action that stores a named snapshot, and a Versions list to switch between them.
-  Muse gets the same tools (`save_version`, `restore_version`), so "go back to before the drive"
-  works.
-- **Open question:** audio buffers live only in the renderer. A restored session needs each clip's
-  source file path so the audio can be reloaded. Check that before starting.
-- **Done when:** Playwright: edit, reload the window, session is back; save two versions, restore
-  the first, `getSession()` matches.
-
 ### B6. Demo script and public repo
 - **Positioning (research, Oct 27):** "agentic DAW" is already a crowded category, so don't claim
   first AI DAW, first text-to-preset, first hum-to-MIDI, or stems as the headline. Name the closest
@@ -244,3 +231,16 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
   `chains.json` in userData (`app/src/node/chainFile.ts`); the web build keeps them in memory.
   Tests: `app/tests/chains.test.ts`, `app/e2e/chains.spec.ts`. Not done: delete or rename a
   saved chain.
+- 2026-10-28: B11 autosave and versions. Electron writes the open session to
+  `userData/project/session.json` 500 ms after each change (and on window close) and loads it
+  on launch. Tools `save_version` / `restore_version` (by id or name; one undo step) /
+  `list_versions` for Muse, plus `new_session` (user only). An auto version
+  (`Before Muse: "<request>"`) is saved before each Muse turn if the session changed, so "go
+  back to before the drive" works. All versions are kept (~10-50 KB each, no audio); the
+  Versions menu shows named ones plus the newest 20 auto, with "Show all". Audio comes back
+  after a relaunch: imports by original path, library sounds by id, recordings and path-less
+  files as bytes in `userData/project/audio/` (`app/src/node/projectFiles.ts`,
+  `app/src/renderer/sourceAudio.ts`). Web build: versions in memory, no autosave. Tests:
+  `app/tests/versions.test.ts`, `app/e2e/versions.spec.ts`, relaunch test in
+  `app/e2e/electron.spec.ts`. Not done: undo history across restarts, a tree view of versions,
+  delete or rename a version, multiple projects. A moved import shows an error and plays silent.

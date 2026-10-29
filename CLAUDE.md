@@ -81,8 +81,10 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
   pixels. Write the failing test first. Full guide: `docs/local-testing-workflow.md`.
 - Electron tests run built files: `npm run build` first or they test stale code. Give each
   Playwright run its own `E2E_PORT`.
-- Audio buffers live only in the renderer; reopening the Electron window keeps the session but
-  drops audio (clips draw empty). Not a bug.
+- Audio buffers live only in the renderer. Electron reloads them after a relaunch or a version
+  restore from where each source was kept (B11: original path, library id, or bytes in userData;
+  `renderer/sourceAudio.ts`). The web build has no autosave. Electron tests set `LATTICE_USER_DATA`
+  to a fresh folder so autosaves don't leak between launches.
 - Python model calls go through a separate process (the app never imports GPL code; YourMT3+ is
   treated as GPL). Stub sidecar tools must say "stub" in their result so Muse reports them honestly.
 - When you finish a backlog entry, move it to Done in `docs/backlog.md`, update the `HANDOFF.md`

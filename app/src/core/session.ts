@@ -375,9 +375,10 @@ export function sessionEnd(s: Session): number {
 }
 
 /** Compact text view of the session for Muse (it can't see the screen or hear audio). */
-export function summarize(s: Session, opts: { savedChains?: string[] } = {}): string {
+export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string } = {}): string {
   const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
-  return summarizeSession(s) + saved;
+  const versions = opts.versions ? `\nVersions: ${opts.versions}` : '';
+  return summarizeSession(s) + saved + versions;
 }
 
 function summarizeSession(s: Session): string {

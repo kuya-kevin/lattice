@@ -9,6 +9,7 @@ import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
 import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
 import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
+import { VERSION_TOOLS, versionsLine, type VersionLibrary } from './versions';
 
 export type JsonSchema = {
   type: 'object';
@@ -23,6 +24,13 @@ export interface ToolContext {
   searchFreesound: (query: string, filters: FreesoundFilters, max: number) => Promise<{ count: number; results: FreesoundHit[] }>;
   /** saved device chains (B10); in memory if omitted */
   chains?: ChainLibrary;
+  /** saved versions of the session (B11); in memory if omitted */
+  versions?: VersionLibrary;
+}
+
+/** The session summary Muse sees, with saved chains and versions. */
+export function museSummary(ctx: ToolContext): string {
+  return S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name), versions: versionsLine(ctx) });
 }
 
 export interface ToolDef {
@@ -76,7 +84,7 @@ export const TOOLS: ToolDef[] = [
     description: 'List tracks and clips in the session (ids, names, positions in seconds, gain, mute/solo).',
     parameters: obj({}),
     quiet: true,
-    run: (ctx) => ({ summary: S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name) }), tracks: ctx.store.get().tracks }),
+    run: (ctx) => ({ summary: museSummary(ctx), tracks: ctx.store.get().tracks }),
   },
   {
     name: 'add_track',
@@ -414,6 +422,7 @@ export const TOOLS: ToolDef[] = [
 
   // ---- audio -> MIDI (core/midiTools.ts) ----
   ...MIDI_TOOLS,
+  ...VERSION_TOOLS, // B11
 
   // ---- user-only (UI) tools ----
   {

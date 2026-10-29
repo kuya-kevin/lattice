@@ -279,6 +279,23 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px 
 .transport .count-in { height: 28px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 11px var(--font-data); }
 .transport .count-in.on { background: var(--text); color: var(--ground); border-color: transparent; }
 .controlbar .actions { margin-left: auto; gap: 8px; }
+/* B11: Versions menu (drops down from its button) */
+.versions { position: relative; }
+.versions-menu { position: absolute; right: 0; top: calc(100% + 8px); width: 320px; padding: 10px; display: flex; flex-direction: column; gap: 8px; z-index: 30; }
+.versions-save { display: flex; gap: 6px; }
+.versions-save input { flex: 1; min-width: 0; height: 30px; padding: 0 12px; border-radius: 999px; }
+.versions-save button, .versions-foot button, .version-row button { height: 28px; padding: 0 12px; border-radius: 999px; }
+.versions-list { list-style: none; margin: 0; padding: 0; max-height: 320px; overflow-y: auto; display: flex; flex-direction: column; gap: 2px; }
+.version-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: var(--r-ctl); }
+.version-row:hover { background: var(--island-3); }
+.version-row .version-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.version-row.auto .version-name { color: var(--muted); }
+.version-row small { color: var(--faint); font: 11px var(--font-data); }
+.versions-empty { color: var(--muted); font-size: 12px; padding: 6px; }
+.versions-error { color: var(--rec); font-size: 11px; }
+.versions-foot { display: flex; justify-content: space-between; gap: 8px; }
+.versions-foot .link { background: none; border: 0; color: var(--accent); padding: 0; }
+.versions-foot [data-testid="new-session"] { margin-left: auto; }
 
 /* the LCD: numbers in mono, inline in the transport island */
 .lcd { display: flex; align-items: stretch; margin: 0 6px; padding: 0 6px; border-left: 1px solid var(--line); border-right: 1px solid var(--line); font-family: var(--font-data); }

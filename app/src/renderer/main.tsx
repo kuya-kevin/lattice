@@ -1,6 +1,7 @@
 import { createRoot } from 'react-dom/client';
 import { configureGlobalContext } from '@waveform-playlist/playout';
 import { App } from './App';
+import { buffers } from './audio';
 import { createMockBridge } from './mockBridge';
 import '@fontsource-variable/instrument-sans';
 import '@fontsource/jetbrains-mono/400.css';
@@ -13,4 +14,6 @@ configureGlobalContext({ nativeAudioContext: true });
 
 // Electron provides window.lattice via preload; in a plain browser we install the mock.
 const bridge = window.lattice ?? (window.lattice = createMockBridge());
+// read-only peek for tests: which sources have audio in this window (B11 restore checks)
+(window as unknown as { latticeDebug: object }).latticeDebug = { audioIds: () => [...buffers.keys()] };
 createRoot(document.getElementById('root')!).render(<App bridge={bridge} />);

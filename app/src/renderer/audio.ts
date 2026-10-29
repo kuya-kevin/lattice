@@ -29,8 +29,12 @@ export function newSourceId(): string {
 }
 
 export async function decodeFile(file: File): Promise<AudioBuffer> {
+  return decodeBytes(await file.arrayBuffer());
+}
+
+export function decodeBytes(bytes: ArrayBuffer): Promise<AudioBuffer> {
   const ctx = getGlobalContext().rawContext as unknown as BaseAudioContext;
-  return ctx.decodeAudioData(await file.arrayBuffer());
+  return ctx.decodeAudioData(bytes);
 }
 
 /** `duration` seconds of `b` from `from` (clamped to the buffer), or null if that is empty. */

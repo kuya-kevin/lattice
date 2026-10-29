@@ -14,6 +14,7 @@ import { clicks } from './click';
 import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 import { musicalTyping } from './MusicalTyping';
+import { VersionsMenu } from './Versions'; // B11
 import { takeToNotes, type PlayedNote, type TypingSample } from '../core/musicalTyping';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -125,6 +126,7 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
       </div>
 
       <div className="group actions">
+        <VersionsMenu session={session} run={run} />
         <button className="island btn" onClick={() => fileRef.current?.click()}><Icon name="import" size={16} />Import…</button>
         <input ref={fileRef} type="file" accept="audio/*" multiple hidden data-testid="file-input" onChange={(e) => e.target.files && importFiles(e.target.files)} />
         <button className="island btn" onClick={() => run('add_track', { name: `Track ${session.tracks.length + 1}` })}><Icon name="plus" size={16} />Track</button>

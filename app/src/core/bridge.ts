@@ -20,6 +20,14 @@ export interface Bridge {
   /** [S3 midi] Hand a source's audio (mono WAV) to the sidecar side, so tools such as
    *  extract_midi (called by the user or Muse) can read it. */
   putSourceAudio(sourceId: string, wav: ArrayBuffer): Promise<void>;
+  /** B11: remember where a source's audio is, so a restored session can load it again: the
+   *  imported file's path, a library item, or (recordings, files without a path) the bytes. */
+  keepSourceAudio(sourceId: string, ref: { path: string } | { library: string } | { bytes: ArrayBuffer }): Promise<void>;
+  /** B11: the encoded audio of a source kept with keepSourceAudio, or null if it isn't known.
+   *  Rejects if it was known but its file is gone. */
+  loadSourceAudio(sourceId: string): Promise<ArrayBuffer | null>;
+  /** Electron only: the on-disk path of a dropped or picked file ('' if it has none). */
+  pathForFile?(file: File): string;
   /** Electron only: zoom the whole window (Chromium page zoom, like ⌘+ / ⌘−). Every layout
    *  scales together, so timeline pixel math is unaffected. 1 = 100 %. */
   setZoom?(factor: number): void;

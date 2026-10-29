@@ -9,6 +9,7 @@ import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
 import { runTool, type ToolContext } from '../src/core/tools';
 import { FileChainLibrary } from '../src/node/chainFile';
+import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
@@ -16,6 +17,9 @@ import type { ExtractMidiArgs } from '../src/core/sidecar';
 
 const appDir = app.getAppPath(); // .../lattice/app
 loadEnv(resolve(appDir, '..', '.env'));
+// tests point this at a fresh folder so each launch starts clean
+if (process.env.LATTICE_USER_DATA) app.setPath('userData', resolve(process.env.LATTICE_USER_DATA));
+const projectDir = join(app.getPath('userData'), 'project'); // B11: autosave, versions, audio refs
 
 // [S3 midi] extract_midi runs the Python source-prep sidecar as a child process; the other
 // sidecar methods are still stubs.
@@ -29,7 +33,12 @@ ipcMain.handle('source:put', (_e, id: string, bytes: Uint8Array) => {
   putAudio(prepCfg, String(id), bytes);
 });
 
-const store = new SessionStore();
+// B11: the open session comes back on launch and is written after each change
+const store = new SessionStore(loadAutosave(join(projectDir, 'session.json')) ?? undefined);
+const autosave = new SessionAutosave(join(projectDir, 'session.json'), store);
+app.on('before-quit', () => autosave.dispose());
+const sourceAudio = new SourceAudioFiles(join(projectDir, 'audio'));
+
 const ctx: ToolContext = {
   store,
   sidecar: new AppSidecar(), // TODO(sidecar): the remaining methods are stubs
@@ -39,6 +48,7 @@ const ctx: ToolContext = {
     return searchFreesound(token, q, f, n);
   },
   chains: new FileChainLibrary(join(app.getPath('userData'), 'chains.json')), // B10
+  versions: new FileVersionLibrary(join(projectDir, 'versions')), // B11
 };
 
 let chat: ChatFn | null = null;
@@ -59,6 +69,21 @@ ipcMain.handle('library:audio', async (_e, id: string) => {
   const path = getLibrary().pathOf(String(id));
   if (!path) throw new Error(`unknown library item ${id}`);
   return new Uint8Array(await readFile(path));
+});
+
+// B11: where each source's audio is, so a restored session can load it again
+ipcMain.handle('source:keep', (_e, id: string, ref: { path: string } | { library: string } | { bytes: Uint8Array }) => sourceAudio.keep(String(id), ref));
+ipcMain.handle('source:load', async (_e, id: string) => {
+  const ref = sourceAudio.ref(String(id));
+  if (!ref) return null;
+  if ('library' in ref) {
+    const path = getLibrary().pathOf(ref.library);
+    if (!path) throw new Error(`library item ${ref.library} is gone`);
+    return new Uint8Array(await readFile(path));
+  }
+  const bytes = sourceAudio.read(String(id));
+  if (!bytes) throw new Error('path' in ref ? `file not found: ${ref.path}` : 'kept audio file is missing');
+  return bytes;
 });
 
 let win: BrowserWindow | null = null;
@@ -90,6 +115,7 @@ function createWindow() {
   const devUrl = process.env.VITE_DEV_SERVER_URL;
   if (devUrl) win.loadURL(devUrl);
   else win.loadFile(join(appDir, 'dist', 'index.html'));
+  win.on('close', () => autosave.flush()); // B11: don't wait out the debounce when closing
   win.on('closed', () => (win = null));
 }
 

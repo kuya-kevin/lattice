@@ -290,6 +290,17 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
 - Not done: slip editing (moving the audio inside a fixed region), fades, and the track's effects
   in the scrub audio.
 
+## Versions (B11, Oct 28)
+
+- **Autosave, no Save button:** the open session is written after every change and comes back
+  on launch, like GarageBand on iOS and Logic's autosave after a crash. "New session" keeps the
+  old one as a version instead of asking "save changes?".
+- **Versions menu:** the right of the control bar. Name a version and save it, or restore any
+  listed one (one undo step, so ⌘Z takes a restore back). Auto versions (before each Muse turn,
+  before New session) are greyed and capped at the newest 20 unless "Show all". Close it with
+  Escape or a click outside. Logic's closest feature is Project Alternatives
+  (unverified from memory; check on the Mac).
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html
