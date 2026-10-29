@@ -32,6 +32,24 @@ export function importManifest(s: S.Session, clipId: string, m: PrepManifest, se
   const added: { track_id: string; clip_id: string; stem: string; transcriber: string; notes: number; range: string | null }[] = [];
   const skipped: string[] = [];
   let next = s;
+  // Starting from a voice note: take its tempo and key when the session has nothing else yet
+  // and the sidecar was sure enough to quantize (otherwise the grid would not match anyway).
+  // A real tempo change (changeTempo): other regions keep their bars; the recording itself, and
+  // so its stems, stays where it was heard.
+  const otherAudio = s.tracks.some((t) => t.clips.some((c) => c.id !== clipId));
+  const applied: string[] = [];
+  if ((setTempo ?? !otherAudio) && m.tempo?.quantized) {
+    const bpm = Math.round(m.tempo.bpm * 100) / 100;
+    if (bpm >= S.TEMPO_RANGE[0] && bpm <= S.TEMPO_RANGE[1]) {
+      const { track } = S.findClip(next, clipId);
+      next = S.mapTrack(S.changeTempo(next, bpm), track.id, (t) => ({ ...t, clips: t.clips.map((c) => (c.id === clipId ? clip : c)) }));
+      applied.push(`tempo ${bpm}`);
+    }
+    if (m.key && !next.key && S.parseKey(m.key.name.replace(/\s+/, ' '))) {
+      next = S.setKey(next, m.key.name);
+      applied.push(`key ${next.key}`);
+    }
+  }
   for (const stem of m.stems) {
     if (!stem.notes.length) {
       skipped.push(`${stem.name} (no notes)`);
@@ -49,21 +67,6 @@ export function importManifest(s: S.Session, clipId: string, m: PrepManifest, se
     });
     next = s2;
     added.push({ track_id: t.id, clip_id: c.id, stem: stem.name, transcriber: stem.transcriber, notes: stem.notes.length, range: stem.range ? stem.range.join('-') : null });
-  }
-  // Starting from a voice note: take its tempo and key when the session has nothing else yet
-  // and the sidecar was sure enough to quantize (otherwise the grid would not match anyway).
-  const otherAudio = s.tracks.some((t) => t.clips.some((c) => c.id !== clipId));
-  const applied: string[] = [];
-  if ((setTempo ?? !otherAudio) && m.tempo?.quantized) {
-    const bpm = Math.round(m.tempo.bpm * 100) / 100;
-    if (bpm >= S.TEMPO_RANGE[0] && bpm <= S.TEMPO_RANGE[1]) {
-      next = S.setTempo(next, bpm);
-      applied.push(`tempo ${bpm}`);
-    }
-    if (m.key && !next.key && S.parseKey(m.key.name.replace(/\s+/, ' '))) {
-      next = S.setKey(next, m.key.name);
-      applied.push(`key ${next.key}`);
-    }
   }
   if (added.length) next = S.select(next, added[0].track_id, added[0].clip_id);
   return { session: next, added, skipped, applied };
@@ -160,7 +163,7 @@ export const MIDI_TOOLS: ToolDef[] = [
       separate: str('auto (default), none, vocals (Mel-RoFormer only), full (+ htdemucs_6s)', { enum: ['auto', 'none', 'vocals', 'full'] }),
       key_snap: bool('Snap rare out-of-key notes to the detected key (default true)'),
       use_session_tempo: bool('Quantize at the session tempo instead of the detected one (default false)'),
-      set_tempo: bool('Set the session tempo/key from the recording (default: only when the session has nothing else)'),
+      set_tempo: bool('Set the session tempo/key from the recording; other regions keep their bars (default: only when the session has nothing else)'),
     }),
     logText: (_a, r) => `extracted MIDI from ${r.from_clip}: ${r.tracks.map((t: any) => `${t.stem} (${t.notes} notes) -> ${t.track_id}`).join(', ') || 'nothing'}`,
     run: async (ctx: ToolContext, a) => {

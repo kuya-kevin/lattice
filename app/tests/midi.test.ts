@@ -97,6 +97,27 @@ describe('manifest import', () => {
     const [s5, c2] = S.addClip(s4, t2.id, 'a', 0);
     expect(importManifest(s5, c2.id, unsure, undefined).applied).toEqual([]);
   });
+
+  it('adopting the detected tempo keeps the other regions on their bars; the voice note and its stems stay put', () => {
+    let s = S.emptySession(); // 120 BPM
+    s = S.addSource(s, { id: 'vn', name: 'vn', duration: 2, origin: 'record' });
+    s = S.addSource(s, { id: 'loop', name: 'loop', duration: 2, origin: 'import' });
+    const [s1, t] = S.addTrack(s, 'vn');
+    const [s2, c] = S.addClip(s1, t.id, 'vn', 1);
+    const [s3, t2] = S.addTrack(s2, 'loop');
+    const [s4, loop] = S.addClip(s3, t2.id, 'loop', 4); // bar 3 at 120
+    const [s5, t3] = S.addTrack(s4, 'keys');
+    const [s6, keys] = S.addMidiClip(s5, t3.id, { name: 'keys', midi: { instrument: 'piano', notes: [{ pitch: 60, velocity: 90, start: 0.5, duration: 0.5 }] }, sourceDuration: 2, start: 2 });
+    const m = { ...manifest(), tempo: { bpm: 60, confidence: 0.9, quantized: true } };
+    const r = importManifest(s6, c.id, m, true);
+    expect(r.session.tempo).toBe(60);
+    expect(S.findClip(r.session, c.id).clip.start).toBe(1); // the recording the tempo came from
+    expect(S.findClip(r.session, r.added[0].clip_id).clip).toMatchObject({ start: 1, duration: 2 }); // its stems
+    expect(S.findClip(r.session, loop.id).clip.start).toBe(8); // still bar 3, now at 60 BPM
+    const k = S.findClip(r.session, keys.id).clip;
+    expect(k).toMatchObject({ start: 4, duration: 4 }); // MIDI stretches with the tempo
+    expect(k.midi!.notes[0]).toMatchObject({ start: 1, duration: 1 });
+  });
 });
 
 describe('extract_midi / quantize_midi tools', () => {
