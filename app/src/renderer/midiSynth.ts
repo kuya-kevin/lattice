@@ -149,6 +149,16 @@ function drumHit(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
   }
 }
 
+/** One short note on a clip's own instrument, now: the Piano Roll's click preview. A sampler
+ *  clip plays its sample (`sample`: the source's audio; the piano until it is loaded), a drum
+ *  clip its kit, anything else the piano. */
+export function auditionNote(ctx: BaseAudioContext, out: AudioNode, m: MidiData | undefined, pitch: number, velocity: number, sample?: AudioBuffer, length = 0.25) {
+  const t = ctx.currentTime;
+  if (m?.drum) return drumHit(ctx, out, { pitch, velocity, start: t, duration: length });
+  const v = m?.sample && sample ? sampleVoice(ctx, out, sample, m.sample, pitch, velocity, t) : pianoVoice(ctx, out, pitch, velocity, t);
+  v.release(t + length);
+}
+
 /** Render a clip's notes. A sampler clip (m.sample) needs its source's audio as `sample`. */
 export async function renderMidi(m: MidiData, seconds: number, sampleRate = 44100, sample?: AudioBuffer): Promise<AudioBuffer> {
   const length = Math.max(1, Math.ceil(seconds * sampleRate));

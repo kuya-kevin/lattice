@@ -39,6 +39,36 @@ describe('delete_sound', () => {
   });
 });
 
+describe('add_sound and place_sound (Ideas before tracks)', () => {
+  it('adds a sound on no track, then places it on a new track and on an existing one', async () => {
+    const c = ctx();
+    expect((await runTool(c, 'add_sound', { source_id: 'p', name: 'Pluck', duration: 1.5, origin: 'freesound', credit: 'by x' }, 'user')).ok).toBe(true);
+    let s = c.store.get();
+    expect(s.sources.p).toMatchObject({ name: 'Pluck', origin: 'freesound', credit: 'by x' });
+    expect(s.tracks).toHaveLength(0);
+    expect(c.store.takeUserEdits().join('\n')).toMatch(/added "Pluck".*not on a track/);
+
+    const r = await runTool(c, 'place_sound', { source_id: 'p', start: 2 }, 'user');
+    expect(r).toMatchObject({ ok: true, result: { start: 2 } });
+    s = c.store.get();
+    expect(s.tracks.map((t) => t.name)).toEqual(['Pluck']);
+    expect(s.tracks[0].clips[0]).toMatchObject({ sourceId: 'p', start: 2, offset: 0, duration: 1.5 });
+    expect(s.selection).toEqual({ trackId: s.tracks[0].id, clipId: s.tracks[0].clips[0].id });
+
+    await runTool(c, 'place_sound', { source_id: 'p', track_id: s.tracks[0].id, start: 4 }, 'user');
+    expect(c.store.get().tracks[0].clips.map((x) => x.start)).toEqual([2, 4]);
+    await runTool(c, 'undo', {}, 'user');
+    await runTool(c, 'undo', {}, 'user');
+    expect(c.store.get().tracks).toHaveLength(0);
+    expect(c.store.get().sources.p).toBeDefined();
+  });
+
+  it('place_sound rejects an unknown sound', async () => {
+    const r = await runTool(ctx(), 'place_sound', { source_id: 'nope' }, 'user');
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe('tapTempo', () => {
   it('needs two taps, then averages the recent intervals', () => {
     let st = tapTempo(undefined, 0);

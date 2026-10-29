@@ -176,6 +176,47 @@ export function replaceTrackSource(s: Session, trackId: string, fromId: string, 
   return mapTrack(addSource(s, src), trackId, (tr) => ({ ...tr, clips: tr.clips.map((c) => (c.sourceId === fromId && !c.midi ? { ...c, sourceId: src.id } : c)) }));
 }
 
+/** The original a source was processed from (itself if it was not processed, or if the
+ *  original is gone). */
+export function rootSource(s: Session, sourceId: string): string {
+  let id = sourceId;
+  for (let i = 0; i < 64; i++) {
+    const up = s.sources[id]?.derivedFrom;
+    if (!up || !s.sources[up]) return id;
+    id = up;
+  }
+  return id;
+}
+
+/** Every version of a sound: its original, then each processed version, oldest first. */
+export function sourceVersions(s: Session, sourceId: string): Source[] {
+  const root = rootSource(s, sourceId);
+  return Object.values(s.sources).filter((src) => rootSource(s, src.id) === root);
+}
+
+/** Switch the audio clips playing any version of a sound to `sourceId` (one of its versions),
+ *  on one track or on every track. Timing is untouched: versions have the original's length. */
+export function useSourceVersion(s: Session, sourceId: string, trackId?: string): { session: Session; clips: string[] } {
+  if (!s.sources[sourceId]) throw new SessionError(`no source "${sourceId}"`);
+  if (trackId) getTrack(s, trackId);
+  const family = new Set(sourceVersions(s, sourceId).map((x) => x.id));
+  const clips: string[] = [];
+  const tracks = s.tracks.map((t) => {
+    if (trackId && t.id !== trackId) return t;
+    if (!t.clips.some((c) => !c.midi && family.has(c.sourceId) && c.sourceId !== sourceId)) return t;
+    return {
+      ...t,
+      clips: t.clips.map((c) => {
+        if (c.midi || !family.has(c.sourceId) || c.sourceId === sourceId) return c;
+        clips.push(c.id);
+        return { ...c, sourceId };
+      }),
+    };
+  });
+  if (!clips.length) throw new SessionError(`no clips play another version of "${s.sources[sourceId].name}"${trackId ? ` on ${trackId}` : ''}`);
+  return { session: { ...s, tracks }, clips };
+}
+
 /** Remove a sound and every clip that plays it (the Ideas card's delete). Undo restores both;
  *  the renderer keeps the audio buffer, so the clips come back with their sound. */
 export function deleteSource(s: Session, sourceId: string): Session {
@@ -402,7 +443,8 @@ function summarizeSession(s: Session): string {
     const clips = t.clips
       .map((c) => {
         const done = s.sources[c.sourceId]?.processed; // B3
-        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}]` : ''}`;
+        const orig = done ? rootSource(s, c.sourceId) : null; // use_audio_version brings it back
+        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}${orig !== c.sourceId ? `; original ${orig}` : ''}]` : ''}`;
       })
       .join('; ');
     const fx = describeChain(t);

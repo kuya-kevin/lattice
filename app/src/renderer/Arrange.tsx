@@ -5,8 +5,8 @@
 //    are undoable and logged as hand edits for Muse.
 //  - clip trims are delegated to waveform-playlist's own handlers (with our snap), and are
 //    committed as one trim_clip when the drag ends.
-//  - library sounds dragged in (HTML5 drag and drop) land on the track under the pointer at
-//    the snapped time, or on a new track below the others.
+//  - library sounds and Ideas cards dragged in (HTML5 drag and drop) land on the track under
+//    the pointer at the snapped time, or on a new track below the others.
 //  - clicking a clip selects it (track + clip), as in Logic; double-clicking also opens it in
 //    the Piano Roll (onOpenClip).
 //  - clicking or dragging in the bar ruler moves the playhead, snapped to the grid (Logic's
@@ -19,7 +19,7 @@ import { formatBarsBeats, type Meter } from '../core/metronome';
 import { midiSignature, type MidiData } from '../core/midi';
 import type { Session } from '../core/session';
 import { pxToSeconds, secondsToPx, snapMove, snapTime, type SnapMode } from '../core/snap';
-import { LIBRARY_MIME, libraryDrag } from './libraryAudio';
+import { IDEA_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -53,6 +53,8 @@ interface Props {
   /** commit the engine's current tracks as tool calls (after a trim) */
   commitTracks: () => void;
   onDropSound: (id: string, target: DropTarget) => void;
+  /** an Ideas card (a source in the session) dropped on the arrangement */
+  onDropIdea: (sourceId: string, target: DropTarget) => void;
   /** double-click on a clip (it is selected first) */
   onOpenClip: (clipId: string) => void;
   children: ReactNode;
@@ -60,7 +62,7 @@ interface Props {
 
 const NEW_LANE_HEIGHT = 64;
 
-export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onOpenClip, children }: Props) {
+export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onDropIdea, onOpenClip, children }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { tracks, samplesPerPixel, sampleRate, playoutRef, isDraggingRef, onTracksChange } = usePlaylistData();
   const { isLoopEnabled } = usePlaylistState();
@@ -250,24 +252,28 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     }
   });
 
-  // ---- library drops ----
+  // ---- library and Ideas drops ----
   const onDragOver = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(LIBRARY_MIME)) return;
+    const idea = e.dataTransfer.types.includes(IDEA_MIME);
+    if (!idea && !e.dataTransfer.types.includes(LIBRARY_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     const h = hitTest(e.clientX, e.clientY);
     const { snap: sn, meter: mt } = latest.current;
-    showGhost(e.clientX, e.clientY, snapTime(h.seconds, sn, mt), libraryDrag.item?.duration ?? 1);
+    showGhost(e.clientX, e.clientY, snapTime(h.seconds, sn, mt), (idea ? soundDrag.idea?.duration : libraryDrag.item?.duration) ?? 1);
   };
   const onDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData(LIBRARY_MIME);
-    if (!id) return;
+    const idea = e.dataTransfer.getData(IDEA_MIME);
+    if (!id && !idea) return;
     e.preventDefault();
     e.stopPropagation();
     setGhost(null);
     const h = hitTest(e.clientX, e.clientY);
     const { snap: sn, meter: mt } = latest.current;
-    onDropSound(id, { trackId: h.trackId, start: h.x0 == null ? 0 : snapTime(h.seconds, sn, mt) });
+    const target = { trackId: h.trackId, start: h.x0 == null ? 0 : snapTime(h.seconds, sn, mt) };
+    if (idea) onDropIdea(idea, target);
+    else onDropSound(id, target);
   };
 
   return (

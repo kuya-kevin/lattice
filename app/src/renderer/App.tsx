@@ -106,7 +106,7 @@ export function App({ bridge }: { bridge: Bridge }) {
 
   // ─── region: layout state (floating panels, device chain, snap) ───
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [museOpen, setMuseOpen] = useState(() => window.innerWidth >= 1440); // the conversation panel
+  const [museOpen, setMuseOpen] = useState(false); // the conversation panel: closed at startup, the rail's spark opens it
   const [smartOpen, setSmartOpen] = useState(true); // the editor area under the board
   const [editorTab, setEditorTab] = useState<EditorTab>('fx'); // device chain or Piano Roll
   const pan = usePan();
@@ -190,28 +190,54 @@ export function App({ bridge }: { bridge: Bridge }) {
     [bridge, addBuffer, run],
   );
 
-  // ─── region: sound library drops ───
+  // ─── region: sound library drops, and sounds added to Ideas ───
+  /** Decode a library sound into a new source; the arguments place_audio / add_sound share. */
+  const loadLibrarySound = useCallback(
+    async (id: string) => {
+      const [items, b] = await Promise.all([bridge.listLibrary(), libraryBuffer(bridge, id)]);
+      const item = items.find((i) => i.id === id);
+      const sourceId = newSourceId();
+      addBuffer(sourceId, b, { library: id });
+      return {
+        source_id: sourceId,
+        name: (item?.name ?? id).replace(/\.(wav|mp3|aiff?|flac|ogg|m4a)$/i, ''),
+        duration: b.duration,
+        origin: item?.set === 'voice_notes' ? 'record' : 'freesound',
+        ...(item && needsAttribution(item) ? { credit: attribution(item) } : {}),
+      };
+    },
+    [bridge, addBuffer],
+  );
   const placeLibrarySound = useCallback(
     async (id: string, target: DropTarget) => {
       try {
-        const [items, b] = await Promise.all([bridge.listLibrary(), libraryBuffer(bridge, id)]);
-        const item = items.find((i) => i.id === id);
-        const sourceId = newSourceId();
-        addBuffer(sourceId, b, { library: id });
-        await run('place_audio', {
-          source_id: sourceId,
-          name: (item?.name ?? id).replace(/\.(wav|mp3|aiff?|flac|ogg|m4a)$/i, ''),
-          duration: b.duration,
-          origin: item?.set === 'voice_notes' ? 'record' : 'freesound',
-          start: target.start,
-          ...(target.trackId ? { track_id: target.trackId } : {}),
-          ...(item && needsAttribution(item) ? { credit: attribution(item) } : {}),
-        });
+        const sound = await loadLibrarySound(id);
+        await run('place_audio', { ...sound, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) });
       } catch (e) {
         setError(`Could not add ${id}: ${e instanceof Error ? e.message : e}`);
       }
     },
-    [bridge, addBuffer, run],
+    [loadLibrarySound, run],
+  );
+  /** Library -> Ideas (on no track), tried out on Musical Typing straight away. */
+  const addLibraryIdea = useCallback(
+    async (id: string) => {
+      try {
+        const sound = await loadLibrarySound(id);
+        if (!(await run('add_sound', sound)).ok) return;
+        musicalTyping.audition(sound.source_id);
+        musicalTyping.toggle(true);
+        const sel = sessionRef.current?.selection;
+        if (sel?.trackId || sel?.clipId) run('select', {}); // a take then goes on a new track
+      } catch (e) {
+        setError(`Could not add ${id}: ${e instanceof Error ? e.message : e}`);
+      }
+    },
+    [loadLibrarySound, run],
+  );
+  const placeIdea = useCallback(
+    (sourceId: string, target: DropTarget) => run('place_sound', { source_id: sourceId, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) }),
+    [run],
   );
   // ─── end region ───
 
@@ -325,11 +351,11 @@ export function App({ bridge }: { bridge: Bridge }) {
                       {error} <small>(click to dismiss)</small>
                     </div>
                   )}
-                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound} onOpenClip={() => openEditor('notes', false)}>
+                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound} onDropIdea={placeIdea} onOpenClip={() => openEditor('notes', false)}>
                     {session.tracks.length === 0 ? (
                       <div className="empty" data-testid="empty">
                         <strong>Start with a sound</strong>
-                        Drop a voice note or any WAV/MP3 here, drag one in from the Library (O), use Import, or record from the mic (R).
+                        Drop a voice note or any WAV/MP3 here, drag one in from the Library (L), use Import, or record from the mic (R).
                       </div>
                     ) : (
                       <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap === 'sixteenth' ? 'beat' : snap}>
@@ -363,11 +389,11 @@ export function App({ bridge }: { bridge: Bridge }) {
         <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
         <ChatPanel bridge={bridge} open={museOpen} onOpenChange={setMuseOpen} context={museContext} />
         <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
-          <LibraryPanel bridge={bridge} open={libraryOpen} />
+          <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} />
         </aside>
         <nav className="rail island" aria-label="Panels">
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
-          <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (O)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
+          <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (L)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
           <button className={`ibtn${smartOpen && editorTab === 'fx' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'fx'} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
           <button className={`ibtn${smartOpen && editorTab === 'notes' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'notes'} title="Region editor: Piano Roll or Audio Editor (P)" aria-label="Piano Roll" onClick={() => editActions.current.togglePianoRoll()}><Icon name="roll" /></button>
           <MusicalTypingButton className="ibtn"><Icon name="keys" /></MusicalTypingButton>

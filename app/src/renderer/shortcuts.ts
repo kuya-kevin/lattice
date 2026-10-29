@@ -84,7 +84,7 @@ export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }
   { keys: 'Delete', action: 'deleteClip', label: 'Delete selected region' },
   { keys: '⌘C', action: 'copyClip', label: 'Copy selected region' },
   { keys: '⌘V', action: 'pasteClip', label: 'Paste region at the playhead on the selected track' },
-  { keys: 'O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },
+  { keys: 'L / O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },
   { keys: 'B', action: 'toggleSmartControls', label: 'Show/hide Smart Controls' },
   { keys: 'P', action: 'togglePianoRoll', label: 'Show/hide the Piano Roll (or double-click a region)' },
   { keys: '⌘G', action: 'toggleSnap', label: 'Snap to grid on/off (GarageBand)' },
@@ -108,7 +108,7 @@ export function editShortcutFor(e: KeyLike): EditAction | null {
   if (e.key === 'Delete' || e.key === 'Backspace') return 'deleteClip';
   if (musicalTyping && claimsKey(e)) return null;
   if (e.shiftKey) return null;
-  if (k === 'o') return 'toggleLibrary';
+  if (k === 'l' || k === 'o') return 'toggleLibrary'; // L for Library; O is Logic's Loop Browser
   if (k === 'b') return 'toggleSmartControls';
   if (k === 'p') return 'togglePianoRoll';
   return null;

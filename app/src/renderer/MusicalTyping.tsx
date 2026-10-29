@@ -1,11 +1,13 @@
 // Musical Typing (Logic's Cmd-K window): while on, the letter keys play notes live (note-on at
 // keydown, note-off at keyup) and a small on-screen keyboard lights the keys. The instrument is
+// a sound being tried out from the Ideas column (one not on a track yet: click its card), else
 // the selected audio clip played as a sampler (A = its original pitch), else the piano voice.
+// Recording with a tried-out sound and no track selected puts the take on a new track.
 // Key map and octave/velocity rules: core/musicalTyping.ts.
 //
 // Every note goes through `musicalTyping.onNote`, with transport times, so a MIDI recorder can
 // subscribe to the same stream the sound comes from.
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { usePlaybackAnimation } from '@waveform-playlist/browser';
 import { getGlobalContext } from '@waveform-playlist/playout';
 import {
@@ -17,6 +19,7 @@ import {
   rangeLabel,
   shiftOctave,
   stepVelocity,
+  SAMPLE_ROOT,
   typingInstrument,
   type TypingSample,
 } from '../core/musicalTyping';
@@ -92,6 +95,7 @@ interface Snapshot {
   velocity: number;
   sustain: boolean;
   active: number[]; // sounding pitches
+  audition: string | null; // source id tried out from the Ideas column (overrides the selection)
 }
 declare global {
   interface Window {
@@ -100,7 +104,7 @@ declare global {
 }
 
 class MusicalTypingStore {
-  private snap: Snapshot = { on: false, instrument: 'Piano', base: DEFAULT_BASE, velocity: DEFAULT_VELOCITY, sustain: false, active: [] };
+  private snap: Snapshot = { on: false, instrument: 'Piano', base: DEFAULT_BASE, velocity: DEFAULT_VELOCITY, sustain: false, active: [], audition: null };
   private listeners = new Set<() => void>();
   private noteListeners = new Set<(e: NoteEvent) => void>();
   private held = new Map<string, number>(); // key code (or "pointer") -> pitch
@@ -142,6 +146,11 @@ class MusicalTypingStore {
   instrument(): TypingSample | null {
     return this.inst && { name: this.inst.name, sample: this.inst.sample };
   }
+
+  /** Try out a sound from the Ideas column (null: back to the selection's instrument). */
+  audition = (sourceId: string | null) => {
+    if (sourceId !== this.snap.audition) this.set({ audition: sourceId });
+  };
 
   toggle = (on = !this.snap.on) => {
     if (!on) this.releaseAll();
@@ -208,6 +217,32 @@ export function MusicalTypingButton({ className = '', children = '⌨ Keys' }: {
 }
 
 const WHITE = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17];
+
+// The keyboard window can be dragged by its title bar (Logic's Musical Typing is a floating
+// window); where it was left is remembered. Double-click the title bar to put it back.
+const POS_KEY = 'lattice.musicalTypingPos';
+type Pos = { x: number; y: number };
+function loadPos(): Pos | null {
+  try {
+    const p = JSON.parse(localStorage.getItem(POS_KEY) ?? 'null');
+    return p && Number.isFinite(p.x) && Number.isFinite(p.y) ? p : null;
+  } catch {
+    return null;
+  }
+}
+function savePos(p: Pos | null) {
+  try {
+    if (p) localStorage.setItem(POS_KEY, JSON.stringify(p));
+    else localStorage.removeItem(POS_KEY);
+  } catch {
+    // not remembered
+  }
+}
+/** Keep at least the title bar on screen. */
+const clampPos = (p: Pos, w: number): Pos => ({
+  x: Math.min(Math.max(p.x, 8 - w + 80), window.innerWidth - 80),
+  y: Math.min(Math.max(p.y, 8), window.innerHeight - 40),
+});
 const BLACK = [1, 3, 6, 8, 10, 13, 15];
 
 /** The key handler plus the floating keyboard (shown while on). Mount once, inside the
@@ -216,12 +251,45 @@ export function MusicalTypingKeyboard({ session }: { session: Session }) {
   const s = useMusicalTyping();
   const { currentTimeRef } = usePlaybackAnimation();
   musicalTyping.clock = () => currentTimeRef.current ?? 0;
-  const trackId = session.selection.trackId ?? session.tracks[0]?.id ?? null;
+  // a tried-out idea plays dry unless a track is selected (it is on none yet)
+  const trackId = session.selection.trackId ?? (s.audition ? null : session.tracks[0]?.id ?? null);
   useEffect(() => musicalTyping.keys.route(trackId), [trackId]);
+  // selecting a clip (or deleting the sound) ends the try-out
+  const selClip = session.selection.clipId;
+  useEffect(() => {
+    if (selClip) musicalTyping.audition(null);
+  }, [selClip]);
+  const tried = s.audition ? session.sources[s.audition] : undefined;
+  useEffect(() => {
+    if (musicalTyping.get().audition && !tried) musicalTyping.audition(null);
+  }, [tried]);
+  const [pos, setPos] = useState<Pos | null>(loadPos);
+  const boxRef = useRef<HTMLElement>(null);
+  const onTitleDown = (e: React.PointerEvent) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest('button')) return;
+    const box = boxRef.current;
+    if (!box) return;
+    e.preventDefault();
+    const r = box.getBoundingClientRect();
+    const dx = e.clientX - r.left, dy = e.clientY - r.top;
+    let last: Pos = { x: r.left, y: r.top };
+    const move = (ev: PointerEvent) => setPos((last = clampPos({ x: ev.clientX - dx, y: ev.clientY - dy }, r.width)));
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      savePos(last);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
   // the instrument: the selected audio clip as a sampler once its audio is loaded, else the piano
   const [loads, setLoads] = useState(0);
   useEffect(() => buffers.subscribe(() => setLoads((n) => n + 1)), []);
-  const wanted = typingInstrument(session);
+  const wanted: TypingSample | null = tried
+    ? { name: tried.name, sample: { sourceId: tried.id, offset: 0, duration: tried.duration, root: SAMPLE_ROOT } }
+    : typingInstrument(session);
   const sampleBuffer = wanted ? buffers.get(wanted.sample.sourceId) : undefined;
   useEffect(() => {
     musicalTyping.setInstrument(wanted && sampleBuffer ? { ...wanted, buffer: sampleBuffer } : null);
@@ -281,13 +349,22 @@ export function MusicalTypingKeyboard({ session }: { session: Session }) {
     );
   };
   return (
-    <section className="musical-typing" data-testid="musical-typing" data-voices={s.active.length} data-instrument={s.instrument} aria-label="Musical Typing">
-      <header>
+    <section
+      ref={boxRef}
+      className={`musical-typing${pos ? ' moved' : ''}`}
+      style={pos ? { left: pos.x, top: pos.y } : undefined}
+      data-testid="musical-typing" data-voices={s.active.length} data-instrument={s.instrument} aria-label="Musical Typing"
+    >
+      <header
+        onPointerDown={onTitleDown}
+        onDoubleClick={(e) => !(e.target as HTMLElement).closest('button') && (setPos(null), savePos(null))}
+        title="Drag to move; double-click to put it back"
+      >
         <strong>Musical Typing</strong>
         <span
           className="mt-info mt-instrument"
           data-testid="mt-instrument"
-          title={s.instrument === 'Piano' ? 'Piano (select an audio clip to play it as a sampler)' : `Sampler: "${s.instrument}" (A plays it at its own pitch)`}
+          title={s.instrument === 'Piano' ? 'Piano (select an audio clip, or click a sound in Ideas, to play it as a sampler)' : `Sampler: "${s.instrument}" (A plays it at its own pitch)`}
         >
           {s.instrument}
         </span>

@@ -10,7 +10,7 @@ and update the `HANDOFF.md` status table.
 ## Now
 
 ### B0. DAW bugs and quality of life (ongoing)
-- **Deferred (Oct 28):** paused until the user sends the next list.
+- **Deferred (Oct 28, after the second batch):** paused until the user sends the next list.
 - **What:** the mini-DAW works but is still buggy. The user will send items; list each one here as
   a bullet with a date, and fix them between the bigger entries.
 - **Done when:** each item has a failing Playwright test first, then the fix (`docs/local-testing-workflow.md`).
@@ -38,6 +38,23 @@ and update the `HANDOFF.md` status table.
     position stale, though the engine stops in the right place.
   - 2026-10-28, done: , and . go to the previous / next bar line (they moved a bar from wherever the
     playhead was, keeping the offset).
+  - 2026-10-28, done (batch of 10, `e2e/ideas-flow.spec.ts`): L toggles the library (O still works);
+    Muse chat starts hidden; a library preview still loading when the panel closed started anyway (fixed);
+    the Musical Typing window drags by its title bar (remembered; double-click resets); the Piano Roll
+    previews notes on the region's own instrument (sample, kit or piano) through the track's effects;
+    rubber-band note selection on empty grid (Shift adds).
+  - 2026-10-28, done: try a sound before it has a track. Library rows get a + (tool `add_sound`, user only):
+    the sound goes to Ideas on no track and Musical Typing opens with it; clicking an Ideas card on no
+    track does the same; R then records onto a new track named after it. Ideas cards drag onto the
+    arrangement (tool `place_sound`, Muse can call it). The try-out lives in the renderer
+    (`musicalTyping.audition`), not the session, so Muse doesn't see it.
+  - 2026-10-28, done: versions of a processed sound. A sound and its cleanup / quantize versions share
+    one Ideas card showing the one in use; its Versions list plays each and switches the clips
+    (tool `use_audio_version`, Muse too; the summary names a processed clip's original).
+  - 2026-10-28, partly: "can't trim clips" did not reproduce (arrangement and Audio Editor trims pass in
+    web and Electron). The arrangement's trim edges were invisible 8 px zones: now 10 px and lit on hover.
+    Open: a second trim started within ~1 s of the previous one sometimes never starts a drag (playlist
+    re-render); the Electron test waits 1.5 s. Ask the user what they grabbed if it still fails.
 
 ### B1. Words to knob moves: wire `vocab.json` into Muse (S2)
 - **Why:** the pitch is "you don't need to know which knob".

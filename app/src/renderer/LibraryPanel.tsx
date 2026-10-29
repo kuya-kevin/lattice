@@ -1,7 +1,8 @@
 // Sound library, modelled on Logic's Loop Browser: a search field, keyword buttons (chips,
 // combined with AND), a category browser, a result list where a click previews the sound,
-// drag a row onto a track (or below the tracks for a new one), and an info area at the
-// bottom with the credit line CC-BY sounds need.
+// drag a row onto a track (or below the tracks for a new one) or press its + to add it to
+// Ideas (on no track, to try out on Musical Typing first), and an info area at the bottom with
+// the credit line CC-BY sounds need.
 import { useEffect, useMemo, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import {
@@ -21,7 +22,7 @@ const SCOPES: { id: Scope; label: string }[] = [
 const fmtDur = (s: number) => (s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
 const licenseBadge = (l: string) => (/^CC0/i.test(l) ? 'CC0' : /^CC-BY/i.test(l) ? 'CC BY' : l === 'own recording' ? 'Own' : l);
 
-export function LibraryPanel({ bridge, open }: { bridge: Bridge; open: boolean }) {
+export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open: boolean; onAddIdea: (id: string) => void }) {
   const [items, setItems] = useState<LibraryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
@@ -147,6 +148,15 @@ export function LibraryPanel({ bridge, open }: { bridge: Bridge; open: boolean }
                   <span className="nm">{i.name}</span>
                   <span className="meta">{categoryLabel(i.category)} · {fmtDur(i.duration)}{i.note ? ` · ${i.note}` : ''}{i.bpm ? ` · ${Math.round(i.bpm)} bpm` : ''}</span>
                   <span className={`lic${needsAttribution(i) ? ' by' : ''}`}>{licenseBadge(i.license)}</span>
+                  <button
+                    className="add-idea" aria-label={`Add ${i.name} to Ideas`} title="Add to Ideas and try it on Musical Typing"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      stopPreview();
+                      setPlaying(null);
+                      onAddIdea(i.id);
+                    }}
+                  >+</button>
                 </li>
               ))}
               {results.length === 0 && <li className="hint pad">Nothing matches. Remove a filter or try fewer words.</li>}

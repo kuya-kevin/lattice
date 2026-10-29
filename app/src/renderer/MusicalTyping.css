@@ -5,7 +5,9 @@
   background: var(--panel, #2a2b2f); border: 1px solid var(--line, #3a3b40); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   user-select: none;
 }
-.musical-typing header { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 8px; }
+.musical-typing.moved { bottom: auto; transform: none; } /* dragged: left/top come from the style attribute */
+.musical-typing header { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 8px; cursor: grab; touch-action: none; }
+.musical-typing header:active { cursor: grabbing; }
 .musical-typing .mt-info { color: var(--muted, #8e8f95); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .musical-typing .mt-info b { color: var(--text, #e6e6e8); font-weight: 600; }
 .musical-typing .mt-info.on { color: var(--accent, #4a9df0); }

@@ -1,10 +1,11 @@
 // [S3 midi] Piano Roll: the selected MIDI region's notes, in the editor area under the board
 // (Logic: double-click a MIDI region or press P; BandLab's MIDI Editor). Keys on the left, bars
 // on top, one row per semitone. Pointer tool: click selects (Shift adds), drag moves (time snaps
-// to the grid, rows change pitch), drag a note's right edge to resize, double-click empty grid
-// to add a note, Delete removes, ↑/↓ transpose (Shift: octave). Pencil tool: click adds.
+// to the grid, rows change pitch), drag a note's right edge to resize, drag on empty grid to
+// select the notes in a rectangle (Shift adds), double-click empty grid to add a note, Delete removes, ↑/↓ transpose (Shift: octave). Pencil tool: click adds.
 // As in GarageBand, a strip under the bar numbers shows the region, and the light line inside
-// each note is its velocity.
+// each note is its velocity. Clicking a note or a key plays it on the region's own instrument
+// (its sample, the drum kit, or the piano), through the track's effects.
 // Each gesture commits once as edit_midi_notes (one undo step, a hand edit Muse sees);
 // transpose and quantize use the same tools Muse has.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -12,11 +13,13 @@ import { usePlaybackAnimation } from '@waveform-playlist/browser';
 import { getGlobalContext } from '@waveform-playlist/playout';
 import type { Bridge } from '../core/bridge';
 import { barLength, beatLength, type Meter } from '../core/metronome';
-import { GRIDS, noteName, type MidiNote } from '../core/midi';
+import { GRIDS, noteName, type MidiData, type MidiNote } from '../core/midi';
 import type { Session } from '../core/session';
 import { isTyping } from './shortcuts';
 import { ExtractMidiControl } from './ExtractMidi';
-import { pianoVoice } from './midiSynth';
+import { trackEffects } from '../fx/engine/live';
+import { buffers } from './audio';
+import { auditionNote } from './midiSynth';
 import { trackColor } from './TrackHeader';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -44,15 +47,30 @@ function settle(notes: MidiNote[], sel: Set<number>): { notes: MidiNote[]; sel: 
   return { notes: tagged.map((t) => t.n), sel: new Set(tagged.flatMap((t, i) => (t.s ? [i] : []))) };
 }
 
-function preview(pitch: number, velocity = 100) {
+/** Play one note as the region sounds: its instrument, through its track's device chain. */
+function preview(midi: MidiData | undefined, trackId: string | undefined, pitch: number, velocity = 100) {
   try {
     const ctx = getGlobalContext().rawContext as unknown as AudioContext;
     if (ctx.state === 'suspended') void ctx.resume();
-    const v = pianoVoice(ctx, ctx.destination, pitch, velocity, ctx.currentTime);
-    v.release(ctx.currentTime + 0.25);
+    const out = ctx.createGain();
+    const unroute = trackId ? trackEffects(trackId)(out, ctx.destination, false) : out.connect(ctx.destination);
+    auditionNote(ctx, out, midi, pitch, velocity, midi?.sample ? buffers.get(midi.sample.sourceId) : undefined);
+    setTimeout(() => {
+      out.disconnect();
+      if (typeof unroute === 'function') unroute();
+    }, 1500);
   } catch {
     // no audio context yet: previews are a nicety
   }
+}
+
+/** A rubber-band selection on empty grid, in grid pixels. */
+interface Marquee {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+  base: Set<number>; // kept selected (Shift)
 }
 
 interface Drag {
@@ -75,6 +93,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   const [sel, setSel] = useState<Set<number>>(new Set());
   const [draft, setDraft] = useState<MidiNote[] | null>(null);
   const drag = useRef<Drag | null>(null);
+  const [marquee, setMarquee] = useState<Marquee | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const playheadRef = useRef<HTMLDivElement>(null);
   const { currentTimeRef } = usePlaybackAnimation();
@@ -107,6 +126,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   const rows = hi - lo + 1;
   const xOf = (sourceT: number) => (sourceStart + sourceT - viewStart) * pps;
   const snapTl = (tl: number) => (step ? Math.round(tl / step) * step : tl);
+  const play = (pitch: number, velocity = 100) => preview(midi, track?.id, pitch, velocity);
 
   // a new region: clear the selection and bring its notes into view
   const clipId = clip?.id;
@@ -182,7 +202,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     const start = (step ? Math.floor(tl / step) * step : tl) - sourceStart;
     if (start < 0) return;
     const velocity = sel.size ? notes[[...sel][0]].velocity : 100;
-    preview(pitch, velocity);
+    play(pitch, velocity);
     commit([...notes, { pitch, start, duration: len, velocity }], new Set([notes.length]));
   };
 
@@ -197,7 +217,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
       else next.add(i);
     } else if (!sel.has(i)) next = new Set([i]);
     setSel(next);
-    preview(notes[i].pitch, notes[i].velocity);
+    play(notes[i].pitch, notes[i].velocity);
     if (!next.has(i)) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     drag.current = { kind: resize ? 'resize' : 'move', x0: e.clientX, y0: e.clientY, anchor: i, orig: notes, moved: false };
@@ -230,7 +250,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     if (!d?.moved || !draft) return setDraft(null);
     const a = d.orig[d.anchor];
     const b = draft[d.anchor];
-    if (b.pitch !== a.pitch) preview(b.pitch, b.velocity);
+    if (b.pitch !== a.pitch) play(b.pitch, b.velocity);
     commit(draft, sel);
   };
 
@@ -329,7 +349,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
               const black = BLACK.has(p % 12);
               const label = midi.drum ? GM_DRUMS[p] : p % 12 === 0 ? noteName(p) : '';
               return (
-                <div key={p} className={`pr-key${black ? ' black' : ''}`} style={{ height: ROW }} onPointerDown={() => preview(p)} title={midi.drum ? `${p} ${GM_DRUMS[p] ?? ''}` : noteName(p)}>
+                <div key={p} className={`pr-key${black ? ' black' : ''}`} style={{ height: ROW }} onPointerDown={() => play(p)} title={midi.drum ? `${p} ${GM_DRUMS[p] ?? ''}` : noteName(p)}>
                   {label}
                 </div>
               );
@@ -350,13 +370,40 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
             onPointerDown={(e) => {
               if (e.button !== 0) return;
               if (tool === 'pencil') return addNote(e);
-              if (!e.shiftKey) setSel(new Set());
+              const base = e.shiftKey ? new Set(sel) : new Set<number>();
+              setSel(base);
+              const r = e.currentTarget.getBoundingClientRect();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              const x = e.clientX - r.left, y = e.clientY - r.top;
+              setMarquee({ x0: x, y0: y, x1: x, y1: y, base });
             }}
+            onPointerMove={(e) => {
+              if (!marquee) return;
+              const r = e.currentTarget.getBoundingClientRect();
+              const m = { ...marquee, x1: e.clientX - r.left, y1: e.clientY - r.top };
+              setMarquee(m);
+              const [l, rt] = [Math.min(m.x0, m.x1), Math.max(m.x0, m.x1)];
+              const [t, b] = [Math.min(m.y0, m.y1), Math.max(m.y0, m.y1)];
+              const next = new Set(m.base);
+              notes.forEach((n, i) => {
+                const nl = xOf(n.start), nr = nl + Math.max(3, n.duration * pps), nt = (hi - n.pitch) * ROW, nb = nt + ROW;
+                if (nr >= l && nl <= rt && nb >= t && nt <= b) next.add(i);
+              });
+              setSel(next);
+            }}
+            onPointerUp={() => setMarquee(null)}
+            onPointerCancel={() => setMarquee(null)}
             onDoubleClick={(e) => tool === 'pointer' && e.target === e.currentTarget && addNote(e)}
           >
             {Array.from({ length: rows }, (_, k) => (BLACK.has((hi - k) % 12) ? <div key={k} className="pr-row-black" style={{ top: k * ROW, height: ROW }} /> : null))}
             <div className="pr-outside" style={{ left: 0, width: Math.max(0, regionL) }} />
             <div className="pr-outside" style={{ left: regionR, right: 0 }} />
+            {marquee && (
+              <div
+                className="pr-marquee" data-testid="pr-marquee"
+                style={{ left: Math.min(marquee.x0, marquee.x1), top: Math.min(marquee.y0, marquee.y1), width: Math.abs(marquee.x1 - marquee.x0), height: Math.abs(marquee.y1 - marquee.y0) }}
+              />
+            )}
             {notes.map((n, i) => (
               <div
                 key={i}

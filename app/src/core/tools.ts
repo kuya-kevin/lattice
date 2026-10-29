@@ -286,6 +286,56 @@ export const TOOLS: ToolDef[] = [
     logText: (_a, r) => `deleted sound "${r.name}" (${r.deleted}) and its ${r.clips_removed} clip(s)`,
   },
   {
+    name: 'use_audio_version',
+    description:
+      'Switch clips back (or forward) to another version of their audio: the original recording or one of its processed versions ' +
+      '(cleanup_noise, quantize_drums). Undoable. The summary shows a processed clip\'s original as "original <source id>".',
+    parameters: obj(
+      { source_id: str('The version to play (a source id)'), track_id: str('Only this track; omit for every track that plays the sound') },
+      ['source_id'],
+    ),
+    run: (ctx, a) => {
+      let clips: string[] = [];
+      edit(ctx, (s) => {
+        const r = S.useSourceVersion(s, a.source_id, a.track_id);
+        clips = r.clips;
+        return r.session;
+      });
+      const src = ctx.store.get().sources[a.source_id];
+      return { source_id: a.source_id, version: src.processed ?? 'original', clips };
+    },
+    logText: (_a, r) => `switched ${r.clips.join(', ')} to ${r.source_id} (${r.version})`,
+  },
+  {
+    name: 'place_sound',
+    description:
+      'Put a sound from the Ideas column (a source, e.g. one not on any track yet) on a track as a new clip at a timeline start (seconds). ' +
+      'Without track_id it goes on a new track named after the sound. The user does this by dragging an idea onto the arrangement.',
+    parameters: obj(
+      { source_id: str('Source id'), track_id: str('Existing track id; omit for a new track'), start: num('Timeline seconds (default 0)') },
+      ['source_id'],
+    ),
+    run: (ctx, a) => {
+      let out!: { track_id: string; clip_id: string; start: number };
+      edit(ctx, (s) => {
+        const src = s.sources[a.source_id];
+        if (!src) throw new S.SessionError(`no source "${a.source_id}"`);
+        let s1 = s;
+        let trackId = a.track_id as string | undefined;
+        if (!trackId) {
+          const [sNew, t] = S.addTrack(s, src.name);
+          s1 = sNew;
+          trackId = t.id;
+        }
+        const [s2, c] = S.addClip(s1, trackId, a.source_id, a.start ?? 0);
+        out = { track_id: trackId, clip_id: c.id, start: c.start };
+        return S.select(s2, trackId, c.id);
+      });
+      return out;
+    },
+    logText: (a, r) => `placed sound ${a.source_id} on ${a.track_id ? r.track_id : `new track ${r.track_id}`} at ${r.start}s as clip ${r.clip_id}`,
+  },
+  {
     name: 'duplicate_clip',
     description:
       'Copy a clip (same audio or MIDI notes, same trim) to a timeline start (seconds), optionally on another track. ' +
@@ -502,6 +552,26 @@ export const TOOLS: ToolDef[] = [
       });
       return out;
     },
+  },
+  {
+    name: 'add_sound',
+    description: 'Add decoded audio (e.g. a library sound) to the Ideas column only, on no track, to try it out first.',
+    userOnly: true,
+    parameters: obj(
+      {
+        source_id: str(''),
+        name: str(''),
+        duration: num(''),
+        origin: str('', { enum: ['import', 'record', 'freesound', 'generated'] }),
+        credit: str('Attribution text for CC-BY sounds'),
+      },
+      ['source_id', 'name', 'duration'],
+    ),
+    run: (ctx, a) => {
+      edit(ctx, (s) => S.addSource(s, { id: a.source_id, name: a.name, duration: a.duration, origin: a.origin ?? 'import', ...(a.credit ? { credit: a.credit } : {}) }));
+      return { source_id: a.source_id };
+    },
+    logText: (a) => `added "${a.name}" (${a.origin ?? 'import'}) to Ideas as ${a.source_id}, not on a track`,
   },
   {
     name: 'record_take',

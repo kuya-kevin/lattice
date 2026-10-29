@@ -402,7 +402,8 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     const { session: s, meter: m, cycle: loop } = latest.current;
     let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
     const added = !trackId;
-    if (!trackId) trackId = (await run('add_track', { name: midi ? 'Keys' : 'Recording' })).result?.track_id ?? null;
+    // a new track for a MIDI take is named after the sound played (e.g. one tried out from Ideas)
+    if (!trackId) trackId = (await run('add_track', { name: midi ? musicalTyping.instrument()?.name ?? 'Keys' : 'Recording' })).result?.track_id ?? null;
     if (!trackId) return;
     const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;
     const ctx = audioContext();

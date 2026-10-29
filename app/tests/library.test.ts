@@ -86,6 +86,7 @@ describe('edit key commands', () => {
     expect(editShortcutFor(k('z', { ctrlKey: true }))).toBe('undo');
     expect(editShortcutFor(k('Backspace'))).toBe('deleteClip');
     expect(editShortcutFor(k('o'))).toBe('toggleLibrary');
+    expect(editShortcutFor(k('l'))).toBe('toggleLibrary');
     expect(editShortcutFor(k('b'))).toBe('toggleSmartControls');
     expect(editShortcutFor(k('g', { metaKey: true }))).toBe('toggleSnap');
     expect(editShortcutFor(k(' '))).toBeNull(); // transport keys stay with the control bar

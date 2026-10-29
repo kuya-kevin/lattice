@@ -49,3 +49,29 @@ test('cleanup and quantize replace the track audio with a processed take; undo r
   expect((await session(page)).tracks[0].clips[0].sourceId).toBe(original);
   expect(errors).toEqual([]);
 });
+
+test('a cleaned sound stacks on its card: the Versions list plays the original and switches back to it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({ name: 'vocal.wav', mimeType: 'audio/wav', buffer: noiseWav() });
+  await expect(page.getByTestId('track-t1')).toContainText('vocal');
+  const original = (await session(page)).tracks[0].clips[0].sourceId;
+  const cleaned = ((await tool(page, 'cleanup_noise', { track_id: 't1' })).result as { new_source_id: string }).new_source_id;
+  await expect.poll(() => audioIds(page)).toContain(cleaned);
+
+  const card = page.locator(`[data-idea="${original}"]`);
+  await expect(page.locator('[data-idea]')).toHaveCount(1); // one card for both versions
+  await expect(card).toHaveAttribute('data-version', cleaned); // showing the one in use
+  await card.getByRole('button', { name: /2 versions/ }).click();
+  const orig = page.getByTestId(`version-${original}`);
+  await expect(orig).toContainText('Original');
+  await expect(page.getByTestId(`version-${cleaned}`)).toContainText('in use');
+
+  await orig.getByRole('button', { name: 'Play Original' }).click();
+  await expect(orig.getByRole('button', { name: 'Play Original' })).toHaveText('■');
+  await orig.getByRole('button', { name: 'Use' }).click();
+  await expect.poll(async () => (await session(page)).tracks[0].clips[0].sourceId).toBe(original);
+  await expect(card).toHaveAttribute('data-version', original);
+  await expect(orig).toContainText('in use');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect.poll(async () => (await session(page)).tracks[0].clips[0].sourceId).toBe(cleaned);
+});

@@ -44,7 +44,7 @@ describe('cleanup_noise / quantize_drums (B3)', () => {
     expect(S.getTrack(s, 't1').clips[0]).toMatchObject({ id: 'c2', sourceId: newId, start: 0, offset: 0, duration: 12 });
     expect(s.sources[newId]).toMatchObject({ name: 'Vocal take', duration: 12, origin: 'processed', derivedFrom: 'src-v', processed: 'noise cleaned (Mel-RoFormer denoise)' });
     expect(s.sources['src-v']).toBeDefined(); // the original stays, for undo
-    expect(S.summarize(s)).toContain('c2 "Vocal take" 0-12s [audio: noise cleaned (Mel-RoFormer denoise)]');
+    expect(S.summarize(s)).toContain('c2 "Vocal take" 0-12s [audio: noise cleaned (Mel-RoFormer denoise); original src-v]');
 
     await runTool(c, 'undo', {}, 'user');
     expect(S.getTrack(c.store.get(), 't1').clips[0].sourceId).toBe('src-v');
@@ -63,6 +63,31 @@ describe('cleanup_noise / quantize_drums (B3)', () => {
     expect(clip.offset - clip.start).toBeCloseTo(-1.5, 6);
     expect(c.store.get().sources[clip.sourceId].processed).toBe('noise cleaned (Mel-RoFormer denoise); drums quantized to 1/16 at 96 BPM, strength 0.8');
     expect((await runTool(c, 'quantize_drums', { track_id: 't3', grid: '1/12', strength: 1 }, 'muse')).ok).toBe(false);
+  });
+
+  it('use_audio_version goes back to the original and forward again, one undo step each', async () => {
+    const c = await session();
+    await runTool(c, 'add_track', { name: 'Double' }, 'user'); // t5
+    await runTool(c, 'duplicate_clip', { clip_id: 'c2', track_id: 't5', start: 4 }, 'user');
+    const cleaned = ((await runTool(c, 'cleanup_noise', { track_id: 't1' }, 'muse')).result as { new_source_id: string }).new_source_id;
+    const quantized = ((await runTool(c, 'quantize_drums', { track_id: 't1', grid: '1/16', strength: 1 }, 'muse')).result as { new_source_id: string }).new_source_id;
+    let s = c.store.get();
+    expect(S.rootSource(s, quantized)).toBe('src-v');
+    expect(S.sourceVersions(s, cleaned).map((v) => v.id)).toEqual(['src-v', cleaned, quantized]);
+    expect(S.sourceVersions(s, 'src-d').map((v) => v.id)).toEqual(['src-d']);
+
+    // back to the original on t1 only: t5 already plays it
+    const r = await runTool(c, 'use_audio_version', { source_id: 'src-v', track_id: 't1' }, 'muse');
+    expect(r).toMatchObject({ ok: true, result: { version: 'original', clips: ['c2'] } });
+    s = c.store.get();
+    expect(S.getTrack(s, 't1').clips[0]).toMatchObject({ sourceId: 'src-v', start: 0, duration: 12 });
+    // forward to the cleaned take everywhere (t1 and t5)
+    expect(await runTool(c, 'use_audio_version', { source_id: cleaned }, 'user')).toMatchObject({ ok: true, result: { clips: ['c2', 'c6'] } });
+    expect(c.store.takeUserEdits().join('\n')).toMatch(/switched c2, c6 to .* \(noise cleaned/);
+    expect((await runTool(c, 'use_audio_version', { source_id: cleaned }, 'user')).ok).toBe(false); // nothing to switch
+    await runTool(c, 'undo', {}, 'user');
+    expect(S.getTrack(c.store.get(), 't5').clips[0].sourceId).toBe('src-v');
+    expect(S.getTrack(c.store.get(), 't1').clips[0].sourceId).toBe('src-v');
   });
 
   it('only that track changes; the same source on another track keeps the original', async () => {
