@@ -4,6 +4,7 @@
 
 import { describeSettings, type ParamValues } from '../fx/catalog';
 import { describeMidi, type MidiData } from './midi'; // [S3 midi]
+import { describeKits, type Kit } from './kit'; // B12 drum pads
 
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated' | 'processed';
 
@@ -67,6 +68,8 @@ export interface Session {
   key: string | null; // e.g. "G minor"
   metronome: { on: boolean; countIn: boolean }; // click during play/record; 1-bar count-in before recording
   punchIn: { trackId: string; start: number; end: number } | null;
+  /** B12: drum pads (kits), by id. Optional for older sessions. */
+  kits?: Record<string, Kit>;
   seq: number; // id counter, keeps ids short and deterministic (t1, c2, ...)
 }
 
@@ -223,9 +226,14 @@ export function deleteSource(s: Session, sourceId: string): Session {
   if (!s.sources[sourceId]) throw new SessionError(`no source "${sourceId}"`);
   const { [sourceId]: _, ...sources } = s.sources;
   const gone = new Set(s.tracks.flatMap((t) => t.clips.filter((c) => c.sourceId === sourceId).map((c) => c.id)));
+  // pads that played it go empty (B12)
+  const kits = s.kits && Object.fromEntries(Object.entries(s.kits).map(([id, k]) => [id, k.pads.some((p) => p.sample?.sourceId === sourceId)
+    ? { ...k, pads: k.pads.map((p) => (p.sample?.sourceId === sourceId ? { label: p.label, note: p.note } : p)) }
+    : k]));
   return {
     ...s,
     sources,
+    ...(kits ? { kits } : {}),
     tracks: s.tracks.map((t) => (t.clips.some((c) => gone.has(c.id)) ? { ...t, clips: t.clips.filter((c) => !gone.has(c.id)) } : t)),
     selection: s.selection.clipId && gone.has(s.selection.clipId) ? { ...s.selection, clipId: null } : s.selection,
   };
@@ -431,7 +439,8 @@ export function sessionEnd(s: Session): number {
 export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string } = {}): string {
   const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
   const versions = opts.versions ? `\nVersions: ${opts.versions}` : '';
-  return summarizeSession(s) + saved + versions;
+  const kits = describeKits(s);
+  return summarizeSession(s) + (kits ? `\n${kits}` : '') + saved + versions;
 }
 
 function summarizeSession(s: Session): string {

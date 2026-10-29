@@ -1,10 +1,12 @@
 // [S3 midi] Playback for MIDI clips: the notes are rendered offline (OfflineAudioContext) into an
 // AudioBuffer that the playlist plays like any audio clip. One piano-like voice for every pitched
 // part, a small synthesized kit for drums, and a sampler (an audio clip repitched per note) for
-// takes recorded on Musical Typing with a sample as the instrument.
+// takes recorded on Musical Typing with a sample as the instrument. B12: a drum clip on a kit
+// plays each note's pad sound.
 import { useEffect, useRef, useState } from 'react';
 import { getGlobalContext } from '@waveform-playlist/playout';
 import { midiSignature, sampleRateFor, type MidiData, type MidiNote, type SampleRef } from '../core/midi';
+import { kitSignature, type Kit } from '../core/kit';
 import type { Session } from '../core/session';
 import { buffers, midiBufferId } from './audio';
 
@@ -52,6 +54,31 @@ export function sampleVoice(ctx: BaseAudioContext, out: AudioNode, buffer: Audio
       }
     },
   };
+}
+
+/** B12: a kit's pad sounds whose audio is loaded, by note. */
+export type KitSamples = Map<number, { sample: SampleRef; buffer: AudioBuffer }>;
+
+/** A kit's loaded pad sounds, and whether every filled pad is loaded. */
+export function kitSamples(kit: Kit | undefined): { samples: KitSamples; ready: boolean } {
+  const samples: KitSamples = new Map();
+  let ready = true;
+  for (const p of kit?.pads ?? []) {
+    if (!p.sample) continue;
+    const buffer = buffers.get(p.sample.sourceId);
+    if (buffer) samples.set(p.note, { sample: p.sample, buffer });
+    else ready = false;
+  }
+  return { samples, ready };
+}
+
+/** One drum pad hit at t0: its sound once through, unpitched (a one-shot: the note's length
+ *  doesn't cut it), or the built-in drum for an empty pad. release() does nothing. */
+export function padHit(ctx: BaseAudioContext, out: AudioNode, kit: KitSamples | undefined, pitch: number, velocity: number, t0: number): Voice {
+  const p = kit?.get(pitch);
+  if (p) sampleVoice(ctx, out, p.buffer, p.sample, p.sample.root, velocity, t0);
+  else drumHit(ctx, out, { pitch, velocity, start: t0, duration: 0.1 });
+  return { release() {} };
 }
 
 const hz = (p: number) => 440 * Math.pow(2, (p - 69) / 12);
@@ -152,15 +179,16 @@ function drumHit(ctx: BaseAudioContext, out: AudioNode, n: MidiNote) {
 /** One short note on a clip's own instrument, now: the Piano Roll's click preview. A sampler
  *  clip plays its sample (`sample`: the source's audio; the piano until it is loaded), a drum
  *  clip its kit, anything else the piano. */
-export function auditionNote(ctx: BaseAudioContext, out: AudioNode, m: MidiData | undefined, pitch: number, velocity: number, sample?: AudioBuffer, length = 0.25) {
+export function auditionNote(ctx: BaseAudioContext, out: AudioNode, m: MidiData | undefined, pitch: number, velocity: number, sample?: AudioBuffer, length = 0.25, kit?: KitSamples) {
   const t = ctx.currentTime;
+  if (m?.kit && kit) return padHit(ctx, out, kit, pitch, velocity, t);
   if (m?.drum) return drumHit(ctx, out, { pitch, velocity, start: t, duration: length });
   const v = m?.sample && sample ? sampleVoice(ctx, out, sample, m.sample, pitch, velocity, t) : pianoVoice(ctx, out, pitch, velocity, t);
   v.release(t + length);
 }
 
 /** Render a clip's notes. A sampler clip (m.sample) needs its source's audio as `sample`. */
-export async function renderMidi(m: MidiData, seconds: number, sampleRate = 44100, sample?: AudioBuffer): Promise<AudioBuffer> {
+export async function renderMidi(m: MidiData, seconds: number, sampleRate = 44100, sample?: AudioBuffer, kit?: KitSamples): Promise<AudioBuffer> {
   const length = Math.max(1, Math.ceil(seconds * sampleRate));
   const ctx = new OfflineAudioContext(1, length, sampleRate);
   const master = ctx.createGain();
@@ -170,14 +198,15 @@ export async function renderMidi(m: MidiData, seconds: number, sampleRate = 4410
   master.connect(comp).connect(ctx.destination);
   for (const n of m.notes) {
     if (n.start >= seconds) continue;
-    if (m.sample && sample) sampleVoice(ctx, master, sample, m.sample, n.pitch, n.velocity, n.start).release(n.start + Math.max(n.duration, 0.01));
+    if (m.kit && kit) padHit(ctx, master, kit, n.pitch, n.velocity, n.start);
+    else if (m.sample && sample) sampleVoice(ctx, master, sample, m.sample, n.pitch, n.velocity, n.start).release(n.start + Math.max(n.duration, 0.01));
     else (m.drum ? drumHit : pianoNote)(ctx, master, n);
   }
   return ctx.startRendering();
 }
 
 /** Keeps a rendered buffer per MIDI clip, re-rendering when its notes change (edits, quantize,
- *  undo). A sampler clip waits for its sample's audio and renders once it arrives. */
+ *  undo) or its kit's pads do. A sampler or kit clip waits for its sounds and renders once they arrive. */
 export function useMidiRenders(session: Session | null, setRendered: (bufferId: string, b: AudioBuffer) => void) {
   const sigs = useRef(new Map<string, string>());
   const [loaded, setLoaded] = useState(0); // bumps when a source's audio arrives
@@ -191,10 +220,13 @@ export function useMidiRenders(session: Session | null, setRendered: (bufferId: 
         const seconds = session.sources[c.sourceId]?.duration ?? c.offset + c.duration;
         const sample = c.midi.sample ? buffers.get(c.midi.sample.sourceId) : undefined;
         if (c.midi.sample && !sample) continue; // not loaded (yet): render when it arrives
-        const sig = midiSignature(c.midi, seconds);
+        const kit = c.midi.kit ? session.kits?.[c.midi.kit] : undefined;
+        const pads = kit && kitSamples(kit);
+        if (pads && !pads.ready) continue; // a pad's sound is still loading
+        const sig = midiSignature(c.midi, seconds, kitSignature(kit));
         if (sigs.current.get(c.id) === sig) continue;
         sigs.current.set(c.id, sig);
-        renderMidi(c.midi, seconds, sr, sample).then((b) => {
+        renderMidi(c.midi, seconds, sr, sample, pads?.samples).then((b) => {
           if (sigs.current.get(c.id) === sig) setRendered(midiBufferId(c.id), b);
         });
       }

@@ -8,6 +8,7 @@ import type { Actor, SessionStore } from './store';
 import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
 import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
+import { KIT_TOOLS } from './kitTools'; // B12 drum pads
 import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
 import { VERSION_TOOLS, versionsLine, type VersionLibrary } from './versions';
 import type { Features } from './ears';
@@ -530,6 +531,7 @@ export const TOOLS: ToolDef[] = [
 
   // ---- audio -> MIDI (core/midiTools.ts) ----
   ...MIDI_TOOLS,
+  ...KIT_TOOLS,
   ...VERSION_TOOLS, // B11
 
   // ---- user-only (UI) tools ----

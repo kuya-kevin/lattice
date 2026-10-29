@@ -125,3 +125,20 @@ export function typingInstrument(s: Session): TypingSample | null {
   if (clip.midi) return clip.midi.sample ? { name: clip.midi.instrument, sample: clip.midi.sample } : null;
   return { name: clip.name, sample: { sourceId: clip.sourceId, offset: clip.offset, duration: clip.duration, root: SAMPLE_ROOT } };
 }
+
+/** B12: a drum pad (kit) as the instrument: the pads play their sounds and a take records them. */
+export interface TypingKit {
+  kit: string; // kit id
+  name: string;
+}
+/** What a MIDI take is recorded on: a sample, a kit, or null for the piano. */
+export type TypingInstrument = TypingSample | TypingKit;
+
+/** The kit of the selected clip (else the selected track's first clip), if it was played on one. */
+export function typingKit(s: Session): string | null {
+  const { trackId, clipId } = s.selection;
+  const clips = s.tracks.flatMap((t) => t.clips);
+  const clip = clipId ? clips.find((c) => c.id === clipId) : s.tracks.find((t) => t.id === trackId)?.clips[0];
+  const kit = clip?.midi?.kit;
+  return kit && s.kits?.[kit] ? kit : null;
+}

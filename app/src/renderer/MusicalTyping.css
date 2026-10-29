@@ -1,13 +1,14 @@
 /* Musical Typing keyboard. Own file so it merges cleanly with UI work on styles.css. */
 .musical-typing {
   position: fixed; left: 50%; bottom: 112px; /* above the Muse prompt bar */ transform: translateX(-50%); z-index: 20;
-  width: min(460px, calc(100vw - 32px)); padding: 8px 10px 10px; border-radius: 10px;
+  width: min(520px, calc(100vw - 32px)); padding: 8px 10px 10px; border-radius: 10px;
   background: var(--panel, #2a2b2f); border: 1px solid var(--line, #3a3b40); box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   user-select: none;
 }
 .musical-typing.moved { bottom: auto; transform: none; } /* dragged: left/top come from the style attribute */
 .musical-typing header { display: flex; align-items: center; gap: 10px; font-size: 12px; margin-bottom: 8px; cursor: grab; touch-action: none; }
 .musical-typing header:active { cursor: grabbing; }
+.musical-typing header strong { white-space: nowrap; }
 .musical-typing .mt-info { color: var(--muted, #8e8f95); font-variant-numeric: tabular-nums; white-space: nowrap; }
 .musical-typing .mt-info b { color: var(--text, #e6e6e8); font-weight: 600; }
 .musical-typing .mt-info.on { color: var(--accent, #4a9df0); }
@@ -30,3 +31,24 @@
 }
 .mt-key[data-active='true'].white { background: var(--accent, #4a9df0); color: #0b1420; }
 .mt-key[data-active='true'].black { background: #2f6fb4; color: #e6e6e8; }
+
+/* B12 drum pad: the kit's 3x3 pads in place of the piano */
+.musical-typing .mt-mode { padding: 1px 8px; font-size: 11px; border-radius: 6px; }
+.mt-pads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mt-pad {
+  position: relative; height: 64px; padding: 6px 8px; border-radius: 8px; cursor: pointer; overflow: hidden;
+  display: flex; flex-direction: column; justify-content: space-between;
+  background: var(--island-2, #323338); border: 1px solid var(--line, #3a3b40); transition: background 60ms;
+}
+.mt-pad.vacant { background: transparent; border-style: dashed; }
+.mt-pad.drop { border: 1px dashed var(--accent, #4a9df0); background: color-mix(in srgb, var(--accent, #4a9df0) 12%, transparent); }
+.mt-pad[data-active='true'] { background: color-mix(in srgb, var(--accent, #4a9df0) 32%, var(--island-2, #323338)); border-color: var(--accent, #4a9df0); }
+.mt-pad-label { font-size: 11.5px; font-weight: 600; color: var(--text, #e6e6e8); padding-right: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-pad kbd { position: absolute; top: 6px; right: 7px; }
+.mt-pad-sound { font-size: 10.5px; color: var(--muted, #8e8f95); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mt-pad.drop .mt-pad-sound { color: var(--accent, #4a9df0); }
+.mt-pad-clear {
+  position: absolute; right: 4px; bottom: 3px; padding: 0 5px; font-size: 12px; line-height: 16px;
+  background: transparent; border-color: transparent; color: var(--muted, #8e8f95); opacity: 0;
+}
+.mt-pad:hover .mt-pad-clear, .mt-pad-clear:focus-visible { opacity: 1; }

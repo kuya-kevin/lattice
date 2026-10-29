@@ -24,6 +24,8 @@ export interface MidiData {
   instrument: string; // label, e.g. "piano", "drums", or the sampled clip's name
   drum?: boolean; // GM drum notes: 36 kick, 38 snare, 42 hat
   sample?: SampleRef;
+  /** B12: a drum clip played on a kit (core/kit.ts): each note plays its pad's sound. */
+  kit?: string;
   notes: MidiNote[];
 }
 
@@ -101,17 +103,17 @@ export function describeMidi(m: MidiData): string {
   if (!m.notes.length) return `MIDI ${m.sample ? `sampler "${m.instrument}"` : m.instrument}, empty`;
   if (m.drum) {
     const count = (p: number) => m.notes.filter((n) => n.pitch === p).length;
-    return `MIDI drums, ${m.notes.length} hits (kick ${count(36)}, snare ${count(38)}, hat ${count(42)})`;
+    return `MIDI drums${m.kit ? ` on kit ${m.kit}` : ''}, ${m.notes.length} hits (kick ${count(36)}, snare ${count(38)}, hat ${count(42)})`;
   }
   const ps = m.notes.map((n) => n.pitch);
   return `MIDI ${m.sample ? `sampler "${m.instrument}"` : m.instrument}, ${m.notes.length} notes ${noteName(Math.min(...ps))}-${noteName(Math.max(...ps))}`;
 }
 
 /** Short stable signature of a clip's MIDI (to know when a playback render is stale). */
-export function midiSignature(m: MidiData, duration: number): string {
+export function midiSignature(m: MidiData, duration: number, kit = ''): string {
   let h = 2166136261;
   const smp = m.sample ? `${m.sample.sourceId},${m.sample.offset},${m.sample.duration},${m.sample.root}` : '';
-  const s = `${m.instrument}|${m.drum ? 1 : 0}|${smp}|${duration}|` + m.notes.map((n) => `${n.pitch},${n.start},${n.duration},${n.velocity}`).join(';');
+  const s = `${m.instrument}|${m.drum ? 1 : 0}|${smp}|${m.kit ?? ''}:${kit}|${duration}|` + m.notes.map((n) => `${n.pitch},${n.start},${n.duration},${n.velocity}`).join(';');
   for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 16777619);
   return (h >>> 0).toString(36);
 }

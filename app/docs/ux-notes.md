@@ -180,6 +180,26 @@ through the selected track's device chain.
   (`record_midi`, undoable) that plays back with the built-in piano. Notes still held at the end
   are cut there. Not yet: a region that grows while you play, and latency compensation.
 
+## Drum pad (B12, Oct 28)
+
+A kit of sounds on a 3x3 grid, played from the keyboard window. Modelled on MPC-style pad grids
+and Logic's Drum Machine Designer (a kit is one instrument, each pad one sound on one drum note;
+unverified from memory, check on the Mac).
+
+- **Make one:** "+ New drum pad" under the Ideas cards, or "Pads" in the Musical Typing header.
+  The kit gets an Ideas card (yellow, "Kit" badge, a mini 3x3 of filled pads); click it to play it.
+- **Keys:** Q W E / A S D / Z X C, the same shape as the grid on screen (top row first). Defaults:
+  crash, open hat, hat / clap, tom, perc / kick, snare, rim, on General MIDI drum notes, so a
+  take reads as kick / snare / hat to Muse. R stays Record. Velocity is fixed at 100 for now.
+- **Fill a pad:** drop an Ideas card or a library item on it. A sound that is only on pads (and on
+  no track) shows on the kit's card, not its own. × on a pad (on hover) takes the sound off; an
+  empty pad plays the built-in synth drum.
+- **Sounds are one-shots:** a pad plays its whole sound, unpitched; letting go of the key does not
+  cut it.
+- **Record:** R with the pads showing records a drum take on the kit (a new track named after the
+  kit, unless one is selected or armed). Selecting that take shows its kit's pads again; "Keys"
+  goes back to the piano when the kit was opened from its card.
+
 ## Sound library (Loop Browser conventions)
 
 - **Search and keyword buttons:** a search field plus keyword buttons (Drums, Bass, Synth,

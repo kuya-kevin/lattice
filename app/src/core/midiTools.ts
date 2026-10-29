@@ -2,6 +2,7 @@
 // adds one MIDI track per stem, lined up with the audio) and quantize_midi (at the session tempo).
 // Also record_midi: a take played on the Musical Typing keyboard becomes a MIDI clip.
 import { GRIDS, quantizeNotes, stemToMidi, type MidiData, type MidiNote, type PrepManifest, type SampleRef } from './midi';
+import { getKit } from './kit';
 import * as S from './session';
 import type { ExtractMode } from './sidecar';
 import type { ToolContext, ToolDef } from './tools';
@@ -94,18 +95,21 @@ export function recordMidiTake(
   start: number,
   duration: number,
   notes: MidiNote[],
-  instrument?: { name?: string; sample: SampleRef },
+  instrument?: { name?: string; sample: SampleRef } | { kit: string },
 ) {
   if (!(duration > 0)) throw new S.SessionError('a MIDI take needs a duration > 0');
-  const sample = instrument ? checkSample(s, instrument.sample) : undefined;
+  const kit = instrument && 'kit' in instrument ? getKit(s, instrument.kit) : undefined; // B12
+  const sample = instrument && 'sample' in instrument ? checkSample(s, instrument.sample) : undefined;
   const kept = notes
     .filter((n) => Number.isInteger(n.pitch) && n.pitch >= 0 && n.pitch <= 127 && n.start >= 0 && n.start < duration && n.duration > 0)
     .map((n) => ({ ...n, velocity: Math.min(127, Math.max(1, Math.round(n.velocity))), duration: Math.min(n.duration, duration - n.start) }));
   const takes = s.tracks.reduce((k, t) => k + t.clips.filter((c) => c.midi).length, 0) + 1;
   const name = `MIDI take ${takes}`;
-  const midi: MidiData = sample
-    ? { instrument: instrument!.name?.trim() || s.sources[sample.sourceId].name, sample, notes: kept }
-    : { instrument: 'piano', notes: kept };
+  const midi: MidiData = kit
+    ? { instrument: kit.name, drum: true, kit: kit.id, notes: kept }
+    : sample
+      ? { instrument: (instrument as { name?: string }).name?.trim() || s.sources[sample.sourceId].name, sample, notes: kept }
+      : { instrument: 'piano', notes: kept };
   const [s1, clip] = S.addMidiClip(s, trackId, { name, midi, sourceDuration: duration, start: Math.max(0, start) });
   return { session: { ...S.select(s1, trackId, clip.id), punchIn: null }, clip, notes: kept.length };
 }
@@ -126,6 +130,7 @@ export const MIDI_TOOLS: ToolDef[] = [
           { source_id: str('Audio source played as the instrument'), offset: num('s into the source'), duration: num('s'), root: num('MIDI note that plays it unpitched') },
           ['source_id', 'offset', 'duration', 'root'],
         ),
+        kit_id: str('Drum pad the take was played on (B12); instead of sample'),
       },
       ['track_id', 'start', 'duration', 'notes'],
     ),
@@ -135,7 +140,8 @@ export const MIDI_TOOLS: ToolDef[] = [
         ? { name: a.instrument, sample: { sourceId: a.sample.source_id, offset: a.sample.offset, duration: a.sample.duration, root: a.sample.root } }
         : undefined;
       if (a.instrument !== undefined && !a.sample) throw new S.SessionError('instrument needs a sample');
-      const r = recordMidiTake(ctx.store.get(), a.track_id, a.start, a.duration, a.notes, smp);
+      if (a.kit_id && a.sample) throw new S.SessionError('a take is on a sample or a kit, not both');
+      const r = recordMidiTake(ctx.store.get(), a.track_id, a.start, a.duration, a.notes, a.kit_id ? { kit: a.kit_id } : smp);
       ctx.store.set(r.session);
       return { clip_id: r.clip.id, track_id: a.track_id, start: r.clip.start, notes: r.notes, instrument: r.clip.midi!.instrument };
     },

@@ -259,6 +259,19 @@ and update the `HANDOFF.md` status table.
     the B1 step 7 phrases in the app exercise it too. Look for Muse quoting the measured change, and fixing a move
     that measured the wrong way.
 
+### B12b. Drum pad, part 2
+Part 1 (the playable kit) is in Done. Left, roughly in order of demo value:
+- **Muse fills a kit:** "make me a dusty lo-fi kit". Muse can call `set_pad` today, but only with
+  sounds already in the session; it needs a way to pull library or Freesound sounds into the
+  session (the renderer decodes audio, so this is a renderer round trip like `measure_track`).
+  Picks go by names, tags and categories, plus B9 features.
+- **Piano Roll:** pad names as row labels on kit clips, and a note click plays the pad (today
+  `auditionNote` plays the built-in drums for kit clips; it has no session).
+- **Export kit:** the pad WAVs plus a credits file for the CC-BY sounds.
+- Per-pad trim, gain and choke groups (closed hat cuts the open hat); rename a pad or kit in the UI
+  (tools exist); drag a kit card onto the arrangement; wires from a kit card to its tracks.
+- Velocity per pad or by key modifier (fixed at 100 for now, decided Oct 28).
+
 ### B6. Demo script and public repo
 - **Positioning (research, Oct 27):** "agentic DAW" is already a crowded category, so don't claim
   first AI DAW, first text-to-preset, first hum-to-MIDI, or stems as the headline. Name the closest
@@ -337,5 +350,14 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
   `app/tests/versions.test.ts`, `app/e2e/versions.spec.ts`, relaunch test in
   `app/e2e/electron.spec.ts`. Not done: undo history across restarts, a tree view of versions,
   delete or rename a version, multiple projects. A moved import shows an error and plays silent.
+- 2026-10-28: B12 drum pad, part 1. A kit of 9 pads (Q W E / A S D / Z X C, General MIDI drum
+  notes, fixed velocity) made from Ideas or library sounds. It gets an Ideas card; clicking it
+  shows the pads in the Musical Typing window; drop a sound on a pad to fill it; R records a drum
+  take on the kit (`midi.kit`), which plays each note's pad sound once through. Tools
+  `create_kit` / `set_pad` / `clear_pad` / `rename_kit` / `delete_kit` (Muse sees kits in
+  `summarize()`); `record_midi` takes `kit_id`. Deleting a sound empties its pads; deleting a kit
+  keeps its takes on the built-in drums. Code: `app/src/core/kit.ts`, `kitTools.ts`, the pad
+  view in `renderer/MusicalTyping.tsx`. Tests: `app/tests/kit.test.ts`, `app/e2e/drum-pad.spec.ts`.
+  Rest: B12b.
 - 2026-10-28: B3a source prep on the Mac. Steps 1-5 as recorded earlier (43 s per 20 s note, warm);
   step 6: the user ran `extract_midi` on two real voice notes in the app and judged the MIDI acceptable.

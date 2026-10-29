@@ -16,7 +16,7 @@ import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 import { musicalTyping } from './MusicalTyping';
 import { VersionsMenu } from './Versions'; // B11
 import { setRecordingActive } from './pushToTalk'; // B2
-import { takeToNotes, type PlayedNote, type TypingSample } from '../core/musicalTyping';
+import { takeToNotes, type PlayedNote, type TypingInstrument } from '../core/musicalTyping';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -303,7 +303,7 @@ interface MidiTake {
   played: PlayedNote[];
   unsubscribe: () => void;
   rolling: boolean;
-  instrument: TypingSample | null;
+  instrument: TypingInstrument | null;
 }
 
 /** Recording: onto the punch-in track if armed, else the record-armed track, else the
@@ -363,7 +363,11 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
       const region = foldMidiTake(t.midi.played, t.start, stopAt, t.cycle);
       const notes = takeToNotes(region.played, region.start, region.end);
       const inst = t.midi.instrument;
-      const sample = inst && { instrument: inst.name, sample: { source_id: inst.sample.sourceId, offset: inst.sample.offset, duration: inst.sample.duration, root: inst.sample.root } };
+      const sample = !inst
+        ? undefined
+        : 'kit' in inst
+          ? { kit_id: inst.kit } // B12 drum pad
+          : { instrument: inst.name, sample: { source_id: inst.sample.sourceId, offset: inst.sample.offset, duration: inst.sample.duration, root: inst.sample.root } };
       if (notes.length) await run('record_midi', { track_id: t.trackId, start: region.start, duration: region.end - region.start, notes, ...sample });
       else if (t.added) run('delete_track', { track_id: t.trackId });
       return;

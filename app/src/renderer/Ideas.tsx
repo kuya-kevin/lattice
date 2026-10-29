@@ -6,11 +6,15 @@
 // A sound and its processed versions (cleanup_noise, quantize_drums) share one card, which shows
 // the version in use; its Versions list plays each one and switches the clips back or forward
 // (use_audio_version, undoable).
+// B12: drum pads (kits) get a card too, under the sounds: a mini 3x3 of its pads. Clicking it plays
+// the kit on the keyboard window; sounds on a kit's pads (and on no track) show on the kit's card,
+// not their own. "New drum pad" makes a kit.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
+import { kitSources, PAD_COUNT, type Kit } from '../core/kit';
 import { rootSource, type Session, type Source } from '../core/session';
 import { buffers } from './audio';
 import { IDEA_MIME, previewBuffer, soundDrag, stopPreview } from './libraryAudio';
-import { musicalTyping } from './MusicalTyping';
+import { musicalTyping, openDrumPad } from './MusicalTyping';
 import { trackColor } from './TrackHeader';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -18,9 +22,12 @@ type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boole
 const ORIGIN: Record<string, string> = { record: 'Recorded', import: 'Imported', freesound: 'Library' };
 const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
 
-/** Sources worth a card: real audio, not the placeholders MIDI clips carry. */
+/** Sources worth a card: real audio, not the placeholders MIDI clips carry, nor sounds that only
+ *  sit on a drum pad (the kit's card shows those). */
 export function ideaSources(s: Session): Source[] {
-  return Object.values(s.sources).filter((src) => src.origin !== 'generated');
+  const onPads = new Set(Object.values(s.kits ?? {}).flatMap((k) => [...kitSources(k)]));
+  const onClips = new Set(s.tracks.flatMap((t) => t.clips.map((c) => c.sourceId)));
+  return Object.values(s.sources).filter((src) => src.origin !== 'generated' && (!onPads.has(src.id) || onClips.has(src.id)));
 }
 
 /** One card per sound: its original and processed versions, oldest first. */
@@ -48,9 +55,10 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   const [confirm, setConfirm] = useState<string | null>(null); // source id awaiting "Delete?"
   const [open, setOpen] = useState<string | null>(null); // root whose Versions list is open
   const [playing, setPlaying] = useState<string | null>(null); // version being previewed
-  const { audition, on: typing } = useSyncExternalStore(musicalTyping.subscribe, musicalTyping.get);
+  const { audition, kit: playingKit, on: typing } = useSyncExternalStore(musicalTyping.subscribe, musicalTyping.get);
   useEffect(() => () => stopPreview(), []);
-  if (!groups.length) return null;
+  const kits = Object.values(session.kits ?? {});
+  if (!groups.length && !kits.length) return null;
   const play = (id: string) => {
     const b = buffers.get(id);
     if (playing === id || !b) {
@@ -73,7 +81,10 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   const askRemove = (id: string) => (usage(session, id).uses.length ? setConfirm(id) : remove(id));
   return (
     <section className="ideas" aria-label="Ideas">
-      <div className="frame-title"><b>Ideas</b> {groups.length} sound{groups.length > 1 ? 's' : ''}</div>
+      <div className="frame-title">
+        <b>Ideas</b> {groups.length} sound{groups.length === 1 ? '' : 's'}
+        {kits.length > 0 && ` · ${kits.length} drum pad${kits.length > 1 ? 's' : ''}`}
+      </div>
       {groups.map(({ root, versions }) => {
         const family = new Set(versions.map((v) => v.id));
         // the card shows the newest version a track plays, else the newest one
@@ -165,7 +176,53 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
           </div>
         );
       })}
+      {kits.map((k) => (
+        <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onDelete={() => run('delete_kit', { kit_id: k.id })} />
+      ))}
+      <button className="idea-new-kit" data-testid="new-drum-pad" title="Make a drum pad: put sounds on 9 pads and play them from Q W E / A S D / Z X C" onClick={async () => {
+        const r = await run('create_kit', {});
+        if (r.ok) openDrumPad(session, run, r.result.kit_id);
+      }}>
+        + New drum pad
+      </button>
     </section>
+  );
+}
+
+/** B12: a drum pad's card: its name, a mini 3x3 of filled pads, and the credits its sounds need. */
+function KitCard({ kit, session, playing, onPlay, onDelete }: { kit: Kit; session: Session; playing: boolean; onPlay: () => void; onDelete: () => void }) {
+  const filled = kit.pads.filter((p) => p.sample).length;
+  const credits = [...kitSources(kit)].filter((id) => session.sources[id]?.credit).length;
+  const uses = session.tracks.filter((t) => t.clips.some((c) => c.midi?.kit === kit.id)).map((t) => t.name);
+  return (
+    <div className="idea idea-kit" data-kit={kit.id} style={{ '--c': 'var(--solo)' } as React.CSSProperties}>
+      <button
+        className={`idea-card${playing ? ' sel' : ''}`}
+        data-trying={playing || undefined}
+        onClick={onPlay}
+        onKeyDown={(e) => {
+          if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+          e.preventDefault();
+          e.stopPropagation();
+          onDelete();
+        }}
+        title="Click to play it on the keyboard window; drop sounds on its pads there"
+      >
+        <span className="idea-head">
+          <i className="dot" />
+          <span className="idea-name">{kit.name}</span>
+          <span className="kit-badge">Kit</span>
+        </span>
+        <span className="kit-mini" aria-hidden>
+          {kit.pads.map((p, i) => <i key={i} className={p.sample ? 'on' : ''} />)}
+        </span>
+        <span className="idea-meta">
+          {filled} of {PAD_COUNT} pads{uses.length ? ` · on ${[...new Set(uses)].join(', ')}` : playing ? ' · on the keyboard' : ''}
+        </span>
+        {credits > 0 && <span className="idea-credit">{credits} CC-BY credit{credits > 1 ? 's' : ''}</span>}
+      </button>
+      <button className="idea-del" aria-label="Delete drum pad" title="Delete this drum pad (⌫); takes on it keep playing built-in drums" onClick={onDelete}>×</button>
+    </div>
   );
 }
 

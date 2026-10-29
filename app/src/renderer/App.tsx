@@ -235,6 +235,18 @@ export function App({ bridge }: { bridge: Bridge }) {
     },
     [loadLibrarySound, run],
   );
+  /** B12: library -> a drum pad: the sound joins the session, then goes on the pad. */
+  const libraryToPad = useCallback(
+    async (id: string, kitId: string, pad: number) => {
+      try {
+        const sound = await loadLibrarySound(id);
+        if ((await run('add_sound', sound)).ok) await run('set_pad', { kit_id: kitId, pad, source_id: sound.source_id });
+      } catch (e) {
+        setError(`Could not add ${id}: ${e instanceof Error ? e.message : e}`);
+      }
+    },
+    [loadLibrarySound, run],
+  );
   const placeIdea = useCallback(
     (sourceId: string, target: DropTarget) => run('place_sound', { source_id: sourceId, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) }),
     [run],
@@ -407,7 +419,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
         </nav>
         <ZoomBar run={run} bridge={bridge} />
-        <MusicalTypingKeyboard session={session} />
+        <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} />
         {/* ─── end region: floating chrome ─── */}
       </div>
     </WaveformPlaylistProvider>
