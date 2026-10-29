@@ -30,6 +30,7 @@ import { SmartControls, type EditorTab } from './SmartControls';
 import { PianoRoll } from './PianoRoll'; // [S3 midi] note editor in the editor area
 import { AudioEditor } from './AudioEditor'; // audio regions up close, same tab as the Piano Roll
 import { TrackHeader, trackColor } from './TrackHeader';
+import { PAD_COUNT } from '../core/kit';
 import { DevicePanel, useFxEngine, withTrackFx } from './DevicePanel'; // [S1 fx] effects engine + device panel
 import { ExtractMidiControl, uploadSourceAudio } from './ExtractMidi'; // [S3 midi] audio -> MIDI
 import { importRef, keepSourceAudio, useSourceAudioReload, type KeepAudio } from './sourceAudio'; // B11
@@ -235,7 +236,25 @@ export function App({ bridge }: { bridge: Bridge }) {
     },
     [loadLibrarySound, run],
   );
-  /** B12: library -> a drum pad: the sound joins the session, then goes on the pad. */
+  /** B12: audio files -> a sample pad: each joins Ideas and goes on a pad, from the one dropped
+   *  on to the last pad. */
+  const filesToPad = useCallback(
+    async (files: File[], kitId: string, pad: number) => {
+      for (const [k, file] of files.slice(0, PAD_COUNT - pad).entries()) {
+        try {
+          const b = await decodeFile(file);
+          const id = newSourceId();
+          addBuffer(id, b, await importRef(bridge, file));
+          const ok = (await run('add_sound', { source_id: id, name: file.name.replace(/\.[^.]+$/, ''), duration: b.duration, origin: 'import' })).ok;
+          if (ok) await run('set_pad', { kit_id: kitId, pad: pad + k, source_id: id });
+        } catch (e) {
+          setError(`Could not add ${file.name}: ${e instanceof Error ? e.message : e}`);
+        }
+      }
+    },
+    [bridge, addBuffer, run],
+  );
+  /** B12: library -> a sample pad: the sound joins the session, then goes on the pad. */
   const libraryToPad = useCallback(
     async (id: string, kitId: string, pad: number) => {
       try {
@@ -246,6 +265,10 @@ export function App({ bridge }: { bridge: Bridge }) {
       }
     },
     [loadLibrarySound, run],
+  );
+  const placeKit = useCallback(
+    (kitId: string, target: DropTarget) => run('place_kit', { kit_id: kitId, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) }),
+    [run],
   );
   const placeIdea = useCallback(
     (sourceId: string, target: DropTarget) => run('place_sound', { source_id: sourceId, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) }),
@@ -364,7 +387,7 @@ export function App({ bridge }: { bridge: Bridge }) {
                       {error} <small>(click to dismiss)</small>
                     </div>
                   )}
-                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound} onDropIdea={placeIdea} onOpenClip={() => openEditor('notes', false)}>
+                  <ArrangeInteraction session={session} snap={snap} run={run} trimmingRef={trimmingRef} commitTracks={commitTracks} onDropSound={placeLibrarySound} onDropIdea={placeIdea} onDropKit={placeKit} onOpenClip={() => openEditor('notes', false)}>
                     {session.tracks.length === 0 ? (
                       <div className="empty" data-testid="empty">
                         <strong>Start with a sound</strong>
@@ -421,7 +444,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
         </nav>
         <ZoomBar run={run} bridge={bridge} />
-        <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} />
+        <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} onFilesToPad={filesToPad} />
         {/* ─── end region: floating chrome ─── */}
       </div>
     </WaveformPlaylistProvider>

@@ -22,7 +22,8 @@ import { formatBarsBeats, type Meter } from '../core/metronome';
 import { midiSignature, type MidiData } from '../core/midi';
 import { selectedClipIds, type Session } from '../core/session';
 import { pxToSeconds, secondsToPx, snapCycle, snapMove, snapTime, type SnapMode } from '../core/snap';
-import { IDEA_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
+import { IDEA_MIME, KIT_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
+import { barLength } from '../core/metronome';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -58,6 +59,8 @@ interface Props {
   onDropSound: (id: string, target: DropTarget) => void;
   /** an Ideas card (a source in the session) dropped on the arrangement */
   onDropIdea: (sourceId: string, target: DropTarget) => void;
+  /** B12: a sample pad card dropped: an empty region on the kit */
+  onDropKit: (kitId: string, target: DropTarget) => void;
   /** double-click on a clip (it is selected first) */
   onOpenClip: (clipId: string) => void;
   children: ReactNode;
@@ -65,7 +68,7 @@ interface Props {
 
 const NEW_LANE_HEIGHT = 64;
 
-export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onDropIdea, onOpenClip, children }: Props) {
+export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onDropIdea, onDropKit, onOpenClip, children }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { tracks, samplesPerPixel, sampleRate, playoutRef, isDraggingRef, onTracksChange } = usePlaylistData();
   const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
@@ -378,24 +381,28 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
   // ---- library and Ideas drops ----
   const onDragOver = (e: React.DragEvent) => {
     const idea = e.dataTransfer.types.includes(IDEA_MIME);
-    if (!idea && !e.dataTransfer.types.includes(LIBRARY_MIME)) return;
+    const kit = e.dataTransfer.types.includes(KIT_MIME);
+    if (!idea && !kit && !e.dataTransfer.types.includes(LIBRARY_MIME)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
     const h = hitTest(e.clientX, e.clientY);
     const { snap: sn, meter: mt } = latest.current;
-    showGhost(e.clientX, e.clientY, snapTime(h.seconds, sn, mt), (idea ? soundDrag.idea?.duration : libraryDrag.item?.duration) ?? 1);
+    const len = kit ? 2 * barLength(mt) : idea ? soundDrag.idea?.duration : libraryDrag.item?.duration; // place_kit: 2 bars
+    showGhost(e.clientX, e.clientY, snapTime(h.seconds, sn, mt), len ?? 1);
   };
   const onDrop = (e: React.DragEvent) => {
     const id = e.dataTransfer.getData(LIBRARY_MIME);
     const idea = e.dataTransfer.getData(IDEA_MIME);
-    if (!id && !idea) return;
+    const kit = e.dataTransfer.getData(KIT_MIME);
+    if (!id && !idea && !kit) return;
     e.preventDefault();
     e.stopPropagation();
     setGhosts([]);
     const h = hitTest(e.clientX, e.clientY);
     const { snap: sn, meter: mt } = latest.current;
     const target = { trackId: h.trackId, start: h.x0 == null ? 0 : snapTime(h.seconds, sn, mt) };
-    if (idea) onDropIdea(idea, target);
+    if (kit) onDropKit(kit, target);
+    else if (idea) onDropIdea(idea, target);
     else onDropSound(id, target);
   };
 

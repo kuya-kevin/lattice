@@ -32,7 +32,7 @@
 .mt-key[data-active='true'].white { background: var(--accent, #4a9df0); color: #0b1420; }
 .mt-key[data-active='true'].black { background: #2f6fb4; color: #e6e6e8; }
 
-/* B12 drum pad: the kit's 3x3 pads in place of the piano */
+/* B12 sample pad: the kit's 3x3 pads in place of the piano */
 .musical-typing .mt-mode { padding: 1px 8px; font-size: 11px; border-radius: 6px; }
 .mt-pads { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .mt-pad {
@@ -52,3 +52,7 @@
   background: transparent; border-color: transparent; color: var(--muted, #8e8f95); opacity: 0;
 }
 .mt-pad:hover .mt-pad-clear, .mt-pad-clear:focus-visible { opacity: 1; }
+.mt-pad-rename {
+  width: calc(100% - 22px); padding: 0 4px; font: inherit; font-size: 11.5px; font-weight: 600;
+  color: var(--text, #e6e6e8); background: var(--island, #26272b); border: 1px solid var(--accent, #4a9df0); border-radius: 4px;
+}

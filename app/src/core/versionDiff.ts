@@ -124,10 +124,10 @@ function changes(a: Session, b: Session): Change[] {
 
   const ka = a.kits ?? {}, kb = b.kits ?? {};
   for (const k of Object.values(kb)) {
-    if (!ka[k.id]) out.push({ op: '+', text: `drum pad ${q(k.name)}` });
-    else if (JSON.stringify(ka[k.id]) !== JSON.stringify(k)) out.push({ op: '~', text: `drum pad ${q(k.name)} edited` });
+    if (!ka[k.id]) out.push({ op: '+', text: `sample pad ${q(k.name)}` });
+    else if (JSON.stringify(ka[k.id]) !== JSON.stringify(k)) out.push({ op: '~', text: `sample pad ${q(k.name)} edited` });
   }
-  for (const k of Object.values(ka)) if (!kb[k.id]) out.push({ op: '-', text: `drum pad ${q(k.name)}` });
+  for (const k of Object.values(ka)) if (!kb[k.id]) out.push({ op: '-', text: `sample pad ${q(k.name)}` });
 
   // project settings last: the tracks are what a person looks for first
   if (a.tempo !== b.tempo) out.push({ op: '~', text: `tempo ${num(a.tempo)} → ${num(b.tempo)} BPM` });

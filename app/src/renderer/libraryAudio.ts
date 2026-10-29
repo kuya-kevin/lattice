@@ -68,6 +68,9 @@ export const LIBRARY_MIME = 'application/x-lattice-sound';
 /** An Ideas card (a source already in the session) dragged onto the arrangement. */
 export const IDEA_MIME = 'application/x-lattice-idea';
 
+/** B12: a sample pad's card dragged onto the arrangement (an empty region played by the kit). */
+export const KIT_MIME = 'application/x-lattice-kit';
+
 /** The library item currently being dragged (null otherwise). */
 export const libraryDrag: { item: LibraryEntry | null } = { item: null };
 /** The Ideas sound currently being dragged (null otherwise). */

@@ -6,14 +6,16 @@
 // A sound and its processed versions (cleanup_noise, quantize_drums) share one card, which shows
 // the version in use; its Versions list plays each one and switches the clips back or forward
 // (use_audio_version, undoable).
-// B12: drum pads (kits) get a card too, under the sounds: a mini 3x3 of its pads. Clicking it plays
-// the kit on the keyboard window; sounds on a kit's pads (and on no track) show on the kit's card,
-// not their own. "New drum pad" makes a kit.
+// B12: sample pads (kits) get a card too, under the sounds: a mini 3x3 of its pads. Clicking it plays
+// the kit on the keyboard window; dragging it onto the arrangement puts an empty region on it;
+// double-click its name to rename it. Sounds on a kit's pads (and on no track) show on the kit's
+// card, not their own, and wires run from it to the tracks that play it. "New sample pad" makes one.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { kitSources, PAD_COUNT, type Kit } from '../core/kit';
 import { rootSource, type Session, type Source } from '../core/session';
 import { buffers } from './audio';
-import { IDEA_MIME, previewBuffer, soundDrag, stopPreview } from './libraryAudio';
+import { IDEA_MIME, KIT_MIME, previewBuffer, soundDrag, stopPreview } from './libraryAudio';
+import './Ideas.css';
 import { musicalTyping, openDrumPad } from './MusicalTyping';
 import { trackColor } from './TrackHeader';
 
@@ -92,7 +94,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
     <section className="ideas" aria-label="Ideas">
       <div className="frame-title">
         <b>Ideas</b> {groups.length} sound{groups.length === 1 ? '' : 's'}
-        {kits.length > 0 && ` · ${kits.length} drum pad${kits.length > 1 ? 's' : ''}`}
+        {kits.length > 0 && ` · ${kits.length} sample pad${kits.length > 1 ? 's' : ''}`}
       </div>
       {groups.map(({ root, versions }) => {
         const family = new Set(versions.map((v) => v.id));
@@ -186,25 +188,59 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
         );
       })}
       {kits.map((k) => (
-        <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onDelete={() => run('delete_kit', { kit_id: k.id })} />
+        <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onRename={(name) => run('rename_kit', { kit_id: k.id, name })} onDelete={() => run('delete_kit', { kit_id: k.id })} />
       ))}
-      <button className="idea-new-kit" data-testid="new-drum-pad" title="Make a drum pad: put sounds on 9 pads and play them from Q W E / A S D / Z X C" onClick={async () => {
+      <button className="idea-new-kit" data-testid="new-drum-pad" title="Make a sample pad: put any sounds on 9 pads and play them from Q W E / A S D / Z X C" onClick={async () => {
         const r = await run('create_kit', {});
         if (r.ok) openDrumPad(session, run, r.result.kit_id);
       }}>
-        + New drum pad
+        + New sample pad
       </button>
     </section>
   );
 }
 
-/** B12: a drum pad's card: its name, a mini 3x3 of filled pads, and the credits its sounds need. */
-function KitCard({ kit, session, playing, onPlay, onDelete }: { kit: Kit; session: Session; playing: boolean; onPlay: () => void; onDelete: () => void }) {
+/** Tracks with a region played by a kit, with their positions (for the card's colour and wires). */
+const kitUsage = (s: Session, kitId: string) => s.tracks.flatMap((t, i) => (t.clips.some((c) => c.midi?.kit === kitId) ? [{ t, i }] : []));
+
+/** B12: a sample pad's card: its name, a mini 3x3 of filled pads, and the credits its sounds need. */
+function KitCard({ kit, session, playing, onPlay, onRename, onDelete }: { kit: Kit; session: Session; playing: boolean; onPlay: () => void; onRename: (name: string) => void; onDelete: () => void }) {
+  const [renaming, setRenaming] = useState(false);
   const filled = kit.pads.filter((p) => p.sample).length;
   const credits = [...kitSources(kit)].filter((id) => session.sources[id]?.credit).length;
-  const uses = session.tracks.filter((t) => t.clips.some((c) => c.midi?.kit === kit.id)).map((t) => t.name);
+  const used = kitUsage(session, kit.id);
+  const uses = used.map((u) => u.t.name);
+  const color = used.length ? trackColor(session, used[0].i) : 'var(--solo)';
+  const done = (name: string) => {
+    setRenaming(false);
+    if (name.trim() && name.trim() !== kit.name) onRename(name);
+  };
   return (
-    <div className="idea idea-kit" data-kit={kit.id} style={{ '--c': 'var(--solo)' } as React.CSSProperties}>
+    <div
+      className="idea idea-kit" data-kit={kit.id} style={{ '--c': color } as React.CSSProperties}
+      draggable={!renaming}
+      onDragStart={(e) => {
+        e.dataTransfer.setData(KIT_MIME, kit.id);
+        e.dataTransfer.setData('text/plain', kit.name);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+    >
+      {renaming && (
+        <input
+          className="kit-rename"
+          data-testid="kit-rename"
+          aria-label="Rename sample pad"
+          defaultValue={kit.name}
+          autoFocus
+          onFocus={(e) => e.currentTarget.select()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') done(e.currentTarget.value);
+            if (e.key === 'Escape') setRenaming(false);
+          }}
+          onBlur={(e) => done(e.currentTarget.value)}
+        />
+      )}
       <button
         className={`idea-card${playing ? ' sel' : ''}`}
         data-trying={playing || undefined}
@@ -215,11 +251,11 @@ function KitCard({ kit, session, playing, onPlay, onDelete }: { kit: Kit; sessio
           e.stopPropagation();
           onDelete();
         }}
-        title="Click to play it on the keyboard window; drop sounds on its pads there"
+        title="Click to play it on the keyboard window and drop any sounds on its pads there; drag it onto the arrangement for a region on it; double-click the name to rename"
       >
         <span className="idea-head">
           <i className="dot" />
-          <span className="idea-name">{kit.name}</span>
+          <span className="idea-name" onDoubleClick={(e) => (e.stopPropagation(), setRenaming(true))}>{kit.name}</span>
           <span className="kit-badge">Kit</span>
         </span>
         <span className="kit-mini" aria-hidden>
@@ -230,7 +266,7 @@ function KitCard({ kit, session, playing, onPlay, onDelete }: { kit: Kit; sessio
         </span>
         {credits > 0 && <span className="idea-credit">{credits} CC-BY credit{credits > 1 ? 's' : ''}</span>}
       </button>
-      <button className="idea-del" aria-label="Delete drum pad" title="Delete this drum pad (⌫); takes on it keep playing built-in drums" onClick={onDelete}>×</button>
+      <button className="idea-del" aria-label="Delete sample pad" title="Delete this sample pad (⌫); takes on it keep playing built-in drums" onClick={onDelete}>×</button>
     </div>
   );
 }
@@ -283,25 +319,31 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
     const measure = () => {
       const wr = world.getBoundingClientRect();
       const out: typeof paths = [];
+      /** One wire from a card to the header of track `id` (at position `i`). */
+      const wire = (card: Element, id: string, i: number) => {
+        const head = world.querySelector(`[data-testid="track-${id}"]`);
+        if (!head) return;
+        const cr = card.getBoundingClientRect();
+        const hr = head.getBoundingClientRect();
+        // a header scrolled out of a short board: end the wire at the board's visible edge
+        const ar = head.closest('.arrange')?.getBoundingClientRect();
+        const hy = hr.top + hr.height / 2;
+        const y = ar ? Math.min(ar.bottom - 6, Math.max(ar.top + 6, hy)) : hy;
+        const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
+        const x1 = hr.left - wr.left, y1 = y - wr.top;
+        const dx = Math.max(30, (x1 - x0) / 2);
+        out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(session, i), x0, y0, x1, y1 });
+      };
       for (const { root, versions } of ideaGroups(session)) {
         const card = world.querySelector(`[data-idea="${root}"]`);
         if (!card) continue;
-        const cr = card.getBoundingClientRect();
         const { uses } = usage(session, new Set(versions.map((v) => v.id)));
-        for (const id of new Set(uses.map((u) => u.t.id))) {
-          const i = session.tracks.findIndex((t) => t.id === id);
-          const head = world.querySelector(`[data-testid="track-${id}"]`);
-          if (!head) continue;
-          const hr = head.getBoundingClientRect();
-          // a header scrolled out of a short board: end the wire at the board's visible edge
-          const ar = head.closest('.arrange')?.getBoundingClientRect();
-          const hy = hr.top + hr.height / 2;
-          const y = ar ? Math.min(ar.bottom - 6, Math.max(ar.top + 6, hy)) : hy;
-          const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
-          const x1 = hr.left - wr.left, y1 = y - wr.top;
-          const dx = Math.max(30, (x1 - x0) / 2);
-          out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(session, i), x0, y0, x1, y1 });
-        }
+        for (const id of new Set(uses.map((u) => u.t.id))) wire(card, id, session.tracks.findIndex((t) => t.id === id));
+      }
+      // B12: sample pads, to the tracks with regions played by them
+      for (const kit of Object.values(session.kits ?? {})) {
+        const card = world.querySelector(`.idea-kit[data-kit="${kit.id}"]`);
+        if (card) for (const { t, i } of kitUsage(session, kit.id)) wire(card, t.id, i);
       }
       setPaths(out);
     };

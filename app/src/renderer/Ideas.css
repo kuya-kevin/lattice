@@ -1,0 +1,7 @@
+/* B12: renaming a sample pad on its Ideas card (the name field sits over the card's title row).
+   Lane A file: styles.css holds the rest of the Ideas column. */
+.idea-kit .kit-rename {
+  position: absolute; z-index: 2; left: 8px; right: 30px; top: 6px; padding: 1px 5px;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--text, #e6e6e8);
+  background: var(--island, #26272b); border: 1px solid var(--accent, #4a9df0); border-radius: 4px;
+}

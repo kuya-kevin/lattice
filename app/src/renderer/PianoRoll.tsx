@@ -19,7 +19,8 @@ import { isTyping } from './shortcuts';
 import { ExtractMidiControl } from './ExtractMidi';
 import { trackEffects } from '../fx/engine/live';
 import { buffers } from './audio';
-import { auditionNote } from './midiSynth';
+import { auditionNote, kitSamples } from './midiSynth';
+import { padKeyLabel, type Kit } from '../core/kit';
 import { trackColor } from './TrackHeader';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -48,13 +49,13 @@ function settle(notes: MidiNote[], sel: Set<number>): { notes: MidiNote[]; sel: 
 }
 
 /** Play one note as the region sounds: its instrument, through its track's device chain. */
-function preview(midi: MidiData | undefined, trackId: string | undefined, pitch: number, velocity = 100) {
+function preview(midi: MidiData | undefined, trackId: string | undefined, pitch: number, velocity = 100, kit?: Kit) {
   try {
     const ctx = getGlobalContext().rawContext as unknown as AudioContext;
     if (ctx.state === 'suspended') void ctx.resume();
     const out = ctx.createGain();
     const unroute = trackId ? trackEffects(trackId)(out, ctx.destination, false) : out.connect(ctx.destination);
-    auditionNote(ctx, out, midi, pitch, velocity, midi?.sample ? buffers.get(midi.sample.sourceId) : undefined);
+    auditionNote(ctx, out, midi, pitch, velocity, midi?.sample ? buffers.get(midi.sample.sourceId) : undefined, 0.25, kit && kitSamples(kit).samples);
     setTimeout(() => {
       out.disconnect();
       if (typeof unroute === 'function') unroute();
@@ -120,13 +121,17 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   const lastT = clip ? Math.max(clip.start + clip.duration, ...notes.map((n) => sourceStart + n.start + n.duration)) + bar : bar;
   const viewEnd = viewStart + Math.ceil(Math.max(lastT - viewStart, viewW / pps) / bar) * bar;
   const width = Math.ceil((viewEnd - viewStart) * pps);
-  const pitches = notes.map((n) => n.pitch);
-  const hi = Math.min(127, Math.max(midi?.drum ? 52 : 96, ...pitches.map((p) => p + 4)));
-  const lo = Math.max(0, Math.min(midi?.drum ? 35 : 24, ...pitches.map((p) => p - 4)));
+  // B12: a region on a sample pad names its rows after the pads (and shows all of them)
+  const kit = midi?.kit ? session.kits?.[midi.kit] : undefined;
+  const padOf = (p: number) => kit?.pads.findIndex((x) => x.note === p) ?? -1;
+  const rowName = (p: number) => (padOf(p) >= 0 ? kit!.pads[padOf(p)].label : midi?.drum ? GM_DRUMS[p] : undefined);
+  const pitches = [...notes.map((n) => n.pitch), ...(kit?.pads.map((p) => p.note) ?? [])];
+  const hi = Math.min(127, Math.max(midi?.drum && !kit ? 52 : kit ? 0 : 96, ...pitches.map((p) => p + (kit ? 1 : 4))));
+  const lo = Math.max(0, Math.min(midi?.drum && !kit ? 35 : kit ? 127 : 24, ...pitches.map((p) => p - (kit ? 1 : 4))));
   const rows = hi - lo + 1;
   const xOf = (sourceT: number) => (sourceStart + sourceT - viewStart) * pps;
   const snapTl = (tl: number) => (step ? Math.round(tl / step) * step : tl);
-  const play = (pitch: number, velocity = 100) => preview(midi, track?.id, pitch, velocity);
+  const play = (pitch: number, velocity = 100) => preview(midi, track?.id, pitch, velocity, kit);
 
   // a new region: clear the selection and bring its notes into view
   const clipId = clip?.id;
@@ -347,9 +352,14 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
             {Array.from({ length: rows }, (_, k) => {
               const p = hi - k;
               const black = BLACK.has(p % 12);
-              const label = midi.drum ? GM_DRUMS[p] : p % 12 === 0 ? noteName(p) : '';
+              const pad = padOf(p);
+              const label = midi.drum ? rowName(p) : p % 12 === 0 ? noteName(p) : '';
               return (
-                <div key={p} className={`pr-key${black ? ' black' : ''}`} style={{ height: ROW }} onPointerDown={() => play(p)} title={midi.drum ? `${p} ${GM_DRUMS[p] ?? ''}` : noteName(p)}>
+                <div
+                  key={p} className={`pr-key${black ? ' black' : ''}`} style={{ height: ROW }} onPointerDown={() => play(p)}
+                  data-pad={pad >= 0 ? pad : undefined}
+                  title={pad >= 0 ? `${kit!.pads[pad].label} (pad ${padKeyLabel(pad)}, note ${p})` : midi.drum ? `${p} ${GM_DRUMS[p] ?? ''}` : noteName(p)}
+                >
                   {label}
                 </div>
               );
@@ -409,7 +419,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
                 key={i}
                 data-testid="pr-note"
                 className={`pr-note${sel.has(i) ? ' sel' : ''}`}
-                title={`${midi.drum ? GM_DRUMS[n.pitch] ?? n.pitch : noteName(n.pitch)} · velocity ${n.velocity}`}
+                title={`${midi.drum ? rowName(n.pitch) ?? n.pitch : noteName(n.pitch)} · velocity ${n.velocity}`}
                 style={{
                   left: xOf(n.start), top: (hi - n.pitch) * ROW + 1, width: Math.max(3, n.duration * pps - 1), height: ROW - 2,
                 }}

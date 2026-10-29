@@ -41,10 +41,11 @@ describe('kit tools', () => {
     const kit = c.store.get().kits![kitId];
     expect(kit.pads[6].sample).toEqual({ sourceId: 's-kick', offset: 0, duration: 0.4, root: 36 });
     expect(kit.pads[7].label).toBe('Snap');
+    expect(kit.pads[6].label).toBe('Dusty kick'); // a pad with its default name takes the sound's
     expect(padForNote(kit, 38)?.sample?.sourceId).toBe('s-snare');
 
     const sum = summarize(c.store.get());
-    expect(sum).toContain(`${kitId} "Lo-fi kit": Z kick(36)=Dusty kick, X snap(38)=Tight snare; 7 empty`);
+    expect(sum).toContain(`${kitId} "Lo-fi kit": Z dusty kick(36)=Dusty kick, X snap(38)=Tight snare; 7 empty`);
 
     await runTool(c, 'undo', {}, 'user');
     expect(c.store.get().kits![kitId].pads[7].sample).toBeUndefined();
@@ -70,7 +71,7 @@ describe('kit tools', () => {
     const r = await runTool(c, 'record_midi', { track_id: 't2', start: 1, duration: 1, notes, kit_id: kitId }, 'user');
     expect(r.ok).toBe(true);
     const midi = c.store.get().tracks[0].clips[0].midi!;
-    expect(midi).toMatchObject({ drum: true, kit: kitId, instrument: 'Drum pad 1' });
+    expect(midi).toMatchObject({ drum: true, kit: kitId, instrument: 'Sample pad 1' });
     expect(summarize(c.store.get())).toContain(`MIDI drums on kit ${kitId}, 2 hits (kick 1, snare 1, hat 0)`);
   });
 
@@ -93,6 +94,41 @@ describe('kit tools', () => {
 
   it('Muse can call the kit tools', () => {
     const names = museToolSpecs().map((t: any) => t.function.name);
-    expect(names).toEqual(expect.arrayContaining(['create_kit', 'set_pad', 'clear_pad', 'rename_kit', 'delete_kit']));
+    expect(names).toEqual(expect.arrayContaining(['create_kit', 'set_pad', 'clear_pad', 'rename_pad', 'rename_kit', 'delete_kit']));
+  });
+
+  it('place_kit puts an empty region on the kit, on a new track named after it', async () => {
+    const c = await withSounds();
+    const kitId = ((await runTool(c, 'create_kit', { name: 'Chops' }, 'user')).result as any).kit_id;
+    const r = await runTool(c, 'place_kit', { kit_id: kitId, start: 2 }, 'muse');
+    expect(r.ok).toBe(true);
+    const s = c.store.get();
+    const t = s.tracks.find((x) => x.id === (r.result as any).track_id)!;
+    expect(t.name).toBe('Chops');
+    expect(t.clips[0]).toMatchObject({ name: 'Chops', start: 2, duration: 4, midi: { drum: true, kit: kitId, notes: [] } }); // 2 bars at 120
+    expect(s.selection.clipId).toBe(t.clips[0].id);
+    expect((await runTool(c, 'place_kit', { kit_id: kitId, track_id: 'nope' }, 'user')).error).toMatch(/no track/);
+  });
+
+  it('pads take any sound and can be renamed; a renamed pad keeps its name through new sounds', async () => {
+    const c = await withSounds();
+    const kitId = ((await runTool(c, 'create_kit', {}, 'user')).result as any).kit_id;
+    expect(c.store.get().kits![kitId].name).toBe('Sample pad 1');
+    const pad = (i: number) => c.store.get().kits![kitId].pads[i];
+    await runTool(c, 'set_pad', { kit_id: kitId, pad: 0, source_id: 's-kick' }, 'user');
+    expect(pad(0).label).toBe('Dusty kick');
+    await runTool(c, 'set_pad', { kit_id: kitId, pad: 0, source_id: 's-snare' }, 'user');
+    expect(pad(0).label).toBe('Tight snare'); // still named after its sound: follows the new one
+    await runTool(c, 'clear_pad', { kit_id: kitId, pad: 0 }, 'user');
+    expect(pad(0)).toEqual({ label: 'Crash', note: 49 });
+
+    const r = await runTool(c, 'rename_pad', { kit_id: kitId, pad: 0, label: '  Vox chop ' }, 'user');
+    expect(r).toMatchObject({ ok: true, result: { label: 'Vox chop' } });
+    await runTool(c, 'set_pad', { kit_id: kitId, pad: 0, source_id: 's-kick' }, 'user');
+    expect(pad(0).label).toBe('Vox chop');
+    await runTool(c, 'clear_pad', { kit_id: kitId, pad: 0 }, 'user');
+    expect(pad(0).label).toBe('Vox chop');
+    expect((await runTool(c, 'rename_pad', { kit_id: kitId, pad: 0, label: ' ' }, 'user')).error).toMatch(/cannot be empty/);
+    expect(c.store.takeUserEdits()).toContain(`renamed pad 0 of ${kitId} to "Vox chop"`);
   });
 });

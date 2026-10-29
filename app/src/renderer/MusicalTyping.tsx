@@ -4,9 +4,10 @@
 // the selected audio clip played as a sampler (A = its original pitch), else the piano voice.
 // Recording with a tried-out sound and no track selected puts the take on a new track.
 // Key map and octave/velocity rules: core/musicalTyping.ts.
-// B12: with a drum pad (kit) as the instrument, the window shows the kit's 3x3 pads instead of
-// the piano: Q W E / A S D / Z X C hit them (fixed velocity), and sounds dropped on a pad (from
-// Ideas or the library) go on it. A kit is played from its Ideas card or a clip recorded on it.
+// B12: with a sample pad (kit) as the instrument, the window shows the kit's 3x3 pads instead of
+// the piano: Q W E / A S D / Z X C hit them (fixed velocity), and any sound dropped on a pad (an
+// Ideas card, a library item, audio files from the Finder) goes on it. Double-click a pad to
+// rename it. A kit is played from its Ideas card or a clip recorded on it.
 //
 // Every note goes through `musicalTyping.onNote`, with transport times, so a MIDI recorder can
 // subscribe to the same stream the sound comes from.
@@ -298,11 +299,13 @@ const BLACK = [1, 3, 6, 8, 10, 13, 15];
  *  playlist provider. Notes play through the selected track's effects. */
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
-export function MusicalTypingKeyboard({ session, run, onLibraryToPad }: {
+export function MusicalTypingKeyboard({ session, run, onLibraryToPad, onFilesToPad }: {
   session: Session;
   run: Run;
   /** B12: a library sound dropped on a pad (App loads it into the session first) */
   onLibraryToPad: (libraryId: string, kitId: string, pad: number) => void;
+  /** B12: audio files dropped on a pad: the first goes on it, the rest on the pads after it */
+  onFilesToPad: (files: File[], kitId: string, pad: number) => void;
 }) {
   const s = useMusicalTyping();
   const { currentTimeRef } = usePlaybackAnimation();
@@ -438,7 +441,7 @@ export function MusicalTypingKeyboard({ session, run, onLibraryToPad }: {
         onDoubleClick={(e) => !(e.target as HTMLElement).closest('button') && (setPos(null), savePos(null))}
         title="Drag to move; double-click to put it back"
       >
-        <strong>{kit ? 'Drum Pad' : 'Musical Typing'}</strong>
+        <strong>{kit ? 'Sample Pad' : 'Musical Typing'}</strong>
         <span
           className="mt-info mt-instrument"
           data-testid="mt-instrument"
@@ -464,7 +467,7 @@ export function MusicalTypingKeyboard({ session, run, onLibraryToPad }: {
             <span className={`mt-info${s.sustain ? ' on' : ''}`} title="Hold Tab to sustain">
               <kbd>⇥</kbd> sustain
             </span>
-            <button className="mt-mode" data-testid="mt-drum-pad" title="Play a drum pad: a kit of sounds on Q W E / A S D / Z X C" onClick={() => openDrumPad(session, run)}>
+            <button className="mt-mode" data-testid="mt-drum-pad" title="Play a sample pad: any sounds on Q W E / A S D / Z X C" onClick={() => openDrumPad(session, run)}>
               Pads
             </button>
           </>
@@ -472,7 +475,7 @@ export function MusicalTypingKeyboard({ session, run, onLibraryToPad }: {
         <button className="mt-close" aria-label="Close Musical Typing" title="Close (⌘K)" onClick={() => musicalTyping.toggle(false)}>×</button>
       </header>
       {kit ? (
-        <KitPads kit={kit} session={session} active={s.active} run={run} onLibraryToPad={onLibraryToPad} />
+        <KitPads kit={kit} session={session} active={s.active} run={run} onLibraryToPad={onLibraryToPad} onFilesToPad={onFilesToPad} />
       ) : (
         <div className="mt-keys">
           {WHITE.map((o) => key(o, false))}
@@ -496,17 +499,24 @@ export async function openDrumPad(session: Session, run: Run, kitId?: string) {
   if (session.selection.trackId || session.selection.clipId) run('select', {}); // a take then goes on a new track
 }
 
-/** B12: the kit's 3x3 pads. Click or press a pad's key to hit it; drop a sound (an Ideas card or
- *  a library item) on a pad to put it there; × takes it off. */
-function KitPads({ kit, session, active, run, onLibraryToPad }: {
+/** B12: the kit's 3x3 pads. Click or press a pad's key to hit it; drop a sound (an Ideas card, a
+ *  library item or audio files) on a pad to put it there; × takes it off; double-click it to
+ *  rename it. */
+function KitPads({ kit, session, active, run, onLibraryToPad, onFilesToPad }: {
   kit: Kit;
   session: Session;
   active: number[];
   run: Run;
   onLibraryToPad: (libraryId: string, kitId: string, pad: number) => void;
+  onFilesToPad: (files: File[], kitId: string, pad: number) => void;
 }) {
   const [over, setOver] = useState<number | null>(null);
-  const accepts = (e: React.DragEvent) => e.dataTransfer.types.includes(IDEA_MIME) || e.dataTransfer.types.includes(LIBRARY_MIME);
+  const [renaming, setRenaming] = useState<number | null>(null);
+  const accepts = (e: React.DragEvent) => ['Files', IDEA_MIME, LIBRARY_MIME].some((t) => e.dataTransfer.types.includes(t));
+  const rename = (i: number, label: string) => {
+    setRenaming(null);
+    if (label.trim() && label.trim() !== kit.pads[i].label) run('rename_pad', { kit_id: kit.id, pad: i, label });
+  };
   return (
     <div className="mt-pads" data-testid="kit-pads">
       {kit.pads.map((p, i) => {
@@ -519,14 +529,15 @@ function KitPads({ kit, session, active, run, onLibraryToPad }: {
             data-key={padKeyLabel(i)}
             data-active={active.includes(p.note)}
             data-source={src?.id}
-            title={`${p.label} (${padKeyLabel(i)}): ${src ? src.name : 'empty, plays the built-in drum'}. Drop a sound here to put it on this pad.`}
+            title={`${p.label} (${padKeyLabel(i)}): ${src ? src.name : 'empty, plays the built-in drum'}. Drop any sound here to put it on this pad; double-click to rename it.`}
             onPointerDown={(e) => {
-              if ((e.target as HTMLElement).closest('button')) return;
+              if ((e.target as HTMLElement).closest('button, input')) return;
               e.preventDefault();
               e.currentTarget.setPointerCapture(e.pointerId);
               musicalTyping.padOn('pointer', i);
             }}
             onPointerUp={() => musicalTyping.noteOff('pointer')}
+            onDoubleClick={(e) => !(e.target as HTMLElement).closest('button, input') && setRenaming(i)} // the pad holds the pointer, so the whole pad
             onPointerCancel={() => musicalTyping.noteOff('pointer')}
             onDragOver={(e) => {
               if (!accepts(e)) return;
@@ -539,16 +550,35 @@ function KitPads({ kit, session, active, run, onLibraryToPad }: {
               setOver(null);
               const idea = e.dataTransfer.getData(IDEA_MIME);
               const lib = e.dataTransfer.getData(LIBRARY_MIME);
-              if (!idea && !lib) return;
+              const files = [...e.dataTransfer.files];
+              if (!idea && !lib && !files.length) return;
               e.preventDefault();
-              e.stopPropagation();
+              e.stopPropagation(); // not onto the arrangement as well
               if (idea) run('set_pad', { kit_id: kit.id, pad: i, source_id: idea });
-              else onLibraryToPad(lib, kit.id, i);
+              else if (lib) onLibraryToPad(lib, kit.id, i);
+              else onFilesToPad(files, kit.id, i);
             }}
           >
-            <span className="mt-pad-label">{p.label}</span>
+            {renaming === i ? (
+              <input
+                className="mt-pad-rename"
+                data-testid="pad-rename"
+                aria-label={`Rename pad ${padKeyLabel(i)}`}
+                defaultValue={p.label}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onKeyDown={(e) => {
+                  e.stopPropagation(); // typing a name doesn't hit pads
+                  if (e.key === 'Enter') rename(i, e.currentTarget.value);
+                  if (e.key === 'Escape') setRenaming(null);
+                }}
+                onBlur={(e) => renaming === i && rename(i, e.currentTarget.value)}
+              />
+            ) : (
+              <span className="mt-pad-label">{p.label}</span>
+            )}
             <kbd>{padKeyLabel(i)}</kbd>
-            <span className="mt-pad-sound">{over === i ? 'Release to assign' : src ? src.name : 'Drop a sound'}</span>
+            <span className="mt-pad-sound">{over === i ? 'Release to assign' : src ? (src.name === p.label ? `${src.duration.toFixed(1)} s` : src.name) : 'Drop any sound'}</span>
             {src && (
               <button className="mt-pad-clear" aria-label={`Clear ${p.label}`} title="Take the sound off this pad" onClick={() => run('clear_pad', { kit_id: kit.id, pad: i })}>×</button>
             )}

@@ -4,7 +4,7 @@
 
 import { describeSettings, type ParamValues } from '../fx/catalog';
 import { describeMidi, type MidiData } from './midi'; // [S3 midi]
-import { describeKits, type Kit } from './kit'; // B12 drum pads
+import { describeKits, emptyPad, type Kit } from './kit'; // B12 sample pads
 
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated' | 'processed';
 
@@ -234,7 +234,7 @@ export function deleteSource(s: Session, sourceId: string): Session {
   const gone = new Set(s.tracks.flatMap((t) => t.clips.filter((c) => c.sourceId === sourceId).map((c) => c.id)));
   // pads that played it go empty (B12)
   const kits = s.kits && Object.fromEntries(Object.entries(s.kits).map(([id, k]) => [id, k.pads.some((p) => p.sample?.sourceId === sourceId)
-    ? { ...k, pads: k.pads.map((p) => (p.sample?.sourceId === sourceId ? { label: p.label, note: p.note } : p)) }
+    ? { ...k, pads: k.pads.map((p, i) => (p.sample?.sourceId === sourceId ? emptyPad(s, p, i) : p)) }
     : k]));
   return {
     ...s,

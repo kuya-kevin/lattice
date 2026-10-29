@@ -130,7 +130,7 @@ export const MIDI_TOOLS: ToolDef[] = [
           { source_id: str('Audio source played as the instrument'), offset: num('s into the source'), duration: num('s'), root: num('MIDI note that plays it unpitched') },
           ['source_id', 'offset', 'duration', 'root'],
         ),
-        kit_id: str('Drum pad the take was played on (B12); instead of sample'),
+        kit_id: str('Sample pad (kit) the take was played on (B12); instead of sample'),
       },
       ['track_id', 'start', 'duration', 'notes'],
     ),

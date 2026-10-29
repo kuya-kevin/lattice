@@ -1,5 +1,6 @@
-// Drum pads (B12): a kit of sounds from the session (library sounds, recordings) on a 3x3 grid
-// of pads, played from the keyboard like an MPC: Q W E / A S D / Z X C. Each pad is one sound on
+// Sample pads (B12, "drum pads" until Oct 29): a kit of any sounds from the session (library
+// sounds, recordings, chops, one-shots) on a 3x3 grid of pads, played from the keyboard like an
+// MPC: Q W E / A S D / Z X C. A pad takes the name of the sound put on it unless renamed. Each pad is one sound on
 // one General MIDI drum note, so a take recorded on the kit is an ordinary drum MIDI clip
 // (`midi.kit` names the kit) and the existing drum summary (kick / snare / hat counts) still
 // reads right. Velocity is fixed for now. Pads play their sound once through (one-shot): a
@@ -58,7 +59,7 @@ const putKit = (s: Session, k: Kit): Session => ({ ...s, kits: { ...(s.kits ?? {
 
 export function createKit(s: Session, name?: string): [Session, Kit] {
   const [s1, id] = nextId(s, 'k');
-  const n = name?.trim() || `Drum pad ${Object.keys(s.kits ?? {}).length + 1}`;
+  const n = name?.trim() || `Sample pad ${Object.keys(s.kits ?? {}).length + 1}`;
   const kit: Kit = { id, name: n, pads: DEFAULT_PADS.map((p) => ({ ...p })) };
   return [putKit(s1, kit), kit];
 }
@@ -69,7 +70,12 @@ export function renameKit(s: Session, kitId: string, name: string): Session {
   return putKit(s, { ...getKit(s, kitId), name: n });
 }
 
-/** Put a sound (a whole source) on a pad; `label` renames the pad. */
+/** A pad still called what it was made as (or after the sound it had): it takes the next sound's name. */
+const autoLabel = (s: Session, p: Pad, i: number) =>
+  p.label === DEFAULT_PADS[i]?.label || (!!p.sample && p.label === s.sources[p.sample.sourceId]?.name);
+
+/** Put a sound (a whole source) on a pad; `label` renames the pad, else a pad with its default
+ *  name takes the sound's. */
 export function setPad(s: Session, kitId: string, pad: number, sourceId: string, label?: string): Session {
   const kit = getKit(s, kitId);
   checkPad(pad);
@@ -77,15 +83,28 @@ export function setPad(s: Session, kitId: string, pad: number, sourceId: string,
   if (!src) throw new SessionError(`no source "${sourceId}"`);
   if (src.origin === 'generated') throw new SessionError(`source ${sourceId} is a MIDI clip, not audio`);
   const pads = kit.pads.map((p, i) =>
-    i === pad ? { ...p, label: label?.trim() || p.label, sample: { sourceId, offset: 0, duration: src.duration, root: p.note } } : p,
+    i === pad ? { ...p, label: label?.trim() || (autoLabel(s, p, i) ? src.name : p.label), sample: { sourceId, offset: 0, duration: src.duration, root: p.note } } : p,
   );
   return putKit(s, { ...kit, pads });
 }
 
+/** Pad `i` with its sound taken off (a pad named after the sound gets its default name back). */
+export const emptyPad = (s: Session, p: Pad, i: number): Pad => ({ label: autoLabel(s, p, i) ? DEFAULT_PADS[i].label : p.label, note: p.note });
+
+/** Rename one pad (its label on the pad and in the Piano Roll). */
+export function renamePad(s: Session, kitId: string, pad: number, label: string): Session {
+  const kit = getKit(s, kitId);
+  checkPad(pad);
+  const n = label.trim();
+  if (!n) throw new SessionError('pad name cannot be empty');
+  return putKit(s, { ...kit, pads: kit.pads.map((p, i) => (i === pad ? { ...p, label: n } : p)) });
+}
+
+/** Take the sound off a pad; a pad named after that sound gets its default name back. */
 export function clearPad(s: Session, kitId: string, pad: number): Session {
   const kit = getKit(s, kitId);
   checkPad(pad);
-  return putKit(s, { ...kit, pads: kit.pads.map((p, i) => (i === pad ? { label: p.label, note: p.note } : p)) });
+  return putKit(s, { ...kit, pads: kit.pads.map((p, i) => (i === pad ? emptyPad(s, p, i) : p)) });
 }
 
 /** Remove a kit. Takes recorded on it stay, playing the built-in drum sounds. */
@@ -121,5 +140,5 @@ export function describeKits(s: Session): string {
     const empty = PAD_COUNT - filled.length;
     return `- ${k.id} "${k.name}": ${filled.join(', ') || 'no sounds yet'}${empty ? `; ${empty} empty` : ''}`;
   };
-  return `Drum pads (set_pad puts a sound on a pad; takes on a kit are drum MIDI clips):\n${kits.map(line).join('\n')}`;
+  return `Sample pads (any sounds on 9 pads; set_pad puts a sound on a pad; takes on a kit are drum MIDI clips, one note per pad):\n${kits.map(line).join('\n')}`;
 }
