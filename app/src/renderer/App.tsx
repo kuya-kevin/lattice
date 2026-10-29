@@ -269,8 +269,9 @@ export function App({ bridge }: { bridge: Bridge }) {
     undo: () => run('undo'),
     redo: () => run('redo'),
     deleteClip: () => {
-      const c = sessionRef.current?.selection.clipId;
-      if (c) run('delete_clip', { clip_id: c });
+      const sel = sessionRef.current?.selection;
+      if (sel?.clipIds) run('delete_clips', { clip_ids: sel.clipIds });
+      else if (sel?.clipId) run('delete_clip', { clip_id: sel.clipId });
     },
     copyClip: () => {
       const c = sessionRef.current?.selection.clipId;
@@ -398,7 +399,7 @@ export function App({ bridge }: { bridge: Bridge }) {
         {/* ─── end region: canvas ─── */}
 
         {/* ─── region: floating chrome (top bar, Muse, library, tool rail, zoom) ─── */}
-        <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} />
+        <ControlBar session={session} run={run} importFiles={importFiles} addBuffer={addBuffer} snap={snap} />
         <ChatPanel
           bridge={bridge}
           open={museOpen}
@@ -613,7 +614,7 @@ function SelectionSync({ session, run, getSession }: { session: Session; run: Ru
     getSession().then((s) => {
       if (!live || (selectedTrackId ?? null) === s.selection.trackId) return;
       const keep = s.selection.clipId && s.tracks.find((t) => t.id === selectedTrackId)?.clips.some((c) => c.id === s.selection.clipId);
-      run('select', { track_id: selectedTrackId ?? undefined, clip_id: keep ? s.selection.clipId : undefined });
+      run('select', { track_id: selectedTrackId ?? undefined, ...(keep ? { clip_id: s.selection.clipId, clip_ids: s.selection.clipIds } : {}) });
     });
     return () => {
       live = false;

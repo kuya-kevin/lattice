@@ -239,6 +239,11 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
   background: color-mix(in srgb, var(--accent) 12%, transparent);
 }
 .drop-ghost.new { border-style: dashed; }
+/* rubber-band selection from empty lane space (Arrange.tsx) */
+.marquee {
+  position: fixed; z-index: 50; pointer-events: none; border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
 .help-tag {
   position: absolute; left: 0; top: -24px; white-space: nowrap; font: 11px var(--font-data);
   background: var(--text); color: var(--ground); padding: 2px 7px; border-radius: 6px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
@@ -575,6 +580,9 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .rz-y::after { left: 30%; right: 30%; height: 2px; top: 13px; }
 html.rz-drag-x, html.rz-drag-x * { cursor: col-resize !important; user-select: none; }
 html.rz-drag-y, html.rz-drag-y * { cursor: row-resize !important; user-select: none; }
+/* dragging a track header to reorder tracks (TrackHeader.tsx) */
+html.track-drag, html.track-drag * { cursor: grabbing !important; user-select: none; }
+.track-controls.dragging { opacity: 0.5; }
 .seg.lane-h button { padding: 3px 8px; display: inline-grid; place-items: center; }
 .seg.lane-h button:hover:not(:disabled) { color: var(--text); }
 

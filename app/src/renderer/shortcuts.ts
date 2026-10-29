@@ -9,7 +9,7 @@ export const SHORTCUTS: { keys: string; action: ShortcutAction; label: string }[
   { keys: 'R', action: 'record', label: 'Record / stop recording' },
   { keys: 'K', action: 'metronome', label: 'Click on/off' },
   { keys: '⇧K', action: 'countIn', label: 'Count-in on/off' },
-  { keys: 'C', action: 'cycle', label: 'Cycle on/off' },
+  { keys: 'C', action: 'cycle', label: 'Cycle on/off (on: around the selected regions, on the Snap grid)' },
   { keys: ', / .', action: 'barBack', label: 'Previous / next bar line' },
   { keys: 'T', action: 'tapTempo', label: 'Tap tempo' },
 ];
@@ -86,7 +86,7 @@ export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteCli
 export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }[] = [
   { keys: '⌘Z', action: 'undo', label: 'Undo' },
   { keys: '⇧⌘Z', action: 'redo', label: 'Redo' },
-  { keys: 'Delete', action: 'deleteClip', label: 'Delete selected region' },
+  { keys: 'Delete', action: 'deleteClip', label: 'Delete selected regions' },
   { keys: '⌘C', action: 'copyClip', label: 'Copy selected region' },
   { keys: '⌘V', action: 'pasteClip', label: 'Paste region at the playhead on the selected track' },
   { keys: 'L / O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },

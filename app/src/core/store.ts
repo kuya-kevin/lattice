@@ -1,4 +1,4 @@
-import { emptySession, type Session } from './session';
+import { emptySession, select, type Session } from './session';
 
 export type Actor = 'user' | 'muse';
 
@@ -95,7 +95,7 @@ export class SessionStore {
       tracks: target.tracks.map(({ heightScale: _, ...t }) => (heights.get(t.id) ? { ...t, heightScale: heights.get(t.id) } : t)), // view setting
       sources: { ...target.sources, ...cur.sources }, // audio stays loaded either way
       transport: cur.transport,
-      selection: { trackId: keep(cur.selection.trackId), clipId: keep(cur.selection.clipId) },
+      selection: select(cur, keep(cur.selection.trackId), keep(cur.selection.clipId), cur.selection.clipIds?.filter((c) => ids.has(c))).selection,
       seq: Math.max(cur.seq, target.seq), // never reuse ids
     };
   }

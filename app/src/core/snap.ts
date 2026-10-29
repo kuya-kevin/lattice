@@ -34,3 +34,25 @@ export function snapMove(start: number, delta: number, mode: SnapMode, m: Meter)
 /** Pixel x inside the timeline -> seconds. */
 export const pxToSeconds = (px: number, samplesPerPixel: number, sampleRate: number) => (px * samplesPerPixel) / sampleRate;
 export const secondsToPx = (s: number, samplesPerPixel: number, sampleRate: number) => (s * sampleRate) / samplesPerPixel;
+
+/** The cycle area around the selected clips: [start, end] widened out to the snap grid (the
+ *  grid line at or before the first clip, the one at or after the last clip's end), so with
+ *  Snap: Beat clips from 1.4 to just before 2.4 cycle 1.4-2.4. Snap off: the clips' own edges.
+ *  An edge already on a grid line stays put. */
+export function cycleAround(start: number, end: number, mode: SnapMode, m: Meter): { start: number; end: number } {
+  const g = gridSeconds(mode, m);
+  const a = g ? Math.floor(start / g + 1e-6) * g : start;
+  const b = g ? Math.max(a + g, Math.ceil(end / g - 1e-6) * g) : end;
+  return { start: Math.round(a * 1000) / 1000, end: Math.round(b * 1000) / 1000 };
+}
+
+/** A cycle area dragged in the ruler, on the grid. A drag never collapses it to nothing: an
+ *  area that would be shorter than one grid step gets one step. Null when nothing changes. */
+export function snapCycle(start: number, end: number, mode: SnapMode, m: Meter): { start: number; end: number } | null {
+  const g = gridSeconds(mode, m);
+  if (!g || !(end > start)) return null;
+  const a = snapTime(start, mode, m);
+  let b = snapTime(end, mode, m);
+  if (b <= a) b = Math.round((a + g) * 1000) / 1000;
+  return Math.abs(a - start) < 1e-4 && Math.abs(b - end) < 1e-4 ? null : { start: a, end: b };
+}

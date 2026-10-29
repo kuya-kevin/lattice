@@ -60,7 +60,9 @@ export interface Track {
 export interface Session {
   tracks: Track[];
   sources: Record<string, Source>;
-  selection: { trackId: string | null; clipId: string | null };
+  /** `clipIds` lists every selected clip when more than one is (shift/cmd-click or a marquee);
+   *  `clipId` is then the one clicked last. Absent = just `clipId`. */
+  selection: { trackId: string | null; clipId: string | null; clipIds?: string[] };
   /** `command` + `rev` let the UI replay a transport request even when the values repeat. */
   transport: { playing: boolean; position: number; command: 'play' | 'stop' | 'locate'; rev: number };
   tempo: number; // BPM (quarter notes)
@@ -381,7 +383,9 @@ export function deleteClip(s: Session, clipId: string): Session {
   const { track } = findClip(s, clipId);
   return {
     ...mapTrack(s, track.id, (t) => ({ ...t, clips: t.clips.filter((c) => c.id !== clipId) })),
-    selection: s.selection.clipId === clipId ? { trackId: track.id, clipId: null } : s.selection,
+    selection: s.selection.clipIds?.includes(clipId)
+      ? select(s, s.selection.trackId, s.selection.clipId === clipId ? null : s.selection.clipId, s.selection.clipIds.filter((c) => c !== clipId)).selection
+      : s.selection.clipId === clipId ? { trackId: track.id, clipId: null } : s.selection,
   };
 }
 
@@ -483,8 +487,43 @@ export function setMetronome(s: Session, on?: boolean, countIn?: boolean): Sessi
   return { ...s, metronome: { on: on ?? s.metronome.on, countIn: countIn ?? s.metronome.countIn } };
 }
 
-export function select(s: Session, trackId: string | null, clipId: string | null): Session {
-  return { ...s, selection: { trackId, clipId } };
+export function select(s: Session, trackId: string | null, clipId: string | null, clipIds?: string[]): Session {
+  const ids = [...new Set([...(clipIds ?? []), ...(clipId ? [clipId] : [])])];
+  const primary = clipId ?? ids[ids.length - 1] ?? null;
+  return { ...s, selection: ids.length > 1 ? { trackId, clipId: primary, clipIds: ids } : { trackId, clipId: primary } };
+}
+
+/** Every selected clip id (one or none unless several are selected). */
+export function selectedClipIds(s: Session): string[] {
+  return s.selection.clipIds ?? (s.selection.clipId ? [s.selection.clipId] : []);
+}
+
+/** Move several clips together: each by `delta` seconds and `trackOffset` lanes (down is +),
+ *  as when a multi-selection is dragged. Both are clamped so every clip stays on the timeline
+ *  and on an existing track, which keeps the group's shape. The selection follows. */
+export function moveClips(s: Session, clipIds: string[], delta: number, trackOffset = 0): Session {
+  const found = clipIds.map((id) => findClip(s, id));
+  if (!found.length) return s;
+  const minStart = Math.min(...found.map((f) => f.clip.start));
+  const d = Math.max(delta, -minStart);
+  const idx = found.map((f) => s.tracks.indexOf(f.track));
+  const k = Math.max(-Math.min(...idx), Math.min(s.tracks.length - 1 - Math.max(...idx), Math.round(trackOffset)));
+  const ids = new Set(clipIds);
+  const moved = new Map(found.map((f, i) => [f.clip.id, { clip: { ...f.clip, start: round(f.clip.start + d) }, to: s.tracks[idx[i] + k].id }]));
+  const tracks = s.tracks.map((t) => ({
+    ...t,
+    clips: [...t.clips.filter((c) => !ids.has(c.id)), ...[...moved.values()].filter((m) => m.to === t.id).map((m) => m.clip)],
+  }));
+  const primary = s.selection.clipId ? moved.get(s.selection.clipId) : undefined;
+  return { ...s, tracks, selection: primary ? { ...s.selection, trackId: primary.to } : s.selection };
+}
+
+/** Put a track at `index` in the track list (0 = top), as when its header is dragged. */
+export function moveTrack(s: Session, trackId: string, index: number): Session {
+  const t = getTrack(s, trackId);
+  const rest = s.tracks.filter((x) => x !== t);
+  const i = Math.max(0, Math.min(rest.length, Math.round(index)));
+  return { ...s, tracks: [...rest.slice(0, i), t, ...rest.slice(i)] };
 }
 
 export function sessionEnd(s: Session): number {
@@ -515,7 +554,8 @@ function summarizeSession(s: Session): string {
     const fx = describeChain(t);
     return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;
   });
-  const sel = s.selection.clipId ? `selected clip ${s.selection.clipId}` : s.selection.trackId ? `selected track ${s.selection.trackId}` : 'nothing selected';
+  const multi = s.selection.clipIds;
+  const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${s.selection.clipId}` : s.selection.trackId ? `selected track ${s.selection.trackId}` : 'nothing selected';
   const punch = s.punchIn ? `; punch-in armed on ${s.punchIn.trackId} ${s.punchIn.start}-${s.punchIn.end}s` : '';
   return `${header}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s${punch})`;
 }

@@ -1,7 +1,7 @@
 // Clip moves across tracks, snap math, undo/redo, and the hand-edit log Muse reads.
 import { describe, expect, it } from 'vitest';
 import * as S from '../src/core/session';
-import { gridSeconds, snapMove, snapTime } from '../src/core/snap';
+import { cycleAround, gridSeconds, snapCycle, snapMove, snapTime } from '../src/core/snap';
 import { SessionStore } from '../src/core/store';
 import { StubSidecar } from '../src/core/sidecar';
 import { museToolSpecs, runTool, type ToolContext } from '../src/core/tools';
@@ -155,5 +155,83 @@ describe('placing library sounds and arming', () => {
     await runTool(c, 'delete_clip', { clip_id: 'c2' }, 'user');
     expect(c.store.get().tracks[0].clips).toHaveLength(0);
     expect(c.store.get().selection).toEqual({ trackId: 't1', clipId: null });
+  });
+});
+
+describe('multi-select, group moves and track order', () => {
+  async function threeClips() {
+    const c = await twoTracks(); // t1:c2 at 0 (4 s), t3:c4 at 0 (2 s)
+    await runTool(c, 'move_clip', { clip_id: 'c4', start: 1 }, 'user');
+    await runTool(c, 'import_audio', { source_id: 'v', name: 'Vox', duration: 1 }, 'user'); // t5, c6
+    c.store.takeUserEdits();
+    return c;
+  }
+
+  it('select keeps several clips, the last clicked one primary', async () => {
+    const c = await threeClips();
+    await runTool(c, 'select', { track_id: 't3', clip_id: 'c4', clip_ids: ['c2', 'c4'] }, 'user');
+    expect(c.store.get().selection).toEqual({ trackId: 't3', clipId: 'c4', clipIds: ['c2', 'c4'] });
+    expect(S.selectedClipIds(c.store.get())).toEqual(['c2', 'c4']);
+    expect(S.summarize(c.store.get())).toContain('selected clips c2, c4');
+    await runTool(c, 'select', { track_id: 't1', clip_id: 'c2' }, 'user');
+    expect(c.store.get().selection).toEqual({ trackId: 't1', clipId: 'c2' });
+  });
+
+  it('moves the selected clips together, keeping their shape, in one undo step', async () => {
+    const c = await threeClips();
+    await runTool(c, 'select', { track_id: 't1', clip_id: 'c2', clip_ids: ['c2', 'c4'] }, 'user');
+    const r = await runTool(c, 'move_clips', { delta: 2, track_offset: 1 }, 'user');
+    expect(r.ok).toBe(true);
+    const s = c.store.get();
+    expect(S.findClip(s, 'c2')).toMatchObject({ track: { id: 't3' }, clip: { start: 2 } });
+    expect(S.findClip(s, 'c4')).toMatchObject({ track: { id: 't5' }, clip: { start: 3 } });
+    expect(s.selection).toMatchObject({ trackId: 't3', clipId: 'c2', clipIds: ['c2', 'c4'] });
+    expect(c.store.takeUserEdits()).toEqual(['moved clips c2, c4 together by 2s and 1 track down']);
+    await runTool(c, 'undo', {}, 'user');
+    expect(S.findClip(c.store.get(), 'c4')).toMatchObject({ track: { id: 't3' }, clip: { start: 1 } });
+  });
+
+  it('clamps a group move so no clip leaves the timeline or the track list', () => {
+    let s = S.addSource(S.emptySession(), { id: 'a', name: 'A', duration: 1, origin: 'import' });
+    const [s1, t1] = S.addTrack(s, 'A');
+    const [s2, t2] = S.addTrack(s1, 'B');
+    const [s3, a] = S.addClip(s2, t1.id, 'a', 1);
+    const [s4, b] = S.addClip(s3, t2.id, 'a', 3);
+    s = S.moveClips(s4, [a.id, b.id], -5, 3);
+    expect(S.findClip(s, a.id)).toMatchObject({ track: { id: t1.id }, clip: { start: 0 } });
+    expect(S.findClip(s, b.id)).toMatchObject({ track: { id: t2.id }, clip: { start: 2 } });
+  });
+
+  it('deletes the selected clips at once', async () => {
+    const c = await threeClips();
+    await runTool(c, 'select', { track_id: 't1', clip_id: 'c2', clip_ids: ['c2', 'c6'] }, 'user');
+    await runTool(c, 'delete_clips', {}, 'user');
+    const s = c.store.get();
+    expect(s.tracks.map((t) => t.clips.map((x) => x.id))).toEqual([[], ['c4'], []]);
+    expect(S.selectedClipIds(s)).toEqual([]);
+  });
+
+  it('reorders tracks, and Muse can too', async () => {
+    const c = await threeClips();
+    const r = await runTool(c, 'move_track', { track_id: 't5', index: 0 }, 'muse');
+    expect(r).toMatchObject({ ok: true, result: { from: 2, index: 0 } });
+    expect(c.store.get().tracks.map((t) => t.id)).toEqual(['t5', 't1', 't3']);
+    await runTool(c, 'move_track', { track_id: 't5', index: 99 }, 'user');
+    expect(c.store.get().tracks.map((t) => t.id)).toEqual(['t1', 't3', 't5']);
+    expect(c.store.takeUserEdits()).toEqual(['moved track t5 from position 1 to 3']);
+  });
+
+  it('cycle area: whole bars around the selection, and ruler drags on the grid', () => {
+    // Snap: Beat (0.5 s at 120 BPM): clips from beat 1.4 (1.5 s) to just before 2.4 (3.5 s)
+    expect(cycleAround(1.5, 3.2, 'beat', m44)).toEqual({ start: 1.5, end: 3.5 });
+    expect(cycleAround(1.6, 3.5, 'beat', m44)).toEqual({ start: 1.5, end: 3.5 }); // ends on a beat
+    expect(cycleAround(2.3, 5.1, 'bar', m44)).toEqual({ start: 2, end: 6 });
+    expect(cycleAround(0.1, 0.2, 'bar', m44)).toEqual({ start: 0, end: 2 });
+    expect(cycleAround(1.3, 1.36, 'sixteenth', m44)).toEqual({ start: 1.25, end: 1.375 });
+    expect(cycleAround(1.234, 2.5, 'off', m44)).toEqual({ start: 1.234, end: 2.5 });
+    expect(snapCycle(2.1, 3.9, 'beat', m44)).toEqual({ start: 2, end: 4 });
+    expect(snapCycle(2, 4, 'beat', m44)).toBeNull(); // already on the grid
+    expect(snapCycle(2.1, 2.2, 'bar', m44)).toEqual({ start: 2, end: 4 }); // never collapses
+    expect(snapCycle(2.1, 3.9, 'off', m44)).toBeNull();
   });
 });

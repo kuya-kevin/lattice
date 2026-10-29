@@ -43,6 +43,12 @@ and update the `HANDOFF.md` status table.
     the Musical Typing window drags by its title bar (remembered; double-click resets); the Piano Roll
     previews notes on the region's own instrument (sample, kit or piano) through the track's effects;
     rubber-band note selection on empty grid (Shift adds).
+  - 2026-10-29, done (batch of 5, `e2e/arrange-multi.spec.ts`): multi-select regions (Shift/Cmd-click, or a
+    marquee from empty lane space) and drag them together (`move_clips`, one undo step; Delete runs
+    `delete_clips`); reorder tracks by dragging a header (`move_track`, Muse can call it too); the cycle area
+    snaps to the grid in the ruler; C turns Cycle on around the selected regions, widened to the Snap grid
+    (Beat: 1.4 to 2.4; Bar: whole bars; Off: the regions' edges; none selected: the last area); with Cycle on, Play starts at the cycle start. Not yet: track colours follow
+    the position, so a moved track changes colour; a group drag can't make a new track.
   - 2026-10-28, done: try a sound before it has a track. Library rows get a + (tool `add_sound`, user only):
     the sound goes to Ideas on no track and Musical Typing opens with it; clicking an Ideas card on no
     track does the same; R then records onto a new track named after it. Ideas cards drag onto the

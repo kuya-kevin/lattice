@@ -1,7 +1,8 @@
 // Logic-style track header: colour strip, number, name, Mute / Solo / Record-arm buttons and
 // a volume slider. Clicking the header selects the track; Option/Alt-click on the slider
 // resets it to 0 dB (Logic's reset gesture). Double-click the name to rename; × deletes.
-// Drag the header's bottom edge to make that one track taller or shorter.
+// Drag the header's bottom edge to make that one track taller or shorter. Drag the header
+// itself up or down to reorder the tracks (move_track), as in Logic.
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Session } from '../core/session';
@@ -18,6 +19,7 @@ export function TrackHeader({ session, index, run }: { session: Session; index: 
   useEffect(() => setGain(t?.gainDb ?? 0), [t?.gainDb]);
   const [draft, setDraft] = useState<string | null>(null); // the name being edited (double-click)
   const cancelled = useRef(false);
+  const reorder = useTrackReorder(t?.id, index, run);
   if (!t) return null;
   const selected = session.selection.trackId === t.id;
   const commit = (v = gain) => v !== t.gainDb && run('set_gain', { track_id: t.id, gain_db: v });
@@ -31,10 +33,12 @@ export function TrackHeader({ session, index, run }: { session: Session; index: 
   };
   return (
     <div
-      className={`track-controls${selected ? ' selected' : ''}${t.muted ? ' muted' : ''}`}
+      className={`track-controls${selected ? ' selected' : ''}${t.muted ? ' muted' : ''}${reorder.dragging ? ' dragging' : ''}`}
       data-testid={`track-${t.id}`}
+      data-track-header={t.id}
       style={{ '--track-color': trackColor(index) } as React.CSSProperties}
       onMouseDown={select}
+      onPointerDown={reorder.onPointerDown}
     >
       <div className="track-strip" aria-hidden />
       <div className="track-main">
@@ -83,8 +87,49 @@ export function TrackHeader({ session, index, run }: { session: Session; index: 
         </div>
       </div>
       <LaneHeightHandle trackId={t.id} name={t.name} scale={t.heightScale ?? 1} run={run} />
+      {reorder.guide && createPortal(<div className="lane-h-guide" data-testid="track-drop-line" style={reorder.guide} />, document.body)}
     </div>
   );
+}
+
+/** Drag a track header up or down to move the track: a line shows the gap it will land in,
+ *  and move_track runs on release. Buttons, the slider and the name field keep their clicks. */
+function useTrackReorder(trackId: string | undefined, index: number, run: Run) {
+  const [guide, setGuide] = useState<{ top: number; left: number; width: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 || !trackId || (e.target as HTMLElement).closest('button, input, .lane-h-handle')) return;
+    const y0 = e.clientY;
+    const headers = [...document.querySelectorAll<HTMLElement>('[data-track-header]')].map((h) => h.getBoundingClientRect());
+    const lanes = (e.currentTarget.closest('.arrange') ?? e.currentTarget).getBoundingClientRect();
+    let gap = -1; // insertion gap 0..n (above header i), once the drag has started
+    const move = (ev: PointerEvent) => {
+      if (!(ev.buttons & 1)) return up();
+      if (gap < 0 && Math.abs(ev.clientY - y0) < 5) return;
+      if (gap < 0) {
+        setDragging(true);
+        document.documentElement.classList.add('track-drag');
+      }
+      const i = headers.findIndex((r) => ev.clientY < r.top + r.height / 2);
+      gap = i < 0 ? headers.length : i;
+      const top = gap < headers.length ? headers[gap].top : headers[headers.length - 1].bottom;
+      setGuide({ top, left: lanes.left, width: lanes.width });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      document.documentElement.classList.remove('track-drag');
+      setGuide(null);
+      setDragging(false);
+      const to = gap > index ? gap - 1 : gap;
+      if (gap >= 0 && to !== index) run('move_track', { track_id: trackId, index: to });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
+  };
+  return { onPointerDown, guide, dragging };
 }
 
 /** Height of a lane's region header strip (waveform-playlist's CLIP_HEADER_HEIGHT). */

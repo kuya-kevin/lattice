@@ -8,17 +8,20 @@
 //  - library sounds and Ideas cards dragged in (HTML5 drag and drop) land on the track under
 //    the pointer at the snapped time, or on a new track below the others.
 //  - clicking a clip selects it (track + clip), as in Logic; double-clicking also opens it in
-//    the Piano Roll (onOpenClip).
+//    the Piano Roll (onOpenClip). Shift- or Cmd-click adds or removes a clip, and dragging
+//    from empty lane space draws a marquee (Logic's rubber band); dragging any clip of a
+//    multi-selection moves them all (move_clips), keeping their shape.
 //  - clicking or dragging in the bar ruler moves the playhead, snapped to the grid (Logic's
-//    ruler). With Cycle on, the ruler's upper half stays the cycle area, as in Logic.
-import { useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+//    ruler). With Cycle on, the ruler's upper half stays the cycle area, as in Logic, and the
+//    cycle area snaps to the grid as it is drawn or dragged.
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Modifier } from '@dnd-kit/abstract';
 import { DragDropProvider } from '@dnd-kit/react';
-import { useClipDragHandlers, useDragSensors, usePlaylistData, usePlaylistState } from '@waveform-playlist/browser';
+import { useClipDragHandlers, useDragSensors, usePlaybackAnimation, usePlaylistControls, usePlaylistData, usePlaylistState } from '@waveform-playlist/browser';
 import { formatBarsBeats, type Meter } from '../core/metronome';
 import { midiSignature, type MidiData } from '../core/midi';
-import type { Session } from '../core/session';
-import { pxToSeconds, secondsToPx, snapMove, snapTime, type SnapMode } from '../core/snap';
+import { selectedClipIds, type Session } from '../core/session';
+import { pxToSeconds, secondsToPx, snapCycle, snapMove, snapTime, type SnapMode } from '../core/snap';
 import { IDEA_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -65,11 +68,26 @@ const NEW_LANE_HEIGHT = 64;
 export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTracks, onDropSound, onDropIdea, onOpenClip, children }: Props) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const { tracks, samplesPerPixel, sampleRate, playoutRef, isDraggingRef, onTracksChange } = usePlaylistData();
-  const { isLoopEnabled } = usePlaylistState();
-  const [ghost, setGhost] = useState<Ghost | null>(null);
+  const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
+  const { setLoopRegion, setSelection, setCurrentTime } = usePlaylistControls();
+  const { isPlaying, currentTimeRef } = usePlaybackAnimation();
+  const [ghosts, setGhosts] = useState<Ghost[]>([]);
+  const [marquee, setMarquee] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const meter: Meter = useMemo(() => ({ tempo: session.tempo, timeSignature: session.timeSignature }), [session.tempo, session.timeSignature]);
   const latest = useRef({ session, snap, meter, samplesPerPixel, sampleRate });
   latest.current = { session, snap, meter, samplesPerPixel, sampleRate };
+
+  // the library draws and drags the cycle area in raw pixels: put each change on the grid
+  // (its drags measure from where they started, so snapping as they go doesn't fight them)
+  useEffect(() => {
+    if (!isLoopEnabled) return;
+    const r = snapCycle(loopStart, loopEnd, snap, meter);
+    if (r) setLoopRegion(r.start, r.end);
+  }, [isLoopEnabled, loopStart, loopEnd, snap, meter, setLoopRegion]);
+
+  /** Lane rows in track order, with their screen rects. */
+  const laneRects = () =>
+    [...(wrapRef.current?.querySelectorAll<HTMLElement>('[data-track-row][data-track-id]') ?? [])].map((r) => ({ id: r.dataset.trackId!, rect: r.getBoundingClientRect() }));
 
   /** Track lane under a viewport point (null trackId = the empty space below the tracks). */
   const hitTest = useCallback((x: number, y: number) => {
@@ -96,9 +114,9 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       const label = `${formatBarsBeats(start, m)} · ${name}`;
       if (h.x0 == null) {
         const r = wrapRef.current!.getBoundingClientRect();
-        setGhost({ left: r.left + 8, top: r.top + 8, width: r.width - 16, height: Math.min(r.height - 16, 120), label: `${name} at 1 1 1`, isNew: true });
+        setGhosts([{ left: r.left + 8, top: r.top + 8, width: r.width - 16, height: Math.min(r.height - 16, 120), label: `${name} at 1 1 1`, isNew: true }]);
       } else {
-        setGhost({ left: h.x0 + secondsToPx(start, spp, sr), top: h.top, width: Math.max(6, secondsToPx(duration, spp, sr)), height: h.height, label, isNew: !h.trackId });
+        setGhosts([{ left: h.x0 + secondsToPx(start, spp, sr), top: h.top, width: Math.max(6, secondsToPx(duration, spp, sr)), height: h.height, label, isNew: !h.trackId }]);
       }
       return h;
     },
@@ -113,6 +131,9 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
   const trim = useClipDragHandlers({ tracks, onTracksChange: onTracksChange ?? (() => {}), samplesPerPixel, engineRef: playoutRef, isDraggingRef, snapSamplePosition });
   const sensors = useDragSensors({});
   const move = useRef<{ clipId: string; fromTrack: string; start: number; duration: number; x0: number; el: Element | null; target: DropTarget | null } | null>(null);
+  /** a drag of a multi-selection: every clip moves by the same time and lane offset */
+  const group = useRef<{ ids: string[]; x0: number; start: number; fromIndex: number; delta: number; offset: number } | null>(null);
+  const dragged = useRef(false); // a clip drag started since the last pointerdown
 
   const onDragStart = useCallback(
     (event: any) => {
@@ -126,6 +147,13 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       }
       const clip = session.tracks.flatMap((t) => t.clips).find((c) => c.id === data.clipId);
       if (!clip || !fromTrack) return;
+      dragged.current = true;
+      const ids = selectedClipIds(session);
+      if (ids.length > 1 && ids.includes(clip.id)) {
+        const fromIndex = session.tracks.findIndex((t) => t.id === fromTrack);
+        group.current = { ids, x0: event.operation.position.initial.x, start: clip.start, fromIndex, delta: 0, offset: 0 };
+        return;
+      }
       const el = event.operation.source.element ?? null;
       el?.setAttribute('data-lt-drag-source', '');
       move.current = { clipId: clip.id, fromTrack, start: clip.start, duration: clip.duration, x0: event.operation.position.initial.x, el, target: null };
@@ -134,10 +162,35 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     [tracks, session.tracks, trim, trimmingRef, run],
   );
 
+  /** Ghosts for a multi-selection drag, clamped as move_clips clamps (no clip before 0 or off
+   *  the track list), so what you see is where they land. */
+  const moveGroup = useCallback((p: { x: number; y: number }) => {
+    const g = group.current!;
+    const { session: s, samplesPerPixel: spp, sampleRate: sr, snap: sn, meter: mt } = latest.current;
+    const clips = g.ids.flatMap((id) => s.tracks.flatMap((t, i) => t.clips.filter((c) => c.id === id).map((c) => ({ c, i }))));
+    const lanes = laneRects();
+    if (!clips.length || !lanes.length) return;
+    const minStart = Math.min(...clips.map((x) => x.c.start));
+    g.delta = Math.max(snapMove(g.start, pxToSeconds(p.x - g.x0, spp, sr), sn, mt) - g.start, -minStart);
+    let at = lanes.findIndex((l) => p.y >= l.rect.top && p.y < l.rect.bottom);
+    if (at < 0) at = p.y < lanes[0].rect.top ? 0 : lanes.length - 1;
+    const idx = clips.map((x) => x.i);
+    g.offset = Math.max(-Math.min(...idx), Math.min(lanes.length - 1 - Math.max(...idx), at - g.fromIndex));
+    const x0 = lanes[0].rect.left;
+    setGhosts(
+      clips.map(({ c, i }, n) => {
+        const lane = lanes[i + g.offset].rect;
+        const label = n === 0 ? `${formatBarsBeats(c.start + g.delta, mt)} · ${clips.length} regions` : '';
+        return { left: x0 + secondsToPx(c.start + g.delta, spp, sr), top: lane.top, width: Math.max(6, secondsToPx(c.duration, spp, sr)), height: lane.height, label, isNew: false };
+      }),
+    );
+  }, []);
+
   const onDragMove = useCallback(
     (event: any) => {
       const data = event.operation?.source?.data;
       if (data?.boundary) return trim.onDragMove(event);
+      if (group.current) return moveGroup(event.to ?? event.operation.position.current);
       const m = move.current;
       if (!m) return;
       const p = event.to ?? event.operation.position.current;
@@ -146,7 +199,7 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       const h = showGhost(p.x, p.y, start, m.duration);
       m.target = { trackId: h.trackId, start };
     },
-    [trim, showGhost],
+    [trim, showGhost, moveGroup],
   );
 
   const onDragEnd = useCallback(
@@ -158,9 +211,16 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
         requestAnimationFrame(commitTracks);
         return;
       }
+      const g = group.current;
+      group.current = null;
+      if (g) {
+        setGhosts([]);
+        if (!event.canceled && (Math.abs(g.delta) > 0.0005 || g.offset)) await run('move_clips', { clip_ids: g.ids, delta: g.delta, track_offset: g.offset });
+        return;
+      }
       const m = move.current;
       move.current = null;
-      setGhost(null);
+      setGhosts([]);
       m?.el?.removeAttribute('data-lt-drag-source');
       if (!m || event.canceled || !m.target) return;
       let { trackId } = m.target;
@@ -201,17 +261,80 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     window.addEventListener('pointercancel', up);
   };
 
-  // ---- click a clip to select it ----
+  // ---- click a clip to select it; Shift/Cmd-click toggles it; drag on empty space: marquee ----
   const onPointerDownCapture = (e: React.PointerEvent) => {
     const ruler = (e.target as HTMLElement).closest<HTMLElement>('[data-lt-ruler]');
     if (ruler) return onRulerDown(e, ruler);
     if ((e.target as HTMLElement).closest('.track-controls')) return;
+    if (e.button !== 0) return;
+    dragged.current = false;
     const h = hitTest(e.clientX, e.clientY);
-    if (!h.trackId || h.x0 == null || e.clientX < h.x0) return;
+    if (h.x0 == null || e.clientX < h.x0) return;
+    const additive = e.shiftKey || e.metaKey;
+    const ids = selectedClipIds(session);
     const t = session.tracks.find((x) => x.id === h.trackId);
     const clip = t?.clips.find((c) => h.seconds >= c.start && h.seconds <= c.start + c.duration);
-    if (clip && session.selection.clipId !== clip.id) run('select', { track_id: h.trackId, clip_id: clip.id });
-    else if (!clip && session.selection.clipId) run('select', { track_id: h.trackId });
+    if (clip && additive) {
+      const next = ids.includes(clip.id) ? ids.filter((c) => c !== clip.id) : [...ids, clip.id];
+      run('select', { track_id: h.trackId, ...(next.includes(clip.id) ? { clip_id: clip.id } : {}), clip_ids: next });
+    } else if (clip && ids.length > 1 && ids.includes(clip.id)) {
+      // a click on one of several selected clips keeps them all for a drag; without a drag it
+      // selects just that one, as in Logic
+      const up = () => {
+        window.removeEventListener('pointerup', up);
+        if (!dragged.current) run('select', { track_id: h.trackId, clip_id: clip.id });
+      };
+      window.addEventListener('pointerup', up);
+    } else if (clip && session.selection.clipId !== clip.id) run('select', { track_id: h.trackId, clip_id: clip.id });
+    else if (!clip) {
+      if (h.trackId && ids.length && !additive) run('select', { track_id: h.trackId });
+      startMarquee(e.clientX, e.clientY, additive ? ids : []);
+    }
+  };
+
+  /** Rubber-band selection from empty lane space: every clip the box touches is selected
+   *  (added to `keep` with Shift/Cmd). Starts after a few pixels so a click stays a click. */
+  const startMarquee = (x0: number, y0: number, keep: string[]) => {
+    let on = false;
+    const playhead = currentTimeRef.current ?? 0; // read before the library's mousedown moves it
+    let last = '';
+    const move = (ev: PointerEvent) => {
+      if (!(ev.buttons & 1) || dragged.current) return up();
+      if (!on && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 5) return;
+      on = true;
+      const left = Math.min(x0, ev.clientX), right = Math.max(x0, ev.clientX);
+      const top = Math.min(y0, ev.clientY), bottom = Math.max(y0, ev.clientY);
+      setMarquee({ left, top, width: right - left, height: bottom - top });
+      const { session: s, samplesPerPixel: spp, sampleRate: sr } = latest.current;
+      const lanes = laneRects();
+      if (!lanes.length) return;
+      const t0 = pxToSeconds(left - lanes[0].rect.left, spp, sr), t1 = pxToSeconds(right - lanes[0].rect.left, spp, sr);
+      const hit = lanes
+        .filter((l) => l.rect.bottom > top && l.rect.top < bottom)
+        .flatMap((l) => (s.tracks.find((t) => t.id === l.id)?.clips ?? []).filter((c) => c.start < t1 && c.start + c.duration > t0).map((c) => ({ c, track: l.id })));
+      const ids = [...new Set([...keep, ...hit.map((x) => x.c.id)])];
+      const key = ids.join();
+      if (key === last) return;
+      last = key;
+      const primary = hit[0];
+      run('select', { track_id: primary?.track ?? s.selection.trackId ?? undefined, ...(primary ? { clip_id: primary.c.id } : {}), clip_ids: ids });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      window.removeEventListener('pointercancel', up);
+      setMarquee(null);
+      // the library also treats the drag as a time selection and a click-to-locate: undo both
+      // once its own mouseup has run
+      if (on && !isPlaying)
+        setTimeout(() => {
+          setSelection(0, 0);
+          setCurrentTime(playhead);
+        });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+    window.addEventListener('pointercancel', up);
   };
 
   const onDoubleClick = (e: React.MouseEvent) => {
@@ -228,7 +351,7 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
   // region header with the clip's own name (the library prints the track name, which is wrong
   // once a clip has moved to another track), and draw a MIDI region's notes over its body in
   // place of the rendered audio's waveform, as Logic, GarageBand and BandLab do.
-  const selClip = session.selection.clipId;
+  const selClips = new Set(selectedClipIds(session));
   const midiById = new Map(session.tracks.flatMap((t) => t.clips.filter((c) => c.midi).map((c) => [c.id, c] as const)));
   useLayoutEffect(() => {
     const root = wrapRef.current;
@@ -241,7 +364,7 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       t.clips.forEach((c, i) => {
         const node = nodes[i];
         if (!node) return;
-        if (c.id === selClip) node.setAttribute('data-lt-selected', '');
+        if (selClips.has(c.id)) node.setAttribute('data-lt-selected', '');
         else node.removeAttribute('data-lt-selected');
         const header = node.firstElementChild;
         if (header && c.name && header.getAttribute('data-lt-name') !== c.name) header.setAttribute('data-lt-name', c.name);
@@ -268,7 +391,7 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     if (!id && !idea) return;
     e.preventDefault();
     e.stopPropagation();
-    setGhost(null);
+    setGhosts([]);
     const h = hitTest(e.clientX, e.clientY);
     const { snap: sn, meter: mt } = latest.current;
     const target = { trackId: h.trackId, start: h.x0 == null ? 0 : snapTime(h.seconds, sn, mt) };
@@ -283,17 +406,18 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       onPointerDownCapture={onPointerDownCapture}
       onDoubleClick={onDoubleClick}
       onDragOver={onDragOver}
-      onDragLeave={(e) => !wrapRef.current?.contains(e.relatedTarget as Node) && setGhost(null)}
+      onDragLeave={(e) => !wrapRef.current?.contains(e.relatedTarget as Node) && setGhosts([])}
       onDrop={onDrop}
     >
       <DragDropProvider sensors={sensors} modifiers={[StayPut]} onDragStart={onDragStart} onDragMove={onDragMove} onDragEnd={onDragEnd}>
         {children}
       </DragDropProvider>
-      {ghost && (
-        <div className={`drop-ghost${ghost.isNew ? ' new' : ''}`} data-testid="drop-indicator" style={{ left: ghost.left, top: ghost.top, width: ghost.width, height: ghost.height }}>
-          <span className="help-tag">{ghost.label}</span>
+      {ghosts.map((g, i) => (
+        <div key={i} className={`drop-ghost${g.isNew ? ' new' : ''}`} data-testid="drop-indicator" style={{ left: g.left, top: g.top, width: g.width, height: g.height }}>
+          {g.label && <span className="help-tag">{g.label}</span>}
         </div>
-      )}
+      ))}
+      {marquee && <div className="marquee" data-testid="marquee" style={marquee} />}
     </div>
   );
 }

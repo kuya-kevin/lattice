@@ -6,7 +6,8 @@ import { usePlaybackAnimation, usePlaylistControls, usePlaylistState } from '@wa
 import { useMicrophoneAccess, useRecording } from '@waveform-playlist/recording';
 import { barLength, beatLength, formatBarsBeats, formatTime, nextBarLine, prevBarLine, type Meter } from '../core/metronome';
 import { TAP_RESET_MS, tapTempo, type TapState } from '../core/tapTempo';
-import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, type Session } from '../core/session';
+import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, selectedClipIds, type Session } from '../core/session';
+import { cycleAround, type SnapMode } from '../core/snap';
 import { newSourceId, sliceBuffer } from './audio';
 import { audioContext, inputDelay, outputDelay, transportHandoff, waitForAudioTime, withLookAhead } from './audioClock';
 import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, trimTake, type Cycle, type TransportAnchor } from '../core/recordTiming';
@@ -25,9 +26,11 @@ interface Props {
   run: Run;
   importFiles: (f: FileList) => void;
   addBuffer: (id: string, b: AudioBuffer) => void;
+  /** the arrangement's Snap setting: C fits the cycle around the selection to this grid */
+  snap: SnapMode;
 }
 
-export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
+export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { isPlaying, currentTimeRef, visualTimeRef } = usePlaybackAnimation();
   const { setLoopEnabled, setLoopRegion } = usePlaylistControls();
@@ -55,14 +58,23 @@ export function ControlBar({ session, run, importFiles, addBuffer }: Props) {
   }, [session.tempo]);
 
   const actions: Record<ShortcutAction, () => void> = {
-    playStop: () => rec.cancelCountIn() || (isPlaying ? run('stop', { at: heard() }) : run('play', { from: now() })),
+    // with Cycle on, play always starts at the cycle's left edge
+    playStop: () => rec.cancelCountIn() || (isPlaying ? run('stop', { at: heard() }) : run('play', { from: isLoopEnabled && loopEnd > loopStart ? loopStart : now() })),
     goToStart: () => run('go_to', { position: 0 }),
     record: () => rec.toggle(),
     metronome: () => run('set_metronome', { on: !session.metronome.on }),
     countIn: () => run('set_metronome', { count_in: !session.metronome.countIn }),
+    // turning Cycle on fits it around the selected clips, on the Snap grid (Logic's "Set Locators
+    // by Regions"); with none selected it keeps the last area, else bars 1-4
     cycle: () => {
-      if (!(loopEnd > loopStart)) setLoopRegion(0, 4 * barLength(meter)); // default: bars 1-4
-      setLoopEnabled(!isLoopEnabled);
+      if (isLoopEnabled) return setLoopEnabled(false);
+      const ids = new Set(selectedClipIds(session));
+      const clips = session.tracks.flatMap((t) => t.clips).filter((c) => ids.has(c.id));
+      if (clips.length) {
+        const r = cycleAround(Math.min(...clips.map((c) => c.start)), Math.max(...clips.map((c) => c.start + c.duration)), snap, meter);
+        setLoopRegion(r.start, r.end);
+      } else if (!(loopEnd > loopStart)) setLoopRegion(0, 4 * barLength(meter)); // default: bars 1-4
+      setLoopEnabled(true);
     },
     barBack: () => run('go_to', { position: prevBarLine(heard(), meter) }),
     barForward: () => run('go_to', { position: nextBarLine(heard(), meter) }),

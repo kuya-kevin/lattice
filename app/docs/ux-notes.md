@@ -330,6 +330,19 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
   while the window has focus, because Electron's global shortcuts can't see a key release. Not
   modelled on Logic or GarageBand, which have no voice commands.
 
+## Region selection, track order and Cycle (Oct 29)
+
+- **Several regions:** Shift- or Cmd-click adds or removes a region; dragging from empty lane space
+  draws a marquee (rubber band) that selects every region it touches (Shift/Cmd adds to the selection).
+  Dragging any selected region moves them all by the same time and lane offset; a click on one of
+  them without a drag selects just that one. As in Logic's Tracks area.
+- **Track order:** drag a track header up or down; a line shows where it lands (Logic).
+- **Cycle:** C (or the Cycle button) turns Cycle on around the selected regions, widened out to the
+  Snap grid (Beat: regions from 1.4 to just before 2.4 cycle 1.4-2.4; Bar: whole bars; Off: the
+  regions' own edges). Like Logic's "Set Locators by Regions" (unverified that Logic's C does this by
+  default; it toggles Cycle). Whole bars only was the first version; the user expected the grid. With Cycle on, Play starts at the cycle start (the user's request; Logic plays from the
+  playhead). The cycle area snaps to the Snap grid while it is drawn or dragged.
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html

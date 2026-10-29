@@ -24,7 +24,7 @@ are in `CLAUDE.md`; direction is in `idea.md`.
 
 ## Tests (2026-10-28)
 
-- Vitest: 232 passing in 25 files (Oct 28, after B13 slice_drums + find_sound). `npx tsc --noEmit` clean.
+- Vitest: 238 passing in 25 files (Oct 29, after the multi-select / track reorder / cycle batch). `npx tsc --noEmit` clean. Oct 29: `e2e/arrange-multi.spec.ts` (4) plus 10 related specs pass (full suite not re-run).
 - Playwright: 81 tests (web + 8 Electron) in 23 specs; all passed Oct 28 after the B0 bug batch, and the 3 B2 tests and the 4 `engineer.spec.ts` tests (with B13) pass (full suite not re-run) (`app/e2e/`), plus the fx render harness (`app/e2e-fx/`). Known: a second arrangement trim within ~1 s of the previous one can miss (backlog B0). Electron tests launch with a fresh `LATTICE_USER_DATA` folder each.
 - **After a pull that changes `app/patches/`:** if Play does nothing ("TonePlayout not initialized"), the old patch is still applied. Run `rm -rf node_modules/@waveform-playlist/browser && npm install` in `app/`. This was the cause of two `playback-edits` failures on Oct 28.
 - Fixed Oct 28: in the Audio Editor, a trim followed by dragging the region body did nothing (the trim's text selection started a native drag). `user-select: none` on `.ae-canvas`. The Piano Roll's `.pr-canvas` has no such rule; check it by hand.

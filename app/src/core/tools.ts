@@ -287,6 +287,54 @@ export const TOOLS: ToolDef[] = [
         : `moved clip ${r.clip_id} from ${r.from_track} @${r.from_start}s to ${r.track_id} @${r.start}s`,
   },
   {
+    name: 'move_clips',
+    description:
+      'Move several clips together, keeping their spacing: each by delta seconds (negative = earlier) and, with track_offset, ' +
+      'that many tracks down (negative = up). Clamped so no clip goes before 0 or off the track list. Defaults to the selected clips.',
+    parameters: obj({
+      clip_ids: { type: 'array', items: { type: 'string' }, description: 'Clip ids; omit to use the selected clips' },
+      delta: num('Seconds to move by'),
+      track_offset: num('Tracks to move down (negative = up); default 0'),
+    }, ['delta']),
+    run: (ctx, a) => {
+      const ids: string[] = a.clip_ids ?? S.selectedClipIds(ctx.store.get());
+      if (!ids.length) throw new S.SessionError('no clip_ids given and no clips selected');
+      const before = ids.map((id) => S.findClip(ctx.store.get(), id));
+      const s = edit(ctx, (s) => S.moveClips(s, ids, a.delta, a.track_offset ?? 0));
+      const after = ids.map((id) => S.findClip(s, id));
+      return {
+        clip_ids: ids,
+        delta: Math.round((after[0].clip.start - before[0].clip.start) * 1000) / 1000,
+        track_offset: s.tracks.indexOf(after[0].track) - s.tracks.findIndex((t) => t.id === before[0].track.id),
+        clips: after.map((f) => ({ clip_id: f.clip.id, track_id: f.track.id, start: f.clip.start })),
+      };
+    },
+    logText: (_a, r) => `moved clips ${r.clip_ids.join(', ')} together by ${r.delta}s${r.track_offset ? ` and ${r.track_offset} track${Math.abs(r.track_offset) === 1 ? '' : 's'} ${r.track_offset > 0 ? 'down' : 'up'}` : ''}`,
+  },
+  {
+    name: 'delete_clips',
+    description: 'Delete several clips at once (one undo step). Defaults to the selected clips.',
+    parameters: obj({ clip_ids: { type: 'array', items: { type: 'string' }, description: 'Clip ids; omit to use the selected clips' } }),
+    run: (ctx, a) => {
+      const ids: string[] = a.clip_ids ?? S.selectedClipIds(ctx.store.get());
+      if (!ids.length) throw new S.SessionError('no clip_ids given and no clips selected');
+      edit(ctx, (s) => ids.reduce((x, id) => S.deleteClip(x, id), s));
+      return { deleted: ids };
+    },
+    logText: (_a, r) => `deleted clips ${r.deleted.join(', ')}`,
+  },
+  {
+    name: 'move_track',
+    description: 'Reorder tracks: put a track at a position in the track list (0 = top), e.g. to group drums or vocals together.',
+    parameters: obj({ track_id: str('Track id'), index: num('New position, 0 = top') }, ['track_id', 'index']),
+    run: (ctx, a) => {
+      const from = ctx.store.get().tracks.findIndex((t) => t.id === a.track_id);
+      const s = edit(ctx, (s) => S.moveTrack(s, a.track_id, a.index));
+      return { track_id: a.track_id, from, index: s.tracks.findIndex((t) => t.id === a.track_id) };
+    },
+    logText: (_a, r) => `moved track ${r.track_id} from position ${r.from + 1} to ${r.index + 1}`,
+  },
+  {
     name: 'delete_clip',
     description: 'Delete a clip from the arrangement (its audio stays available for undo).',
     parameters: obj({ clip_id: str('Clip id') }, ['clip_id']),
@@ -724,12 +772,12 @@ export const TOOLS: ToolDef[] = [
   },
   {
     name: 'select',
-    description: 'Select a track and/or clip.',
+    description: 'Select a track and/or clip (clip_ids: several clips).',
     userOnly: true,
     quiet: true,
-    parameters: obj({ track_id: str(''), clip_id: str('') }),
+    parameters: obj({ track_id: str(''), clip_id: str(''), clip_ids: { type: 'array', items: { type: 'string' }, description: '' } }),
     run: (ctx, a) => {
-      edit(ctx, (s) => S.select(s, a.track_id ?? null, a.clip_id ?? null));
+      edit(ctx, (s) => S.select(s, a.track_id ?? null, a.clip_id ?? null, a.clip_ids));
       return { ok: true };
     },
   },
@@ -762,7 +810,8 @@ export function validateArgs(schema: JsonSchema, args: unknown): string | null {
       t === 'number' ? typeof value === 'number' && Number.isFinite(value) :
       t === 'string' ? typeof value === 'string' :
       t === 'boolean' ? typeof value === 'boolean' :
-      t === 'object' ? typeof value === 'object' && !Array.isArray(value) : true;
+      t === 'object' ? typeof value === 'object' && !Array.isArray(value) :
+      t === 'array' ? Array.isArray(value) : true;
     if (!ok) return `argument "${key}" must be a ${t}`;
     if (prop.enum && !prop.enum.includes(value)) return `argument "${key}" must be one of ${prop.enum.join(', ')}`;
   }
