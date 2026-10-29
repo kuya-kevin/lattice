@@ -274,7 +274,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     );
   }
 
-  const color = trackColor(trackIndex);
+  const color = trackColor(session, trackIndex);
   const selVel = sel.size ? Math.round([...sel].reduce((k, i) => k + notes[i].velocity, 0) / sel.size) : null;
   const beatPx = beat * pps;
   const barPx = bar * pps;

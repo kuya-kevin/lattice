@@ -65,7 +65,7 @@ const theme = {
  *  muted tracks turn grey, as in Logic. */
 function trackColorCss(session: Session): string {
   return session.tracks
-    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? '#5b616d' : trackColor(i)}; }`)
+    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? '#5b616d' : trackColor(session, i)}; }`)
     .join('\n');
 }
 

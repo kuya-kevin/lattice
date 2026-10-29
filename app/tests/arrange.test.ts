@@ -221,6 +221,16 @@ describe('multi-select, group moves and track order', () => {
     expect(c.store.takeUserEdits()).toEqual(['moved track t5 from position 1 to 3']);
   });
 
+  it('a moved track keeps its colour, and a new track takes the next one', async () => {
+    const c = await threeClips();
+    await runTool(c, 'move_track', { track_id: 't5', index: 0 }, 'user');
+    expect(c.store.get().tracks.map((t) => t.color)).toEqual([2, 0, 1]);
+    const [s] = S.addTrack(c.store.get());
+    expect(s.tracks.map((t) => t.color)).toEqual([2, 0, 1, 3]);
+    const s2 = S.addTrack(S.addTrack(S.emptySession())[0])[0];
+    expect(s2.tracks.map((t) => t.color)).toEqual([0, 1]);
+  });
+
   it('cycle area: whole bars around the selection, and ruler drags on the grid', () => {
     // Snap: Beat (0.5 s at 120 BPM): clips from beat 1.4 (1.5 s) to just before 2.4 (3.5 s)
     expect(cycleAround(1.5, 3.2, 'beat', m44)).toEqual({ start: 1.5, end: 3.5 });

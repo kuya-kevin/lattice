@@ -96,9 +96,12 @@ test('dragging a track header reorders the tracks', async ({ page }) => {
   await page.mouse.move(vox.x + 2, vox.y + 2);
   await page.mouse.down();
   await page.mouse.move(vox.x + 2, top.y + 4, { steps: 8 });
+  const colour = (id: string) => page.getByTestId(`track-${id}`).evaluate((e) => getComputedStyle(e).getPropertyValue('--track-color').trim());
+  const before = { t1: await colour('t1'), t5: await colour('t5') };
   await expect(page.getByTestId('track-drop-line')).toBeVisible();
   await page.mouse.up();
   await expect.poll(async () => (await session(page)).tracks.map((t) => t.id)).toEqual(['t5', 't1', 't3']);
+  expect({ t1: await colour('t1'), t5: await colour('t5') }).toEqual(before); // colours go with the tracks
   await expect(page.locator('[data-track-row]').first()).toHaveAttribute('data-track-id', 't5');
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await session(page)).tracks.map((t) => t.id)).toEqual(['t1', 't3', 't5']);

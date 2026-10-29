@@ -45,7 +45,7 @@ export function ideaGroups(s: Session): { root: string; versions: Source[] }[] {
 function usage(s: Session, sourceId: string | Set<string>) {
   const has = (id?: string) => !!id && (typeof sourceId === 'string' ? id === sourceId : sourceId.has(id));
   const uses = s.tracks.flatMap((t, i) => t.clips.filter((c) => has(c.sourceId) || has(c.midi?.sample?.sourceId)).map((c) => ({ t, i, c })));
-  return { uses, color: uses.length ? trackColor(uses[0].i) : 'var(--faint)' };
+  return { uses, color: uses.length ? trackColor(s, uses[0].i) : 'var(--faint)' };
 }
 
 /** What deleting a sound does to the arrangement. */
@@ -300,7 +300,7 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
           const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
           const x1 = hr.left - wr.left, y1 = y - wr.top;
           const dx = Math.max(30, (x1 - x0) / 2);
-          out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(i), x0, y0, x1, y1 });
+          out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(session, i), x0, y0, x1, y1 });
         }
       }
       setPaths(out);

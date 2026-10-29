@@ -53,6 +53,9 @@ export interface Track {
   /** Lane height relative to the global track height (Height −/+), set by dragging the lane's
    *  bottom edge. Absent = 1. A view setting: no undo, not shown to Muse. */
   heightScale?: number;
+  /** Palette slot for the track's colour, given when it is made so a moved track keeps its
+   *  colour (Logic). Absent (older sessions) = its position. A view setting, not shown to Muse. */
+  color?: number;
   clips: Clip[];
   devices: DeviceInstance[]; // insert chain, in signal order (fx/chain.ts edits it)
 }
@@ -125,7 +128,8 @@ function mapClip(s: Session, clipId: string, fn: (c: Clip) => Clip): Session {
 
 export function addTrack(s: Session, name?: string): [Session, Track] {
   const [s1, id] = nextId(s, 't');
-  const track: Track = { id, name: name || `Track ${s1.tracks.length + 1}`, gainDb: 0, muted: false, soloed: false, clips: [], devices: [] };
+  const color = s1.tracks.length ? Math.max(...s1.tracks.map((t, i) => t.color ?? i)) + 1 : 0;
+  const track: Track = { id, name: name || `Track ${s1.tracks.length + 1}`, gainDb: 0, muted: false, soloed: false, color, clips: [], devices: [] };
   return [{ ...s1, tracks: [...s1.tracks, track] }, track];
 }
 
@@ -523,8 +527,11 @@ export function moveClips(s: Session, clipIds: string[], delta: number, trackOff
 
 /** Put a track at `index` in the track list (0 = top), as when its header is dragged. */
 export function moveTrack(s: Session, trackId: string, index: number): Session {
-  const t = getTrack(s, trackId);
-  const rest = s.tracks.filter((x) => x !== t);
+  getTrack(s, trackId);
+  // pin every colour to its current slot first, so tracks of older sessions keep theirs too
+  const pinned = s.tracks.map((x, i) => (x.color === undefined ? { ...x, color: i } : x));
+  const t = pinned.find((x) => x.id === trackId)!;
+  const rest = pinned.filter((x) => x !== t);
   const i = Math.max(0, Math.min(rest.length, Math.round(index)));
   return { ...s, tracks: [...rest.slice(0, i), t, ...rest.slice(i)] };
 }

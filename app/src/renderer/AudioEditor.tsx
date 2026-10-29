@@ -106,7 +106,7 @@ export function AudioEditor({ session, run, bridge }: { session: Session; run: R
   const viewEnd = viewStart + Math.ceil(Math.max(lastT - viewStart, size.w / pps) / bar) * bar;
   const width = Math.ceil((viewEnd - viewStart) * pps);
   const xOf = (tl: number) => (tl - viewStart) * pps;
-  const color = trackColor(Math.max(0, trackIndex));
+  const color = trackColor(session, Math.max(0, trackIndex));
 
   // a new region: drop any draft and scroll it into view
   const clipId = clip?.id;

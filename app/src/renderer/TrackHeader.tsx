@@ -11,7 +11,8 @@ type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boole
 
 /** Region colours, one per track in turn: equal lightness, so no lane shouts. */
 export const TRACK_COLORS = ['#f08a6c', '#e9b85a', '#7fd39a', '#8fb3ff', '#c79cf0', '#6fcfc0', '#f08aa8', '#b9d36a'];
-export const trackColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
+/** The colour of the track at `index`: its own palette slot (kept when it moves), else its position. */
+export const trackColor = (s: Session, index: number) => TRACK_COLORS[(s.tracks[index]?.color ?? index) % TRACK_COLORS.length];
 
 export function TrackHeader({ session, index, run }: { session: Session; index: number; run: Run }) {
   const t = session.tracks[index];
@@ -36,7 +37,7 @@ export function TrackHeader({ session, index, run }: { session: Session; index: 
       className={`track-controls${selected ? ' selected' : ''}${t.muted ? ' muted' : ''}${reorder.dragging ? ' dragging' : ''}`}
       data-testid={`track-${t.id}`}
       data-track-header={t.id}
-      style={{ '--track-color': trackColor(index) } as React.CSSProperties}
+      style={{ '--track-color': trackColor(session, index) } as React.CSSProperties}
       onMouseDown={select}
       onPointerDown={reorder.onPointerDown}
     >
