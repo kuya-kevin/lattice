@@ -24,13 +24,17 @@ TH = {"kick": 0.7, "kick_tilt": 0.6, "snare": 0.7, "snare_tilt": 0.6, "hat": 0.3
 HOP = 256
 
 
-def onset_features(y: np.ndarray, sr: int, delta: float = 0.07, min_gap: float = 0.05):
-    """(times, strength, band flux matrix [n, 3]) for the onsets of y."""
+def onset_features(y: np.ndarray, sr: int, delta: float = 0.07, min_gap: float = 0.05, max_backtrack: float | None = None):
+    """(times, strength, band flux matrix [n, 3]) for the onsets of y. max_backtrack (s) caps how
+    far before the onset peak the time goes: backtracking runs to the envelope's previous minimum,
+    which in a busy loop can sit well inside the previous hit's tail."""
     perc = librosa.effects.percussive(y, margin=2.0)
     env = librosa.onset.onset_strength(y=perc, sr=sr, hop_length=HOP)
     wait = int(min_gap * sr / HOP)
     peaks = librosa.onset.onset_detect(onset_envelope=env, sr=sr, hop_length=HOP, delta=delta, wait=wait)
     frames = librosa.onset.onset_backtrack(peaks, env)
+    if max_backtrack is not None:
+        frames = np.maximum(frames, peaks - int(round(max_backtrack * sr / HOP)))
     S = np.log1p(100 * np.abs(librosa.stft(y, n_fft=1024, hop_length=HOP)))
     f = librosa.fft_frequencies(sr=sr, n_fft=1024)
     flux = np.maximum(0, np.diff(S, axis=1, prepend=S[:, :1]))
@@ -64,15 +68,22 @@ def classify(feats: np.ndarray, th: dict = TH) -> list[list[str]]:
     return out
 
 
+def gated_onsets(y: np.ndarray, sr: int, max_backtrack: float | None = None):
+    """onset_features on the peak-normalised signal, minus onsets far weaker than the strong ones
+    (room noise, breaths, handling)."""
+    y = y / (np.max(np.abs(y)) + 1e-9)
+    times, strength, feats = onset_features(y, sr, max_backtrack=max_backtrack)
+    if len(times) == 0:
+        return times, strength, feats
+    keep = strength >= 0.1 * np.percentile(strength, 90)
+    return times[keep], strength[keep], feats[keep]
+
+
 def detect(y: np.ndarray, sr: int, th: dict = TH) -> list[dict]:
     """Drum hits: [{"time", "class", "pitch", "velocity"}], several per onset when classes coincide."""
-    y = y / (np.max(np.abs(y)) + 1e-9)
-    times, strength, feats = onset_features(y, sr)
+    times, strength, feats = gated_onsets(y, sr)
     if len(times) == 0:
         return []
-    # gate: drop onsets far weaker than the strong ones (room noise, breaths, handling)
-    keep = strength >= 0.1 * np.percentile(strength, 90)
-    times, strength, feats = times[keep], strength[keep], feats[keep]
     s90 = np.percentile(strength, 90) + 1e-9
     hits = []
     for t, s, labels in zip(times, strength, classify(feats, th)):
@@ -80,6 +91,40 @@ def detect(y: np.ndarray, sr: int, th: dict = TH) -> list[dict]:
         for cl in labels:
             hits.append({"time": round(float(t), 4), "class": cl, "pitch": GM[cl], "velocity": vel if cl != "hat" else int(vel * 0.8)})
     return hits
+
+
+def onset_centroids(y: np.ndarray, sr: int, times: np.ndarray, look: float = 0.04) -> np.ndarray:
+    """Log-frequency spectral centroid (Hz) of the first `look` s after each onset."""
+    S = np.abs(librosa.stft(y, n_fft=1024, hop_length=HOP))[1:] ** 2
+    logf = np.log(librosa.fft_frequencies(sr=sr, n_fft=1024)[1:])
+    n = max(2, int(look * sr / HOP))
+    out = []
+    for t in times:
+        m = S[:, int(round(t * sr / HOP)) :][:, :n].sum(axis=1) + 1e-12
+        out.append(np.exp((m * logf).sum() / m.sum()))
+    return np.array(out)
+
+
+def slice_points(y: np.ndarray, sr: int, th: dict = TH) -> list[dict]:
+    """One entry per onset for slicing a loop by drum: [{"time", "kind", "also"}].
+
+    classify can give a hit several labels (a kick + hat on the beat, or a broadband snare that
+    lights every band). "kind" is then the label whose hits sound most like this one: the
+    nearest, in log frequency, of the median onset centroids of the hits carrying each label.
+    Relative to the file, so it works for a beatbox (hats around 1 kHz) and a kit (8 kHz) alike.
+    "also" keeps the other labels."""
+    y = y / (np.max(np.abs(y)) + 1e-9)
+    times, _, feats = gated_onsets(y, sr, max_backtrack=0.02)
+    if len(times) == 0:
+        return []
+    labels = classify(feats, th)
+    logc = np.log(onset_centroids(y, sr, times))
+    ref = {cl: np.median([c for c, ls in zip(logc, labels) if cl in ls]) for cl in GM if any(cl in ls for ls in labels)}
+    out = []
+    for t, c, ls in zip(times, logc, labels):
+        kind = min(ls, key=lambda cl: abs(c - ref[cl]))
+        out.append({"time": round(float(t), 4), "kind": kind, "also": [cl for cl in ls if cl != kind]})
+    return out
 
 
 def percussive_ratio(y: np.ndarray) -> float:

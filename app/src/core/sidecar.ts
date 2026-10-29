@@ -6,6 +6,7 @@
 //   cleanupNoise, quantizeDrums (B3) spikes/k_source_prep/run_engineer.sh, via src/node/engineer.ts;
 //     they write the processed audio under `newSourceId`, where the renderer loads it
 //     (Bridge.loadSourceAudio). A result without `stub` means that audio exists.
+//   drumHits, soundRegions      (B13) the same script's `hits` / `regions` ops: analysis, no audio
 // TODO(sidecar), still stubs:
 //   setSynthKnobs       -> spikes/c_recreate/synth.py render()
 //   fitSynthToReference -> spikes/c_recreate/match.py + run_optimizer.py (CMA-ES, ~30 s)
@@ -79,9 +80,34 @@ export interface CleanupNoiseResult {
   stub?: true;
 }
 
+/** B13: one drum hit, for slicing a loop by drum. `time` is in source seconds, just before the
+ *  attack; `also` lists other drums that sound at the same moment (they stay in this slice). */
+export type DrumKind = 'kick' | 'snare' | 'hat';
+export interface DrumHit {
+  time: number;
+  kind: DrumKind;
+  also?: DrumKind[];
+}
+export interface DrumHitsResult {
+  hits: DrumHit[];
+  stub?: true;
+}
+
+/** B13: where a source has sound (source seconds), and the level counted as silence (dB below
+ *  the loudest part). */
+export interface SoundRegionsResult {
+  regions: [number, number][];
+  threshold_db: number;
+  stub?: true;
+}
+
 export interface Sidecar {
   quantizeDrums(a: QuantizeDrumsArgs): Promise<QuantizeDrumsResult>;
   cleanupNoise(a: { sourceId: string; newSourceId: string }): Promise<CleanupNoiseResult>;
+  /** B13: the drum hits in a source's audio (spikes/k_source_prep/drums.py slice_points) */
+  drumHits(a: { sourceId: string }): Promise<DrumHitsResult>;
+  /** B13: the stretches with sound in a source's audio (engineer.py sound_regions) */
+  soundRegions(a: { sourceId: string }): Promise<SoundRegionsResult>;
   generateMrt2(a: { styleText?: string; referenceSourceId?: string; notes?: string; seconds: number }): Promise<{ status: string; seconds: number; prompt: string }>;
   setSynthKnobs(patch: Record<string, number>): Promise<{ patch: Record<string, number>; clamped: string[] }>;
   fitSynthToReference(a: { sourceId: string }): Promise<{ patch: Record<string, number>; distance: number; renders: number }>;
@@ -112,6 +138,12 @@ export class StubSidecar implements Sidecar {
   }
   async cleanupNoise(_a: { sourceId: string; newSourceId: string }): Promise<CleanupNoiseResult> {
     return { method: 'noisereduce stationary (stub)', noise_floor_db: { before: -40, after: -51 }, level_change_db: -0.8, stub: true };
+  }
+  async drumHits(_a: { sourceId: string }): Promise<DrumHitsResult> {
+    return { hits: [], stub: true };
+  }
+  async soundRegions(_a: { sourceId: string }): Promise<SoundRegionsResult> {
+    return { regions: [], threshold_db: -50, stub: true };
   }
   async generateMrt2(a: { styleText?: string; referenceSourceId?: string; seconds: number }) {
     const prompt = a.styleText ?? `audio prompt from ${a.referenceSourceId}`;

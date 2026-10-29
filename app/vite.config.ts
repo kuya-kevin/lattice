@@ -5,7 +5,7 @@ import { searchForWorkspaceRoot, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { audioMime, loadLibrary, type Library } from './src/node/library.ts';
 import { putAudio, runSourcePrep, sourcePrepConfig } from './src/node/sourcePrep.ts';
-import { runEngineer } from './src/node/engineer.ts';
+import { runAnalysis, runEngineer } from './src/node/engineer.ts';
 import { config as loadDotenv } from 'dotenv';
 import { transcriberFromEnv } from './src/node/stt.ts';
 import type { Transcribe } from './src/core/stt.ts';
@@ -50,6 +50,26 @@ function sidecarMiddleware(): Plugin {
           } catch (e) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+          }
+        });
+      });
+      // B13: POST /api/sidecar/analyze?args={"op":"hits"|"regions","sourceId"} with the source's WAV
+      // -> the hit list or the sound regions
+      server.middlewares.use('/api/sidecar/analyze', (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', async () => {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            if (req.method !== 'POST') throw new Error('POST only');
+            const { op, sourceId } = JSON.parse(new URL(req.url ?? '/', 'http://x').searchParams.get('args') ?? '{}');
+            const run = runAnalysis[op as keyof typeof runAnalysis];
+            if (!run) throw new Error(`unknown analysis ${op}`);
+            putAudio(cfg, sourceId, Buffer.concat(chunks));
+            res.end(JSON.stringify(await run(cfg, sourceId, { mock: process.env.LATTICE_ENGINEER_MOCK === '1' })));
+          } catch (e) {
+            res.statusCode = 500;
             res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
           }
         });

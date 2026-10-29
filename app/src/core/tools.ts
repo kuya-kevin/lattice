@@ -110,6 +110,28 @@ async function processTrackAudio<R extends { stub?: true }>(
   return { stub: false, sources: done.map((d) => ({ source_id: d.sourceId, ...(applied.has(d.sourceId) ? { new_source_id: d.newSourceId } : {}), ...d.r })) };
 }
 
+/** B13: a clip's sound regions (source seconds) as timeline facts for Muse. */
+export function soundIn(clip: S.Clip, regions: [number, number][]) {
+  const r3 = (x: number) => Math.round(x * 1000) / 1000;
+  const from = clip.offset;
+  const to = clip.offset + clip.duration;
+  const tl = (src: number) => r3(clip.start + src - from); // source -> timeline seconds
+  const inside = regions.filter(([a, b]) => b > from && a < to).map(([a, b]): [number, number] => [Math.max(a, from), Math.min(b, to)]);
+  const clipSpan = [r3(clip.start), r3(clip.start + clip.duration)];
+  if (!inside.length) return { clip: clipSpan, silent: true };
+  const start = inside[0][0];
+  const end = inside[inside.length - 1][1];
+  const gaps = inside.slice(1).map(([a], i) => [tl(inside[i][1]), tl(a)]).filter(([a, b]) => b - a >= 0.25);
+  return {
+    clip: clipSpan,
+    sound_starts_at: tl(start),
+    sound_ends_at: tl(end),
+    dead_space_s: { before: r3(start - from), after: r3(to - end) },
+    ...(gaps.length ? { silent_gaps: gaps.slice(0, 10), ...(gaps.length > 10 ? { more_gaps: gaps.length - 10 } : {}) } : {}),
+    suggested_trim: { start: tl(Math.max(from, start - 0.01)), end: tl(Math.min(to, end + 0.05)) },
+  };
+}
+
 const GRID_DIV: Record<string, number> = { '1/4': 4, '1/8': 8, '1/16': 16, '1/32': 32 };
 
 const range = (description: string) => ({
@@ -443,6 +465,53 @@ export const TOOLS: ToolDef[] = [
       );
       return { track_id: a.track_id, ...r.sources.length === 1 ? r.sources[0] : { sources: r.sources }, ...(r.stub ? { stub: true } : {}) };
     },
+  },
+
+  {
+    name: 'find_sound',
+    description:
+      'Find where a clip actually has sound (you cannot see the waveform): when the sound starts and ends on the timeline, the dead space before and after, ' +
+      'and silent gaps inside. "suggested_trim" removes the dead space at both ends (just before the first sound, a little after the last): pass it to trim_clip, ' +
+      'or use one edge for "trim the start". Defaults to the selected clip. Takes a few seconds.',
+    parameters: obj({ clip_id: str('Audio clip id, e.g. "c2". Omit to use the selected clip.') }),
+    quiet: true,
+    run: async (ctx, a) => {
+      const clipId = a.clip_id ?? ctx.store.get().selection.clipId;
+      if (!clipId) throw new S.SessionError('no clip_id given and no clip selected');
+      const { clip } = S.findClip(ctx.store.get(), clipId);
+      if (clip.midi) throw new S.SessionError(`clip ${clipId} is MIDI; its notes are in the session summary`);
+      const r = await ctx.sidecar.soundRegions({ sourceId: clip.sourceId });
+      if (r.stub) return { clip_id: clipId, stub: true, note: 'stub: the sound-finding sidecar is not available here' };
+      return { clip_id: clipId, ...soundIn(clip, r.regions), silence_below_db: r.threshold_db };
+    },
+  },
+  {
+    name: 'slice_drums',
+    description:
+      'Split a drum loop into one track per drum: cut the clip at each hit and move every slice to a new track for its drum (kick, snare, hat), ' +
+      'placed under the original track with its gain and effects. Played together the slices sound exactly like the clip. ' +
+      'Not a true separation: whatever rings under a hit (a hat over a kick) stays in that hit\'s slice. ' +
+      'Undo brings the clip back. Defaults to the selected clip. Takes a few seconds.',
+    parameters: obj({ clip_id: str('Audio clip id, e.g. "c2". Omit to use the selected clip.') }),
+    run: async (ctx, a) => {
+      const clipId = a.clip_id ?? ctx.store.get().selection.clipId;
+      if (!clipId) throw new S.SessionError('no clip_id given and no clip selected');
+      const { clip } = S.findClip(ctx.store.get(), clipId);
+      if (clip.midi) throw new S.SessionError(`clip ${clipId} is MIDI; slice_drums needs audio`);
+      const r = await ctx.sidecar.drumHits({ sourceId: clip.sourceId });
+      if (r.stub) return { clip_id: clipId, stub: true, note: 'stub: the drum-hit sidecar is not available here; nothing was sliced' };
+      // the sidecar ran for seconds: slice the clip as it is now
+      const { session, tracks } = S.sliceClipByDrum(ctx.store.get(), clipId, r.hits, ['kick', 'snare', 'hat']);
+      ctx.store.set(session);
+      const at = (t: number) => t >= clip.offset - 0.01 && t < clip.offset + clip.duration;
+      const shared = r.hits.filter((h) => h.also?.length && at(h.time)).length;
+      return {
+        clip_id: clipId,
+        tracks: tracks.map(({ track, kind }) => ({ track_id: track.id, name: track.name, drum: kind, slices: track.clips.length })),
+        ...(shared ? { hits_with_another_drum: shared, note: 'on these hits another drum sounds at the same moment; it stays in the louder drum\'s slice' } : {}),
+      };
+    },
+    logText: (_a, r) => `sliced ${r.clip_id} into ${r.tracks?.map((t: { name: string; slices: number }) => `${t.name} (${t.slices})`).join(', ') ?? 'nothing (stub)'}`,
   },
 
   // ---- sound tools ----

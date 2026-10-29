@@ -1,8 +1,12 @@
 """Engineer sidecar (B3): noise cleanup and drum quantize on one source, called by the app.
+Also two analyses that write no audio: the hit list for slice_drums and the sound regions for
+find_sound (B13).
 
     LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh cleanup  <in.wav> <out.wav> [--method auto|model|nr]
     LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh quantize <in.wav> <out.wav> --bpm 120 --grid 16 \
         [--strength 1] [--phase 0]
+    LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh hits <in.wav>
+    LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh regions <in.wav>
 
 Writes <out.wav> (mono, the input's sample rate and length, so the app's clip offsets still
 hold) and prints one line `RESULT <json>`. Runs in the j_evals `sep` env.
@@ -13,6 +17,9 @@ cleanup: Mel-RoFormer denoise (aufr33, via audio-separator; the default, preferr
 quantize: f_engineer/quantize.py (slice at hits, move each slice toward the grid, no stretch).
   --phase puts the grid where the app's bars are (source seconds of a grid line); without
   it the phase is fitted to the hits.
+hits: drums.py slice_points (one entry per hit: time in source seconds, kind kick/snare/hat).
+  No output file; the RESULT line carries the list.
+regions: where there is sound (sound_regions). No output file.
 """
 from __future__ import annotations
 
@@ -30,6 +37,8 @@ import soundfile as sf
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "f_engineer"))
 from quantize import deviation_ms, fit_grid, hits, move_slices, snap  # noqa: E402
+
+from drums import slice_points  # noqa: E402
 
 MODEL_SR = 44100
 DENOISE = "denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt"  # keep the "dry" stem
@@ -123,6 +132,29 @@ def cleanup(y: np.ndarray, sr: int, method="auto") -> tuple[np.ndarray, dict]:
     return out, info
 
 
+def sound_regions(y: np.ndarray, sr: int, gap: float = 0.25) -> tuple[list[list[float]], float]:
+    """Stretches with sound (source seconds; gaps under `gap` s bridged), and the threshold used, in
+    dB below the loudest 46 ms. Silence is anything under the quietest 0.5 s + 10 dB, kept within
+    -50..-30 dB: a phone recording's room noise sits 40-50 dB down and is not sound, and a
+    recording with no quiet part (the floor is the music) still only loses what is 30 dB down."""
+    import librosa
+
+    hop, n = 256, 1024
+    rms = librosa.feature.rms(y=y, frame_length=n, hop_length=hop)[0]
+    rel = 20 * np.log10(rms + 1e-9) - 20 * np.log10(rms.max() + 1e-9)
+    w = max(1, int(0.5 * sr / hop))
+    floor = float(10 * np.log10(np.convolve(10 ** (rel / 10), np.ones(w) / w, mode="valid").min() + 1e-12)) if len(rel) >= w else -120.0
+    top_db = float(min(50.0, max(30.0, -(floor + 10))))
+    out: list[list[float]] = []
+    for a, b in librosa.effects.split(y, top_db=top_db, frame_length=n, hop_length=hop):
+        a, b = a / sr, b / sr
+        if out and a - out[-1][1] < gap:
+            out[-1][1] = b
+        else:
+            out.append([a, b])
+    return [[round(float(a), 3), round(float(b), 3)] for a, b in out], round(-top_db, 1)
+
+
 def quantize(y: np.ndarray, sr: int, bpm: float, grid=16, strength=1.0, phase: float | None = None) -> tuple[np.ndarray, dict]:
     t, w = hits(y, sr, with_strength=True)
     if not len(t):
@@ -148,9 +180,9 @@ def quantize(y: np.ndarray, sr: int, bpm: float, grid=16, strength=1.0, phase: f
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("op", choices=["cleanup", "quantize"])
+    ap.add_argument("op", choices=["cleanup", "quantize", "hits", "regions"])
     ap.add_argument("src")
-    ap.add_argument("dst")
+    ap.add_argument("dst", nargs="?")
     ap.add_argument("--method", choices=["auto", "model", "nr"], default="auto")
     ap.add_argument("--bpm", type=float)
     ap.add_argument("--grid", type=int, default=16)
@@ -158,6 +190,16 @@ def main(argv=None):
     ap.add_argument("--phase", type=float)
     a = ap.parse_args(argv)
     y, sr = read_mono(a.src)
+    if a.op == "hits":
+        pts = slice_points(y, sr)
+        print("RESULT " + json.dumps({"hits": pts, "sample_rate": sr, "duration": round(len(y) / sr, 3)}), flush=True)
+        return
+    if a.op == "regions":
+        regions, threshold = sound_regions(y, sr)
+        print("RESULT " + json.dumps({"regions": regions, "threshold_db": threshold, "duration": round(len(y) / sr, 3)}), flush=True)
+        return
+    if not a.dst:
+        ap.error(f"{a.op} needs an output path")
     if a.op == "cleanup":
         out, info = cleanup(y, sr, a.method)
     else:

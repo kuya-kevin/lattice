@@ -7,6 +7,10 @@
 2. cleanup with noisereduce: a tone with gaps plus white noise; the noise floor drops by more
    than 10 dB and the tone's level stays within 1.5 dB.
 3. the CLI writes the WAV and one RESULT line.
+4. hits (B13 slice_drums): a synthetic kick / snare / hat pattern comes back one entry per hit,
+   at most 30 ms before its attack, with the right kind; the CLI prints them without writing audio.
+5. regions (B13 find_sound): tone bursts after 1 s of room noise 45 dB down come back as one
+   region starting at the first burst (a 0.1 s gap is bridged).
 """
 import json
 import subprocess
@@ -19,7 +23,8 @@ import soundfile as sf
 
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
-from engineer import cleanup, db, quantize  # noqa: E402
+from drums import slice_points  # noqa: E402
+from engineer import cleanup, db, quantize, sound_regions  # noqa: E402
 
 SR = 22050
 rng = np.random.default_rng(1)
@@ -81,7 +86,54 @@ def test_cli():
         print("cli ok")
 
 
+def kit_loop(bpm=110.0, bars=2):
+    """Kick on 1 and 3, snare on 2 and 4, hats on the off-beat 8ths: no two hits at once."""
+    beat = 60 / bpm
+    t = np.arange(int(0.25 * SR)) / SR
+    kick = np.sin(2 * np.pi * np.cumsum(50 + 100 * np.exp(-t * 30)) / SR) * np.exp(-t * 12)
+    snare = (0.5 * np.diff(rng.normal(0, 1, len(t) + 1)) + np.sin(2 * np.pi * 190 * t)) * np.exp(-t * 25)  # wires (high-passed noise) + body
+    hat = np.diff(rng.normal(0, 1, len(t) + 2), 2) * np.exp(-t * 80)
+    truth = []
+    for b in range(4 * bars):
+        truth.append((0.05 + b * beat, "kick" if b % 2 == 0 else "snare"))
+        truth.append((0.05 + (b + 0.5) * beat, "hat"))
+    y = np.zeros(int((0.3 + 4 * bars * beat) * SR), np.float32)
+    for at, kind in truth:
+        x = {"kick": kick, "snare": snare, "hat": 0.4 * hat}[kind]
+        n = int(at * SR)
+        y[n : n + len(x)] += 0.6 * x[: len(y) - n]
+    return y, truth
+
+
+def test_hits():
+    y, truth = kit_loop()
+    pts = slice_points(y, SR)
+    assert len(pts) == len(truth), (len(pts), len(truth))
+    for p, (at, kind) in zip(pts, truth):
+        assert -0.03 < p["time"] - at < 0.005 and p["kind"] == kind, (p, at, kind)  # cut just before the attack
+    with tempfile.TemporaryDirectory() as d:
+        src = Path(d) / "in.wav"
+        sf.write(src, y, SR)
+        p = subprocess.run([sys.executable, str(HERE / "engineer.py"), "hits", str(src)], capture_output=True, text=True, check=True)
+        info = json.loads(next(l for l in p.stdout.splitlines() if l.startswith("RESULT "))[7:])
+        assert [h["kind"] for h in info["hits"]] == [k for _, k in truth] and info["duration"] == round(len(y) / SR, 3)
+        assert sorted(x.name for x in Path(d).iterdir()) == ["in.wav"]
+    print("hits ok", len(pts))
+
+
+def test_regions():
+    t = np.arange(int(4 * SR)) / SR
+    tone = 0.5 * np.sin(2 * np.pi * 220 * t) * (((t >= 1.0) & (t < 2.0)) | ((t >= 2.1) & (t < 3.0)))
+    y = (tone + rng.normal(0, 0.5 * 10 ** (-45 / 20), len(t))).astype(np.float32)
+    regions, threshold = sound_regions(y, SR)
+    assert len(regions) == 1 and 0.96 < regions[0][0] <= 1.01 and 2.99 <= regions[0][1] < 3.05, (regions, threshold)
+    assert -50 <= threshold <= -30, threshold
+    print("regions ok", regions, threshold)
+
+
 if __name__ == "__main__":
     test_quantize_to_given_phase()
     test_cleanup_nr()
     test_cli()
+    test_hits()
+    test_regions()

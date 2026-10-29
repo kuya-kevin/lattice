@@ -316,6 +316,26 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 
 ## Done
 
+- 2026-10-28: B13 slice a drum loop by drum. Tool `slice_drums(clip_id)` cuts an audio clip at each
+  hit and moves every slice to a new track per drum (`<track> Kick / Snare / Hat`, under the
+  original, with its gain and effects copied); the slices abut, so together they replay the clip
+  exactly, and undo brings the clip back. Not a true separation: whatever rings under a hit stays in
+  that hit's slice (chosen over a kit-separation model, which would break the Meta-only rule). Hits
+  come from the engineer sidecar's new `hits` op (`drums.py slice_points`: the existing librosa
+  onset detector, backtrack capped at 20 ms so a cut lands just before the attack; a hit with
+  several labels goes to the drum whose hits it sounds most like, by onset spectral centroid
+  relative to the file). About 3.4 s on the 25 s voice-note drum loop (103 hits). Tests:
+  `app/tests/sliceDrums.test.ts`, a Playwright test in `app/e2e/engineer.spec.ts` (mock hits), and
+  `test_hits` in `spikes/k_source_prep/test_engineer.py` (synthetic kit, every hit's kind right).
+  Not checked by ear: the labels on real loops (beatbox or kit); `drum_eval.py` scores the detector
+  on GM kits only.
+  Same day, `find_sound(clip_id)`: Muse asked the user how much dead space to cut, because it had no
+  way to see where sound starts. The sidecar's `regions` op (`engineer.py sound_regions`: librosa
+  `effects.split`; silence is under the quietest 0.5 s + 10 dB, kept within -50..-30 dB) gives the
+  sound's start and end on the timeline, the dead space at each end, silent gaps of 0.25 s or more,
+  and a `suggested_trim` (10 ms before the sound, 50 ms after) for `trim_clip`. A measurement: not
+  logged as an edit, no undo step. The system prompt tells Muse to use it instead of asking for
+  times. On the voice-note drum loop: sound from 1.253 s, in 0.8 s. Ideas not built: `set_fade`, `split_clip`.
 - 2026-10-28: B2 push-to-talk. Hold `` ` `` (or the mic button in the prompt bar), speak, and let go.
   Playback pauses while the mic is open, which is blocked while a track records; a hold under 0.3 s is
   ignored, and clips stop at 30 s. The clip (16 kHz mono WAV) goes to **Muse Voice Transcribe**

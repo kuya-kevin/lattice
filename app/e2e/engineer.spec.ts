@@ -75,3 +75,40 @@ test('a cleaned sound stacks on its card: the Versions list plays the original a
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect.poll(async () => (await session(page)).tracks[0].clips[0].sourceId).toBe(cleaned);
 });
+
+test('slice_drums (B13) puts each drum on its own lane under the loop; undo brings the clip back', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({ name: 'beat.wav', mimeType: 'audio/wav', buffer: noiseWav() });
+  await expect(page.getByTestId('track-t1')).toContainText('beat');
+  const source = (await session(page)).tracks[0].clips[0].sourceId;
+  await expect.poll(() => audioIds(page)).toContain(source);
+
+  // mock hits (LATTICE_ENGINEER_MOCK): kick, hat, snare, hat every 0.25 s
+  const r = await tool(page, 'slice_drums', { clip_id: 'c2' });
+  expect(r).toMatchObject({ ok: true, result: { tracks: [{ drum: 'kick', slices: 2 }, { drum: 'snare', slices: 2 }, { drum: 'hat', slices: 4 }] } });
+  const s = await session(page);
+  expect(s.tracks.map((t) => t.name)).toEqual(['beat', 'beat Kick', 'beat Snare', 'beat Hat']);
+  expect(s.tracks[0].clips).toEqual([]);
+  const clips = s.tracks.flatMap((t) => t.clips).sort((a, b) => a.start - b.start);
+  expect(clips.map((c) => [c.start, c.offset, c.duration])).toEqual([0, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75].map((t) => [t, t, 0.25]));
+  for (const t of s.tracks.slice(1)) await expect(page.getByTestId(`track-${t.id}`)).toBeVisible();
+
+  await tool(page, 'undo', {});
+  expect((await session(page)).tracks.map((t) => t.clips.length)).toEqual([1]);
+  expect(errors).toEqual([]);
+});
+
+test('find_sound (B13) reports the dead space; trim_clip with its suggestion clears it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({ name: 'beat.wav', mimeType: 'audio/wav', buffer: noiseWav() });
+  await expect(page.getByTestId('track-t1')).toContainText('beat');
+  await expect.poll(async () => audioIds(page)).toContain((await session(page)).tracks[0].clips[0].sourceId);
+
+  // mock regions (LATTICE_ENGINEER_MOCK): sound from 0.25 to 1.75 s of the 2 s clip
+  const r = await tool(page, 'find_sound', { clip_id: 'c2' });
+  expect(r).toMatchObject({ ok: true, result: { sound_starts_at: 0.25, sound_ends_at: 1.75, dead_space_s: { before: 0.25, after: 0.25 }, suggested_trim: { start: 0.24, end: 1.8 } } });
+  await tool(page, 'trim_clip', { clip_id: 'c2', ...(r.result as { suggested_trim: object }).suggested_trim });
+  expect((await session(page)).tracks[0].clips[0]).toMatchObject({ start: 0.24, offset: 0.24, duration: 1.56 });
+});

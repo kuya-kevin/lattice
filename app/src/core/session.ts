@@ -315,6 +315,62 @@ export function duplicateClip(s: Session, clipId: string, start: number, trackId
   return [mapTrack(s1, to, (t) => ({ ...t, clips: [...t.clips, copy] })), copy];
 }
 
+/** B13: cut an audio clip at drum hits (source seconds, each with a drum `kind`) and move each
+ *  slice to a new track for its drum, right after the clip's track and with its gain and effects,
+ *  so the slices sound as the clip did. Slices abut: the first runs from the clip's left edge
+ *  (with the drum ringing there), each ends at the next hit, so together they play the clip
+ *  exactly. Tracks come in `order` (kinds not in it last); the clip itself goes. */
+export function sliceClipByDrum(
+  s: Session,
+  clipId: string,
+  hits: { time: number; kind: string }[],
+  order: string[] = [],
+): { session: Session; tracks: { track: Track; kind: string }[] } {
+  const { track, clip } = findClip(s, clipId);
+  if (clip.midi) throw new SessionError(`clip ${clipId} is MIDI; slicing by drum needs audio`);
+  const end = clip.offset + clip.duration;
+  const sorted = [...hits].sort((a, b) => a.time - b.time);
+  const cuts: { time: number; kind: string }[] = [];
+  for (const h of sorted) {
+    const last = cuts.length ? cuts[cuts.length - 1].time : clip.offset;
+    if (h.time > last + 0.01 && h.time < end - 0.01) cuts.push(h);
+  }
+  if (!cuts.length) throw new SessionError(`no drum hits found inside clip ${clipId}`);
+  // what plays at the left edge: the last hit at or before it, else the first one after
+  const first = sorted.filter((h) => h.time <= clip.offset + 0.01).pop() ?? cuts[0];
+  const edges = [clip.offset, ...cuts.map((c) => c.time), end].map(round);
+  const kinds = [first.kind, ...cuts.map((c) => c.kind)];
+  if (first === cuts[0]) edges.splice(1, 1), kinds.splice(1, 1); // the first hit's slice starts at the edge
+  const rank = (k: string) => (order.includes(k) ? order.indexOf(k) : order.length);
+  const used = [...new Set(kinds)].sort((a, b) => rank(a) - rank(b));
+  let out = s;
+  const made: { track: Track; kind: string }[] = [];
+  for (const kind of used) {
+    const [s1, id] = nextId(out, 't');
+    out = s1;
+    const devices: DeviceInstance[] = [];
+    for (const d of track.devices) {
+      const [s2, did] = nextId(out, 'd');
+      out = s2;
+      devices.push({ ...d, id: did, params: { ...d.params } });
+    }
+    const t: Track = { id, name: `${track.name} ${kind[0].toUpperCase()}${kind.slice(1)}`, gainDb: track.gainDb, muted: track.muted, soloed: track.soloed, clips: [], devices };
+    let n = 0;
+    for (let i = 0; i < kinds.length; i++) {
+      if (kinds[i] !== kind) continue;
+      const [s3, cid] = nextId(out, 'c');
+      out = s3;
+      t.clips.push({ id: cid, sourceId: clip.sourceId, name: `${t.name.slice(track.name.length + 1)} ${++n}`, start: round(clip.start + edges[i] - clip.offset), offset: edges[i], duration: round(edges[i + 1] - edges[i]) });
+    }
+    made.push({ track: t, kind });
+  }
+  const at = out.tracks.findIndex((t) => t.id === track.id);
+  const tracks = out.tracks.map((t) => (t.id === track.id ? { ...t, clips: t.clips.filter((c) => c.id !== clipId) } : t));
+  tracks.splice(at + 1, 0, ...made.map((m) => m.track));
+  const selection = s.selection.clipId === clipId ? { trackId: made[0].track.id, clipId: null } : s.selection;
+  return { session: { ...out, tracks, selection }, tracks: made };
+}
+
 /** Record-arm one track (or none). Like a single-input setup in Logic, one track is armed at a time. */
 export function setArm(s: Session, trackId: string, armed: boolean): Session {
   getTrack(s, trackId);

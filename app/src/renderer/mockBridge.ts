@@ -4,7 +4,7 @@
 import { MuseAgent, type ChatFn } from '../core/agent';
 import type { Bridge } from '../core/bridge';
 import type { PrepManifest } from '../core/midi';
-import { StubSidecar, type CleanupNoiseResult, type ExtractMidiArgs, type QuantizeDrumsArgs, type QuantizeDrumsResult } from '../core/sidecar';
+import { StubSidecar, type CleanupNoiseResult, type DrumHitsResult, type ExtractMidiArgs, type QuantizeDrumsArgs, type QuantizeDrumsResult, type SoundRegionsResult } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
@@ -45,6 +45,21 @@ class WebSidecar extends StubSidecar {
   }
   override quantizeDrums({ newSourceId, ...a }: QuantizeDrumsArgs): Promise<QuantizeDrumsResult> {
     return this.engineer(newSourceId, { op: 'quantize', ...a });
+  }
+  /** B13: analyses (no audio back) through the Vite middleware (/api/sidecar/analyze) */
+  private async analyze<R>(op: string, sourceId: string): Promise<R> {
+    const wav = this.audio.get(sourceId);
+    if (!wav) throw new Error(`no audio for source ${sourceId} yet`);
+    const r = await fetch(`/api/sidecar/analyze?args=${encodeURIComponent(JSON.stringify({ op, sourceId }))}`, { method: 'POST', body: wav });
+    const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+    return body as R;
+  }
+  override drumHits(a: { sourceId: string }): Promise<DrumHitsResult> {
+    return this.analyze('hits', a.sourceId);
+  }
+  override soundRegions(a: { sourceId: string }): Promise<SoundRegionsResult> {
+    return this.analyze('regions', a.sourceId);
   }
   override async extractMidi(a: ExtractMidiArgs): Promise<PrepManifest> {
     const wav = this.audio.get(a.sourceId);
