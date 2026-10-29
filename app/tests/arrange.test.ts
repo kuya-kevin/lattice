@@ -191,15 +191,20 @@ describe('multi-select, group moves and track order', () => {
     expect(S.findClip(c.store.get(), 'c4')).toMatchObject({ track: { id: 't3' }, clip: { start: 1 } });
   });
 
-  it('clamps a group move so no clip leaves the timeline or the track list', () => {
+  it('a group move stays on the timeline; past the last track it makes new tracks, keeping its shape', () => {
     let s = S.addSource(S.emptySession(), { id: 'a', name: 'A', duration: 1, origin: 'import' });
     const [s1, t1] = S.addTrack(s, 'A');
     const [s2, t2] = S.addTrack(s1, 'B');
     const [s3, a] = S.addClip(s2, t1.id, 'a', 1);
     const [s4, b] = S.addClip(s3, t2.id, 'a', 3);
-    s = S.moveClips(s4, [a.id, b.id], -5, 3);
-    expect(S.findClip(s, a.id)).toMatchObject({ track: { id: t1.id }, clip: { start: 0 } });
-    expect(S.findClip(s, b.id)).toMatchObject({ track: { id: t2.id }, clip: { start: 2 } });
+    expect(S.findClip(S.moveClips(s4, [a.id, b.id], 0, -3), a.id).track.id).toBe(t1.id); // not above the top
+    s = S.moveClips(s4, [a.id, b.id], -5, 1); // A -> B, B -> a new track below
+    expect(s.tracks.map((t) => t.name)).toEqual(['A', 'B', 'B 2']);
+    expect(S.findClip(s, a.id)).toMatchObject({ track: { id: t2.id }, clip: { start: 0 } });
+    expect(S.findClip(s, b.id)).toMatchObject({ track: { name: 'B 2' }, clip: { start: 2 } });
+    s = S.moveClips(s4, [a.id, b.id], 0, 9); // at most to the first new track: two new ones, not nine
+    expect(s.tracks.map((t) => t.name)).toEqual(['A', 'B', 'A 2', 'B 2']);
+    expect(S.findClip(s, a.id).track.name).toBe('A 2');
   });
 
   it('deletes the selected clips at once', async () => {

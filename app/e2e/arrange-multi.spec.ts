@@ -89,6 +89,28 @@ test('a marquee from empty lane space selects the regions it touches; Delete rem
   await expect.poll(async () => (await session(page)).tracks.map((t) => t.clips.length)).toEqual([1, 1, 1]);
 });
 
+test('a group dragged below the last track goes on new tracks, keeping its shape', async ({ page }) => {
+  await setup(page);
+  await regionHeader(page, 't3').click();
+  await regionHeader(page, 't5').click({ modifiers: ['Shift'] });
+  // drag keys (t3) to below the last lane: the grabbed region follows the pointer onto a new track,
+  // and vox's region (a lane further down) onto a second one
+  const hb = (await regionHeader(page, 't3').boundingBox())!;
+  const vox = (await page.locator('[data-track-row][data-track-id="t5"]').boundingBox())!;
+  await page.mouse.move(hb.x + 4, hb.y + hb.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hb.x + 30, hb.y + 10, { steps: 5 });
+  await page.mouse.move(hb.x + 4, vox.y + vox.height * 1.5, { steps: 10 }); // under the last lane
+  await expect(page.getByTestId('drop-indicator')).toHaveCount(2);
+  await expect(page.locator('.drop-ghost.new')).toHaveCount(2);
+  await page.mouse.up();
+  await expect.poll(async () => (await session(page)).tracks.map((t) => t.name)).toEqual(['drums', 'keys', 'vox', 'keys 2', 'vox 2']);
+  const s = await session(page);
+  expect(s.tracks.map((t) => t.clips.map((c) => c.id))).toEqual([['c2'], [], [], ['c4'], ['c6']]);
+  await page.keyboard.press('Control+z'); // one undo step: the new track goes too
+  await expect.poll(async () => (await session(page)).tracks.map((t) => t.name)).toEqual(['drums', 'keys', 'vox']);
+});
+
 test('dragging a track header reorders the tracks', async ({ page }) => {
   await setup(page);
   const vox = (await page.getByTestId('track-t5').locator('.track-num').boundingBox())!;

@@ -290,7 +290,8 @@ export const TOOLS: ToolDef[] = [
     name: 'move_clips',
     description:
       'Move several clips together, keeping their spacing: each by delta seconds (negative = earlier) and, with track_offset, ' +
-      'that many tracks down (negative = up). Clamped so no clip goes before 0 or off the track list. Defaults to the selected clips.',
+      'that many tracks down (negative = up). Clamped so no clip goes before 0 or above the first track; moving past the last track ' +
+      'makes new tracks below (named after the tracks the clips came from). Defaults to the selected clips.',
     parameters: obj({
       clip_ids: { type: 'array', items: { type: 'string' }, description: 'Clip ids; omit to use the selected clips' },
       delta: num('Seconds to move by'),

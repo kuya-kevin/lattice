@@ -10,7 +10,8 @@
 //  - clicking a clip selects it (track + clip), as in Logic; double-clicking also opens it in
 //    the Piano Roll (onOpenClip). Shift- or Cmd-click adds or removes a clip, and dragging
 //    from empty lane space draws a marquee (Logic's rubber band); dragging any clip of a
-//    multi-selection moves them all (move_clips), keeping their shape.
+//    multi-selection moves them all (move_clips), keeping their shape; below the last track
+//    they go on new tracks.
 //  - clicking or dragging in the bar ruler moves the playhead, snapped to the grid (Logic's
 //    ruler). With Cycle on, the ruler's upper half stays the cycle area, as in Logic, and the
 //    cycle area snaps to the grid as it is drawn or dragged.
@@ -165,8 +166,9 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     [tracks, session.tracks, trim, trimmingRef, run],
   );
 
-  /** Ghosts for a multi-selection drag, clamped as move_clips clamps (no clip before 0 or off
-   *  the track list), so what you see is where they land. */
+  /** Ghosts for a multi-selection drag, clamped as move_clips clamps (no clip before 0 or above
+   *  the first track), so what you see is where they land. Below the last lane they show on new
+   *  tracks, as move_clips makes them. */
   const moveGroup = useCallback((p: { x: number; y: number }) => {
     const g = group.current!;
     const { session: s, samplesPerPixel: spp, sampleRate: sr, snap: sn, meter: mt } = latest.current;
@@ -176,15 +178,17 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
     const minStart = Math.min(...clips.map((x) => x.c.start));
     g.delta = Math.max(snapMove(g.start, pxToSeconds(p.x - g.x0, spp, sr), sn, mt) - g.start, -minStart);
     let at = lanes.findIndex((l) => p.y >= l.rect.top && p.y < l.rect.bottom);
-    if (at < 0) at = p.y < lanes[0].rect.top ? 0 : lanes.length - 1;
+    if (at < 0) at = p.y < lanes[0].rect.top ? 0 : lanes.length; // below the lanes: new tracks
     const idx = clips.map((x) => x.i);
-    g.offset = Math.max(-Math.min(...idx), Math.min(lanes.length - 1 - Math.max(...idx), at - g.fromIndex));
+    g.offset = Math.max(-Math.min(...idx), Math.min(lanes.length - Math.min(...idx), at - g.fromIndex));
     const x0 = lanes[0].rect.left;
+    const last = lanes[lanes.length - 1].rect;
     setGhosts(
       clips.map(({ c, i }, n) => {
-        const lane = lanes[i + g.offset].rect;
+        const row = i + g.offset;
+        const lane = row < lanes.length ? lanes[row].rect : { top: last.bottom + (row - lanes.length) * last.height, height: last.height };
         const label = n === 0 ? `${formatBarsBeats(c.start + g.delta, mt)} · ${clips.length} regions` : '';
-        return { left: x0 + secondsToPx(c.start + g.delta, spp, sr), top: lane.top, width: Math.max(6, secondsToPx(c.duration, spp, sr)), height: lane.height, label, isNew: false };
+        return { left: x0 + secondsToPx(c.start + g.delta, spp, sr), top: lane.top, width: Math.max(6, secondsToPx(c.duration, spp, sr)), height: lane.height, label, isNew: row >= lanes.length };
       }),
     );
   }, []);

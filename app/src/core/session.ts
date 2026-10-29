@@ -506,23 +506,30 @@ export function selectedClipIds(s: Session): string[] {
 }
 
 /** Move several clips together: each by `delta` seconds and `trackOffset` lanes (down is +),
- *  as when a multi-selection is dragged. Both are clamped so every clip stays on the timeline
- *  and on an existing track, which keeps the group's shape. The selection follows. */
+ *  as when a multi-selection is dragged, keeping the group's shape. Clamped so every clip stays
+ *  on the timeline and below the first track; past the last track it makes new ones. The
+ *  selection follows. */
 export function moveClips(s: Session, clipIds: string[], delta: number, trackOffset = 0): Session {
   const found = clipIds.map((id) => findClip(s, id));
   if (!found.length) return s;
   const minStart = Math.min(...found.map((f) => f.clip.start));
   const d = Math.max(delta, -minStart);
   const idx = found.map((f) => s.tracks.indexOf(f.track));
-  const k = Math.max(-Math.min(...idx), Math.min(s.tracks.length - 1 - Math.max(...idx), Math.round(trackOffset)));
+  // not above the top; below the bottom at most until the top clip reaches the first new track
+  const n = s.tracks.length;
+  const k = Math.max(-Math.min(...idx), Math.min(n - Math.min(...idx), Math.round(trackOffset)));
+  // past the last track: new tracks below, each named after where its clips came from (as one
+  // region dragged below the tracks makes one)
+  let s0 = s;
+  for (let row = n; row <= Math.max(...idx) + k; row++) [s0] = addTrack(s0, `${s.tracks[row - k].name} 2`);
   const ids = new Set(clipIds);
-  const moved = new Map(found.map((f, i) => [f.clip.id, { clip: { ...f.clip, start: round(f.clip.start + d) }, to: s.tracks[idx[i] + k].id }]));
-  const tracks = s.tracks.map((t) => ({
+  const moved = new Map(found.map((f, i) => [f.clip.id, { clip: { ...f.clip, start: round(f.clip.start + d) }, to: s0.tracks[idx[i] + k].id }]));
+  const tracks = s0.tracks.map((t) => ({
     ...t,
     clips: [...t.clips.filter((c) => !ids.has(c.id)), ...[...moved.values()].filter((m) => m.to === t.id).map((m) => m.clip)],
   }));
   const primary = s.selection.clipId ? moved.get(s.selection.clipId) : undefined;
-  return { ...s, tracks, selection: primary ? { ...s.selection, trackId: primary.to } : s.selection };
+  return { ...s0, tracks, selection: primary ? { ...s.selection, trackId: primary.to } : s.selection };
 }
 
 /** Put a track at `index` in the track list (0 = top), as when its header is dragged. */
