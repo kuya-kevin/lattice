@@ -86,3 +86,14 @@ test('Stop leaves the playhead where you heard it, and Play carries on from ther
   expect(Math.abs((await lcd()) - heard)).toBeLessThan(0.04); // was ~0.13 ahead (lookahead + output latency)
   expect(Math.abs((await session(page)).transport.position - heard)).toBeLessThan(0.04);
 });
+
+test("Muse's stop (no position) leaves the session's playhead where it stopped", async ({ page }) => {
+  await load(page, 6);
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(1200);
+  await page.evaluate(() => window.lattice!.runTool('stop', {})); // as Muse calls it: no `at`
+  await expect.poll(async () => (await session(page)).transport.position).toBeGreaterThan(0.9);
+  const at = (await session(page)).transport;
+  expect(at.playing).toBe(false);
+  expect(at.position).toBeLessThan(1.6);
+});

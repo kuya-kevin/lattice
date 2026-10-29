@@ -555,6 +555,8 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
       const heard = visualTimeRef.current ?? position;
       pause();
       setCurrentTime(heard);
+      // Muse's stop has no position (it can't know one): tell the session where it stopped
+      if (Math.abs(heard - position) > 0.01) run('stop', { at: heard });
     }
     else if (playingRef.current) play(position); // locate while playing: continue from there
     else setCurrentTime(position);
