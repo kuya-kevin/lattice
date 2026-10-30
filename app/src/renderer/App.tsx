@@ -633,23 +633,26 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
   // emitted to the speakers right now, so the position at audio-clock "now" is time - lookAhead.
   const { on } = session.metronome;
   const [beats, unit] = session.timeSignature;
+  const cyc = session.cycle?.on ? session.cycle : null;
+  const [cycStart, cycEnd] = [cyc?.start ?? 0, cyc?.end ?? 0];
   useEffect(() => {
     if (!isPlaying || !on) return;
     const meter: Meter = { tempo: session.tempo, timeSignature: [beats, unit] };
+    const cycle = cycEnd > cycStart ? { start: cycStart, end: cycEnd } : null;
     let started = playbackStartTimeRef.current;
-    clicks.start(getPlaybackTime() - getLookAhead(), meter);
+    clicks.start(getPlaybackTime() - getLookAhead(), meter, cycle);
     // a region edit rebuilds the engine and resumes playback from where it was heard: re-anchor
     registerFrameCallback('click-resync', () => {
       if (playbackStartTimeRef.current === started) return;
       started = playbackStartTimeRef.current;
-      clicks.start(getPlaybackTime() - getLookAhead(), meter);
+      clicks.start(getPlaybackTime() - getLookAhead(), meter, cycle);
     });
     return () => {
       unregisterFrameCallback('click-resync');
       clicks.stop();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isPlaying, on, session.tempo, beats, unit, rev]);
+  }, [isPlaying, on, session.tempo, beats, unit, rev, cycStart, cycEnd]);
   return null;
 }
 

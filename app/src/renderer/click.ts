@@ -1,12 +1,15 @@
 // The click track: Web Audio oscillator blips scheduled ahead on the audio clock by
 // ClickScheduler (see core/metronome.ts). Shares the playlist's AudioContext so clicks and
-// audio run on the same clock.
+// audio run on the same clock. With a cycle, the click re-syncs at every wrap from the engine's
+// own loopStart event (the engine's loop is a hair longer than the cycle, see ClickScheduler).
 import { ClickScheduler, planCountIn, type Meter } from '../core/metronome';
+import { getGlobalContext } from '@waveform-playlist/playout';
 import { audioContext } from './audioClock';
 
 class ClickPlayer {
-  private scheduled = new Set<OscillatorNode>();
+  private scheduled = new Map<OscillatorNode, number>(); // -> its audio time
   private timer: ReturnType<typeof setInterval> | null = null;
+  private offLoop: (() => void) | null = null;
   private sched = new ClickScheduler((t, accent) => this.blip(t, accent), { tempo: 120, timeSignature: [4, 4] });
 
   private blip(time: number, accent: boolean): OscillatorNode {
@@ -20,25 +23,50 @@ class ClickPlayer {
     osc.connect(gain).connect(ctx.destination);
     osc.start(time);
     osc.stop(time + 0.06);
-    this.scheduled.add(osc);
+    this.scheduled.set(osc, time);
     osc.onended = () => this.scheduled.delete(osc);
     return osc;
   }
 
-  /** Click along with the timeline: position `pos` is being emitted to the speakers now. */
-  start(pos: number, meter: Meter) {
+  /** Click along with the timeline: position `pos` is being emitted to the speakers now. With
+   *  `cycle`, the transport loops over it. */
+  start(pos: number, meter: Meter, cycle: { start: number; end: number } | null = null) {
     this.stop();
     const ctx = audioContext();
-    this.sched.start(ctx.currentTime, pos, meter);
+    this.sched.start(ctx.currentTime, pos, meter, cycle);
     this.sched.tick(ctx.currentTime);
     this.timer = setInterval(() => this.sched.tick(ctx.currentTime), 25);
+    if (!cycle) return;
+    // Tone's Transport emits loopStart ahead of time, with the wrap's exact audio time
+    const transport = getGlobalContext().transport;
+    const onLoop = (time: number, seconds: number) => {
+      this.sched.wrap(time, seconds, ctx.currentTime);
+      this.cancelFrom(time - 0.005); // anything counted on past the wrap
+      this.sched.tick(ctx.currentTime);
+    };
+    transport.on('loopStart', onLoop);
+    this.offLoop = () => transport.off('loopStart', onLoop);
+  }
+
+  private cancelFrom(time: number) {
+    for (const [o, t] of this.scheduled) {
+      if (t < time) continue;
+      try {
+        o.stop();
+      } catch {
+        /* already stopped */
+      }
+      this.scheduled.delete(o);
+    }
   }
 
   stop() {
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
+    this.offLoop?.();
+    this.offLoop = null;
     this.sched.stop();
-    for (const o of this.scheduled) {
+    for (const o of this.scheduled.keys()) {
       try {
         o.stop();
       } catch {

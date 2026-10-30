@@ -58,6 +58,43 @@ describe('ClickScheduler (lookahead scheduling)', () => {
     expect(clicks).toEqual([0, 0.5, 2]);
   });
 
+  describe('with a cycle (the engine loop runs a hair long; Oct 30 drift)', () => {
+    const every25 = (from: number, to: number) => Array.from({ length: Math.round((to - from) / 0.025) + 1 }, (_, i) => from + i * 0.025);
+    const r = (t: number) => Math.round(t * 1e4) / 1e4;
+
+    it('stops at the cycle end and carries on from where the engine says it wrapped', () => {
+      const clicks: number[] = [];
+      const s = new ClickScheduler((t) => clicks.push(r(t)), m44, 0.1);
+      s.start(10, 0, m44, { start: 0, end: 2 }); // a one-bar cycle
+      for (const t of every25(10, 11.925)) s.tick(t);
+      expect(clicks).toEqual([10, 10.5, 11, 11.5]); // 12.0 not counted on
+      s.wrap(12.0008, 0, 11.93); // Tone wraps on its next tick, 0.8 ms late
+      for (const t of every25(11.95, 13.925)) s.tick(t);
+      s.wrap(14.0016, 0, 13.93);
+      for (const t of every25(13.95, 14.6)) s.tick(t);
+      expect(clicks).toEqual([10, 10.5, 11, 11.5, 12.0008, 12.5008, 13.0008, 13.5008, 14.0016, 14.5016]);
+    });
+
+    it('wraps on the nominal time if the engine says nothing', () => {
+      const clicks: [number, boolean][] = [];
+      const s = new ClickScheduler((t, a) => clicks.push([r(t), a]), m44, 0.1);
+      s.start(10, 1, m44, { start: 1, end: 3 }); // from the cycle start (beat 3)
+      for (const t of every25(10, 12.2)) s.tick(t);
+      expect(clicks).toEqual([[10, false], [10.5, false], [11, true], [11.5, false], [12, false]]);
+    });
+
+    it('a wrap hands over the rest of the pass first (a stalled timer)', () => {
+      const clicks: number[] = [];
+      const s = new ClickScheduler((t) => clicks.push(r(t)), m44, 0.1);
+      s.start(10, 0, m44, { start: 0, end: 2 });
+      s.tick(10);
+      s.tick(11.38); // timer stalls here: 11.5 is still ahead
+      s.wrap(12.001, 0, 11.45);
+      s.tick(11.95);
+      expect(clicks).toEqual([10, 11.5, 12.001]); // 10.5 and 11 were past; 12.0 is the next pass's
+    });
+  });
+
   it('stops', () => {
     const s = new ClickScheduler(() => {}, m44);
     s.start(0, 0);
