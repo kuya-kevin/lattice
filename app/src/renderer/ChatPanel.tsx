@@ -2,6 +2,7 @@
 // at the bottom centre. The prompt bar can be tucked away into a small "Ask Muse" pill (the
 // choice is remembered); sending opens the conversation. B2: hold ` or the mic button to speak a
 // message instead; playback pauses, and the transcript is sent as soon as you let go.
+// B14: the speaker button (set_voice_reply) has Muse read its replies aloud (voiceReply.ts).
 import { useEffect, useRef, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import type { StepRecord } from '../core/agent';
@@ -9,6 +10,7 @@ import { clipLength } from '../core/stt';
 import { Icon } from './icons';
 import { recordingActive, startCapture, type Capture } from './pushToTalk';
 import { isPushToTalkKey } from './shortcuts';
+import { voiceReplyFor } from './voiceReply';
 
 interface Entry {
   role: 'user' | 'muse' | 'error';
@@ -28,8 +30,13 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   /** what Muse is looking at, shown as a chip in the prompt bar (e.g. the selected track) */
   context?: string | null;
-  /** B2: stop the transport while the mic is open (the speakers would reach it) */
-  pausePlayback?: () => void;
+  /** B2: stop the transport while the mic is open (the speakers would reach it). B14: returns
+   *  a token for resumePlayback, or null if nothing was playing. */
+  pausePlayback?: () => unknown;
+  /** B14: play again after Muse spoke, unless the transport moved meanwhile */
+  resumePlayback?: (token: unknown) => void;
+  /** B14: read Muse's replies aloud (session.voiceReply) */
+  voiceOn?: boolean;
 }
 
 const PROMPT_HIDDEN_KEY = 'lattice.promptHidden';
@@ -42,7 +49,7 @@ function loadPromptHidden(): boolean {
   }
 }
 
-export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }: Props) {
+export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, resumePlayback, voiceOn = false }: Props) {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
@@ -56,6 +63,21 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }
       // private window or blocked storage: the choice just isn't remembered
     }
   }, [promptHidden]);
+  // ---- B14 spoken replies ----
+  const voice = voiceReplyFor(bridge.mode);
+  voice.transport = { pause: () => pausePlayback?.() ?? null, resume: (t) => resumePlayback?.(t) };
+  const [speaking, setSpeaking] = useState(voice.speaking());
+  useEffect(() => voice.subscribe(setSpeaking), [voice]);
+  const [voiceStatus, setVoiceStatus] = useState(voice.voice.status());
+  useEffect(() => voice.voice.onStatus(setVoiceStatus), [voice]);
+  const voiceOnRef = useRef(voiceOn);
+  voiceOnRef.current = voiceOn;
+  useEffect(() => {
+    if (!voiceOn) voice.stop();
+    else voice.voice.warm?.(); // load the model now, not on the first reply
+  }, [voiceOn, voice]);
+  const toggleVoice = () => void bridge.runTool('set_voice_reply', { on: !voiceOn });
+
   const showPrompt = () => {
     setPromptHidden(false);
     requestAnimationFrame(() => inputRef.current?.focus());
@@ -69,6 +91,7 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }
     onOpenChange(true);
     setEntries((e) => [...e, { role: 'user', text: msg, spoken }]);
     const r = await bridge.sendChat(msg);
+    if (r.ok && voiceOnRef.current) voice.say(r.turn.reply); // B14 (Muse may have just turned it on)
     setEntries((e) => [...e, r.ok ? { role: 'muse', text: r.turn.reply, steps: r.turn.steps } : { role: 'error', text: r.error }]);
     setBusy(false);
     queueMicrotask(() => listRef.current?.scrollTo(0, listRef.current.scrollHeight));
@@ -86,6 +109,7 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }
     noteTimer.current = setTimeout(() => setTalk((t) => (t?.phase === 'note' ? null : t)), 2500);
   };
   const startTalk = () => {
+    voice.stop(); // B14: pressing push-to-talk cuts Muse off
     if (held.current) return;
     if (busy) return note('Muse is still working on the last message');
     if (recordingActive()) return note('Can’t listen while recording');
@@ -194,6 +218,22 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }
         </div>
       </aside>
 
+      {voiceOn && !talk && (voiceStatus.state === 'loading' || voiceStatus.state === 'error') && (
+        <div className={`ptt-status island${voiceStatus.state === 'error' ? ' error' : ''}`} data-testid="voice-loading" role="status">
+          <Icon name="speaker" size={14} />
+          {voiceStatus.state === 'loading'
+            ? (voiceStatus.progress ?? 0) >= 100
+              ? "Starting Muse's voice…" // downloaded; the model is being set up on the GPU (~30 s the first time)
+              : `Loading Muse's voice… ${voiceStatus.progress ?? 0}% (first time only, about 115 MB)`
+            : `Muse's voice didn't load: ${voiceStatus.error}. Turn the speaker off and on to try again.`}
+        </div>
+      )}
+      {speaking && !talk && voiceStatus.state !== 'loading' && (
+        <div className="ptt-status island" data-testid="voice-status" role="status">
+          <Icon name="speaker" size={14} className="live" />
+          Muse is speaking… hold ` to talk
+        </div>
+      )}
       {talk && (
         <div className={`ptt-status island ${talk.phase}`} data-testid="ptt-status" role="status">
           {talk.phase === 'listening' ? (
@@ -238,6 +278,16 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback }
           )}
           {context && <span className="chip ctx" title="Muse sees this selection">{context}</span>}
           <span className="spacer" />
+          <button
+            type="button"
+            className={`ibtn sm voice${voiceOn ? ' on' : ''}`}
+            aria-pressed={voiceOn}
+            aria-label="Speak Muse’s replies"
+            title={voiceOn ? 'Muse reads its replies aloud (click to stop)' : 'Have Muse read its replies aloud'}
+            onClick={toggleVoice}
+          >
+            <Icon name="speaker" size={15} />
+          </button>
           <button type="button" className="ibtn sm hide-prompt" onClick={() => setPromptHidden(true)} title="Hide the prompt bar" aria-label="Hide Muse prompt"><Icon name="chev" size={14} /></button>
           <button
             type="button"

@@ -22,6 +22,7 @@ Status words: **working**, **in app** (wired into Lattice), **stub** (fake resul
 | **Talking and planning** |||||
 | Understand a request, plan, call tools | Muse Spark 1.3 (Meta), contributor mode | Meta API | working, in app | Several calls per turn; respects hand edits. About $0.04 per mixing request with the full tool prompt. |
 | Spoken instructions to text | Muse Voice Transcribe (`muse-voice-transcribe-1.0`, Meta) | Meta API | working in app (B2 push-to-talk, Oct 28) | $0.18/hr, billed per second. Exact on a `say` test clip; Muse Spark 1.2 audio input also transcribes speech but is a chat model. |
+| Speak Muse's reply | MMS-TTS English (`facebook/mms-tts-eng`, VITS, Meta) via Transformers.js, fp32 | app (renderer Web Worker; WebGPU, WASM fallback) | in app (B14, Oct 29), off by default | The Meta API has no TTS. Electron WebGPU about 0.2 s per short phrase after a ~1.5 s load; WASM about real time. Reads letters only, so numbers and units are written out first. $0 per reply. |
 | Words to knob moves | `vocab.json` + Muse | app | seed data, not wired (S2) | — |
 | **Shaping sound** |||||
 | Effects (EQ, comp, de-esser, gate, limiter, sat, filter, delay, reverb, pitch, mod, crush, utility) | our engine: native Web Audio, Faust WASM, Signalsmith Stretch | app (live + offline) | working, in app | 68 reference checks pass, 2 known pitch gaps (`docs/fx-verification.md`). |

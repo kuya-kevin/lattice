@@ -4,6 +4,7 @@
 import type { AudioClip, ClipTrack } from '@waveform-playlist/core';
 import { getGlobalContext } from '@waveform-playlist/playout';
 import { laneHeight, type Session } from '../core/session';
+import { playoutFades } from '../core/editTools';
 
 /** A Map that tells subscribers when a buffer is added (e.g. so sampler MIDI clips re-render
  *  once their sample's audio arrives). */
@@ -72,6 +73,7 @@ export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {
         offsetSamples: Math.round(c.offset * sr),
         durationSamples: Math.round(c.duration * sr),
         gain: 1,
+        ...playoutFades(c), // B16: clip fades (the playout engine applies them)
       }];
     }),
   }));
@@ -88,7 +90,8 @@ export function sameLayout(a: ClipTrack[], b: ClipTrack[]): boolean {
     if (t.clips.length !== u.clips.length) return false;
     return t.clips.every((c, j) => {
       const d = u.clips[j];
-      return c.id === d.id && c.startSample === d.startSample && c.offsetSamples === d.offsetSamples && c.durationSamples === d.durationSamples && c.audioBuffer === d.audioBuffer;
+      return c.id === d.id && c.startSample === d.startSample && c.offsetSamples === d.offsetSamples && c.durationSamples === d.durationSamples && c.audioBuffer === d.audioBuffer &&
+        c.fadeIn?.duration === d.fadeIn?.duration && c.fadeOut?.duration === d.fadeOut?.duration;
     });
   });
 }

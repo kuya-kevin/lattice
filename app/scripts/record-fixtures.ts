@@ -1,5 +1,6 @@
 // Records live Muse exchanges to tests/fixtures/<scenario>.json (costs real tokens).
-// Usage: npm run record-fixtures -- [scenario ...]   (default: all scenarios)
+// Usage: npm run record-fixtures -- [scenario ...]   (default: all scenarios; a trailing * matches
+// a prefix, e.g. 'instr-*' for the B16 instruction eval)
 import { writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -16,7 +17,8 @@ const fsToken = process.env.FREESOUND_API_KEY;
 if (!fsToken) throw new Error('FREESOUND_API_KEY is not set');
 
 let total = { prompt_tokens: 0, completion_tokens: 0 };
-for (const sc of SCENARIOS.filter((s) => !wanted.length || wanted.includes(s.name))) {
+const picked = (name: string) => !wanted.length || wanted.some((w) => (w.endsWith('*') ? name.startsWith(w.slice(0, -1)) : w === name));
+for (const sc of SCENARIOS.filter((s) => picked(s.name))) {
   const responses: ChatResponse[] = [];
   const freesound: Fixture['freesound'] = {};
   const chat: ChatFn = async (req) => {

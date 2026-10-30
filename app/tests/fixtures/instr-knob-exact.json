@@ -1,0 +1,166 @@
+{
+  "name": "instr-knob-exact",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drums",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass",
+        "duration": 16
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c6",
+        "start": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-double",
+        "name": "Vocal Double",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c8",
+        "start": 8
+      }
+    },
+    {
+      "tool": "add_track",
+      "args": {
+        "name": "Keys"
+      }
+    },
+    {
+      "tool": "record_midi",
+      "args": {
+        "track_id": "t9",
+        "start": 0,
+        "duration": 8,
+        "notes": [
+          {
+            "pitch": 60,
+            "velocity": 90,
+            "start": 0.03,
+            "duration": 0.9
+          },
+          {
+            "pitch": 64,
+            "velocity": 90,
+            "start": 0.52,
+            "duration": 0.9
+          },
+          {
+            "pitch": 67,
+            "velocity": 90,
+            "start": 1.07,
+            "duration": 0.9
+          },
+          {
+            "pitch": 72,
+            "velocity": 90,
+            "start": 1.49,
+            "duration": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "tool": "select",
+      "args": {}
+    },
+    {
+      "tool": "insert_device",
+      "args": {
+        "track_id": "t1",
+        "device": "comp"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Set the compressor threshold on the drums to minus 50 dB."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-30T02:31:26.854Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Checking the compressor controls to set the exact threshold you asked for.",
+        "tool_calls": [
+          {
+            "id": "call_297d16e0-f79a-4afc-94cf-dc515999f797",
+            "type": "function",
+            "function": {
+              "name": "list_devices",
+              "arguments": "{\"device\":\"comp\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13153,
+        "completion_tokens": 214
+      }
+    },
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_41a4702a-03dd-46b9-9561-ca79c891075d",
+            "type": "function",
+            "function": {
+              "name": "set_param",
+              "arguments": "{\"device_id\":\"d12\",\"exact\":true,\"param\":\"thresh\",\"track_id\":\"t1\",\"value\":\"-50.0\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13578,
+        "completion_tokens": 168
+      }
+    },
+    {
+      "message": {
+        "content": "Set the drums compressor threshold to minus 50 dB."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 13735,
+        "completion_tokens": 33
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 40466,
+    "completion_tokens": 415
+  }
+}

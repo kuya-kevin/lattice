@@ -1,0 +1,139 @@
+{
+  "name": "instr-rename",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drums",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass",
+        "duration": 16
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c6",
+        "start": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-double",
+        "name": "Vocal Double",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c8",
+        "start": 8
+      }
+    },
+    {
+      "tool": "add_track",
+      "args": {
+        "name": "Keys"
+      }
+    },
+    {
+      "tool": "record_midi",
+      "args": {
+        "track_id": "t9",
+        "start": 0,
+        "duration": 8,
+        "notes": [
+          {
+            "pitch": 60,
+            "velocity": 90,
+            "start": 0.03,
+            "duration": 0.9
+          },
+          {
+            "pitch": 64,
+            "velocity": 90,
+            "start": 0.52,
+            "duration": 0.9
+          },
+          {
+            "pitch": 67,
+            "velocity": 90,
+            "start": 1.07,
+            "duration": 0.9
+          },
+          {
+            "pitch": 72,
+            "velocity": 90,
+            "start": 1.49,
+            "duration": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "tool": "select",
+      "args": {}
+    }
+  ],
+  "turns": [
+    {
+      "user": "Rename the double to Harmony."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-30T02:30:53.213Z",
+  "responses": [
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_c747a916-c443-4d4e-851d-6b16ad209811",
+            "type": "function",
+            "function": {
+              "name": "rename_track",
+              "arguments": "{\"name\":\"Harmony\",\"track_id\":\"t7\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13136,
+        "completion_tokens": 85
+      }
+    },
+    {
+      "message": {
+        "content": "Renamed Vocal Double to Harmony."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 13245,
+        "completion_tokens": 53
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 26381,
+    "completion_tokens": 138
+  }
+}

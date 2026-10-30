@@ -35,6 +35,7 @@ import type { Session } from '../core/session';
 import { trackEffects } from '../fx/engine/live';
 import { buffers } from './audio';
 import { IDEA_MIME, LIBRARY_MIME } from './libraryAudio';
+import { StarButton } from './Shelves'; // B17: star a pad's sound
 import { kitSamples, padHit, pianoVoice, sampleVoice, type KitSamples, type Voice } from './midiSynth';
 import { isTyping, setMusicalTypingKeys } from './shortcuts';
 import './MusicalTyping.css';
@@ -579,6 +580,7 @@ function KitPads({ kit, session, active, run, onLibraryToPad, onFilesToPad }: {
             )}
             <kbd>{padKeyLabel(i)}</kbd>
             <span className="mt-pad-sound">{over === i ? 'Release to assign' : src ? (src.name === p.label ? `${src.duration.toFixed(1)} s` : src.name) : 'Drop any sound'}</span>
+            {src && <StarButton run={run} args={{ kit_id: kit.id, pad: i }} sourceId={src.id} name={p.label} />}
             {src && (
               <button className="mt-pad-clear" aria-label={`Clear ${p.label}`} title="Take the sound off this pad" onClick={() => run('clear_pad', { kit_id: kit.id, pad: i })}>×</button>
             )}

@@ -1,0 +1,55 @@
+/* B17 sound shelves (Shelves.tsx) and B18 dry/wet controls (MixControls.tsx). Existing tokens only. */
+
+/* library rows gain a star button before the +; shelf rows have reopen, remove and + */
+.library .lib-row { grid-template-columns: 22px 1fr auto auto auto; }
+.library .lib-row .star-btn { grid-column: 4; grid-row: 1 / 3; align-self: center; }
+.library .lib-row .add-idea { grid-column: 5; }
+.library .shelf-row .shelf-reopen { grid-column: 3; grid-row: 1 / 3; align-self: center; }
+.library .shelf-row .shelf-remove { grid-column: 4; grid-row: 1 / 3; align-self: center; }
+
+.star-btn, .shelf-reopen, .shelf-remove {
+  width: 22px; height: 22px; padding: 0; border-radius: 6px; line-height: 1; font-size: 13px;
+  border: 1px solid transparent; background: transparent; color: var(--faint);
+}
+.star-btn:hover:not(:disabled), .shelf-reopen:hover, .shelf-remove:hover { color: var(--text); border-color: var(--line-strong); background: var(--island-2); }
+.star-btn.on, .shelf-row .shelf-remove { color: var(--solo); }
+.shelf-row .shelf-remove:hover { color: var(--rec); }
+.lib-scopes .shelf-tab { color: var(--solo); }
+
+/* the star on an Ideas card and on a pad sits in the top-right corner, beside × */
+.idea > .star-btn { position: absolute; top: 9px; right: 34px; width: 20px; height: 20px; font-size: 12px; background: var(--island-2); }
+.mt-pad > .star-btn { position: absolute; right: 24px; bottom: 3px; width: 18px; height: 16px; font-size: 11px; }
+.idea > .star-btn:not(.on), .mt-pad > .star-btn:not(.on) { opacity: 0; pointer-events: none; }
+.idea:hover > .star-btn, .mt-pad:hover > .star-btn, .idea > .star-btn:focus-visible, .mt-pad > .star-btn:focus-visible { opacity: 1; pointer-events: auto; }
+
+/* right-click menu on a region or track */
+.sound-menu {
+  position: fixed; z-index: 60; min-width: 230px; padding: 5px; display: grid; gap: 1px;
+  border-radius: var(--r-card); box-shadow: var(--shadow); border: 1px solid var(--line-strong);
+}
+.sound-menu button {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px; text-align: left;
+  border: 0; background: transparent; border-radius: 7px; padding: 6px 10px;
+}
+.sound-menu button:hover:not(:disabled) { background: var(--island-3); }
+.sound-menu small { color: var(--muted); font-size: 11px; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* B18 Dry A/B toggle (in the transport, styled like the count-in pill) and the Stems button */
+.transport .count-in.mix-toggle { font: 600 11px var(--font-ui); min-width: 44px; }
+.transport .count-in.mix-toggle.dry { background: var(--solo); color: var(--ground); border-color: transparent; }
+.stems-btn svg { transform: rotate(180deg); } /* the import arrow, pointing out */
+.controlbar .actions .stems-btn { padding: 0 11px; }
+.stems-btn:disabled { opacity: 0.45; }
+.lib-chips[hidden] { display: none; }
+
+/* Oct 29: with the two shelves the set tabs no longer fit one pill row; wrap them instead of clipping */
+.lib-scopes { flex-wrap: wrap; border-radius: 14px; }
+.lib-scopes button { flex: 1 0 auto; }
+
+/* Oct 29: where an exported sound went (Notice in Shelves.tsx), under the top bar */
+.notice {
+  position: fixed; top: calc(var(--top-h, 74px) - 6px); left: 50%; transform: translateX(-50%); z-index: 40;
+  display: flex; align-items: center; gap: 10px; padding: 7px 8px 7px 14px; border-radius: 999px; font-size: 12.5px;
+}
+.notice button { height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--island-2); font-size: 12px; }
+.notice button:hover { background: var(--island-3); }

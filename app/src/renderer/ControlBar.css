@@ -1,0 +1,16 @@
+/* Oct 29: B11 Versions and B18 Dry / Stems made the bar wider than the window at ~1400 px, and the
+   file actions covered Cycle and Dry (the transport was centred on the window, absolutely). The
+   transport now takes its place in the row, centred between the session pill and the file actions,
+   the file actions turn to icons sooner, and below 1200 px the transport moves to its own row (as it
+   already did below 900 px). Lane S: fold into styles.css with the B15 restyle. */
+.controlbar .transport { position: static; transform: none; margin: 0 auto; }
+.controlbar .actions { margin-left: 0; }
+@media (max-width: 1560px) {
+  .controlbar .actions .btn { font-size: 0; gap: 0; padding: 0 11px; }
+}
+@media (max-width: 1200px) {
+  .controlbar { flex-wrap: wrap; height: auto; row-gap: 8px; }
+  .controlbar .actions { margin-left: auto; }
+  .controlbar .transport { order: 3; }
+  :root { --top-h: 116px; }
+}

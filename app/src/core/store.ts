@@ -95,6 +95,9 @@ export class SessionStore {
       tracks: target.tracks.map(({ heightScale: _, ...t }) => (heights.get(t.id) ? { ...t, heightScale: heights.get(t.id) } : t)), // view setting
       sources: { ...target.sources, ...cur.sources }, // audio stays loaded either way
       transport: cur.transport,
+      mixView: undefined, // B18: a listening setting, not part of the mix (kept below)
+      ...(cur.mixView ? { mixView: cur.mixView } : {}),
+      voiceReply: cur.voiceReply, // B14: a preference, not part of the arrangement
       selection: select(cur, keep(cur.selection.trackId), keep(cur.selection.clipId), cur.selection.clipIds?.filter((c) => ids.has(c))).selection,
       seq: Math.max(cur.seq, target.seq), // never reuse ids
     };

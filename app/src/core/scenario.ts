@@ -5,6 +5,7 @@ import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { StubSidecar } from './sidecar';
 import { SessionStore } from './store';
 import { runTool, type ToolContext } from './tools';
+import { instructionScenarios } from './instructionEval';
 
 export interface ToolStep {
   tool: string;
@@ -93,13 +94,14 @@ export const SCENARIOS: Scenario[] = [
     setup: [imp('src-hum', 'Hum voice note', 6)],
     turns: [{ user: 'I want a dark, warm synth bass for this hum. Find a few short candidates on Freesound and set up a starting patch on our synth.' }],
   },
-  // B1: sound words -> effect moves. Record the baseline first (before suggest_moves exists),
-  // copy those to tests/fixtures/baseline/, then record again. Names start with "fx-".
-  ...fxScenarios(),
+  // B16: the instruction eval (core/instructionEval.ts), one scenario per phrase, "instr-<id>"
+  ...instructionScenarios(),
 ];
 
-/** One mix with four named tracks; each phrase is one fx- scenario on it. */
-function fxScenarios(): Scenario[] {
+/** B1 (legacy since B16): sound words -> effect moves, recorded while Muse had suggest_moves.
+ *  Not in SCENARIOS any more, so a plain `npm run record-fixtures` doesn't re-record them; their
+ *  replays in tests/fx-agent.test.ts are skipped. */
+export function fxScenarios(): Scenario[] {
   const mix = [imp('src-vocal', 'Vocal take', 12), imp('src-bass', 'Bass DI', 8), imp('src-drums', 'Drum loop', 8), imp('src-pad', 'Pad', 8)];
   const phrases: [string, string[]][] = [
     ['stand-out', ['Make the vocal stand out in the mix.']],

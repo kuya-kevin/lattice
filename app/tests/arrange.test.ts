@@ -89,7 +89,7 @@ describe('moving clips', () => {
 
   it('lets Muse move clips too (light arranging)', () => {
     const spec = museToolSpecs().find((t) => t.function.name === 'move_clip')!;
-    expect(Object.keys(spec.function.parameters.properties)).toEqual(['clip_id', 'start', 'track_id']);
+    expect(Object.keys(spec.function.parameters.properties)).toEqual(['clip_id', 'start', 'bar', 'track_id']); // B16: or a bar
   });
 });
 

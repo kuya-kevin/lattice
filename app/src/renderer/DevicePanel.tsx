@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATALOG, formatValue, fromNorm, getDevice, toNorm, type ParamDef, type ParamValue } from '../fx/catalog';
 import { previewParam, syncFx, trackLatency, trackMeters, warmUp, withTrackFx } from '../fx/engine/live';
 import type { DeviceInstance, Session } from '../core/session';
+import { exportSound } from './Shelves'; // B17: says where the sound went
 import './DevicePanel.css';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
@@ -48,6 +49,10 @@ export function DevicePanel({ session, run }: { session: Session; run: Run }) {
           ))}
         </select>
         <ChainMenu session={session} trackId={track.id} canSave={track.devices.length > 0} run={run} />
+        {/* B17: render the track through this chain into My Sounds (Library) */}
+        <button className="fx-export" data-testid="fx-export-sound" disabled={!track.clips.length} title="Export this track through its effects as a sound in My Sounds (Library)" onClick={() => exportSound(run, { track_id: track.id })}>
+          Export Sound
+        </button>
       </header>
       {open && (
         <div className="fx-chain">

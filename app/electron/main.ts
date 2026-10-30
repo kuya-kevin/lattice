@@ -1,7 +1,7 @@
 // Electron main process: owns the session store, runs the Muse agent loop and Freesound
 // search, so API keys never reach the renderer.
-import { app, BrowserWindow, ipcMain, session as electronSession } from 'electron';
-import { readFile } from 'node:fs/promises';
+import { app, BrowserWindow, dialog, ipcMain, session as electronSession } from 'electron';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { MuseAgent, type ChatFn } from '../src/core/agent';
 import { searchFreesound } from '../src/core/freesound';
@@ -9,6 +9,8 @@ import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
 import { runTool, type ToolContext } from '../src/core/tools';
 import { FileChainLibrary } from '../src/node/chainFile';
+import { FileSoundShelf } from '../src/node/shelfFile'; // B17
+import type { RenderJob, RenderOut } from '../src/core/mixView'; // B17/B18
 import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
@@ -72,7 +74,72 @@ const ctx: ToolContext = {
   chains: new FileChainLibrary(join(app.getPath('userData'), 'chains.json')), // B10
   versions: new FileVersionLibrary(join(projectDir, 'versions')), // B11
   measureTrack: (session, trackId) => askRenderer(session, trackId), // B9
+  // B17: the shelves span projects, so they sit beside chains.json, not in project/
+  shelf: new FileSoundShelf(join(app.getPath('userData'), 'shelf')),
+  render: (session, job) => askRender(session, job), // B17/B18
+  adoptAudio: (id, ref) => sourceAudio.keep(id, ref), // B17: loaded by the renderer like a restored source
+  findLibrary: async (id) => {
+    const item = getLibrary().items.find((i) => i.id === id);
+    if (!item) return undefined;
+    const { file: _f, ...entry } = item;
+    return entry;
+  },
+  saveFiles: (files, folderName) => saveStems(files, folderName), // B18
 };
+
+// B17/B18: render jobs run in the renderer too (it holds the audio); stems can take a while
+let renderSeq = 0;
+const renderWaits = new Map<number, (r: { ok: boolean; result?: any; error?: string }) => void>();
+ipcMain.on('render:res', (_e, reqId: number, r) => renderWaits.get(reqId)?.(r));
+function askRender<J extends RenderJob>(session: Session, job: J): Promise<RenderOut[J['kind']]> {
+  if (!win) return Promise.reject(new Error('no window to render in'));
+  const reqId = ++renderSeq;
+  return new Promise((ok, fail) => {
+    const timer = setTimeout(() => (renderWaits.delete(reqId), fail(new Error('rendering timed out after 5 min'))), 300_000);
+    renderWaits.set(reqId, (r) => {
+      clearTimeout(timer);
+      renderWaits.delete(reqId);
+      if (r.ok) ok(r.result);
+      else fail(new Error(r.error));
+    });
+    win!.webContents.send('render:req', reqId, session, job);
+  });
+}
+
+/** B18: stems go in <chosen folder>/<folderName>/<set>/. $LATTICE_EXPORT_DIR skips the dialog (tests). */
+async function saveStems(files: { set: string; name: string; bytes: Uint8Array }[], folderName: string) {
+  let dir = process.env.LATTICE_EXPORT_DIR;
+  if (!dir) {
+    const opts = { title: 'Export stems to…', buttonLabel: 'Export here', properties: ['openDirectory', 'createDirectory'] as ('openDirectory' | 'createDirectory')[] };
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    if (r.canceled || !r.filePaths[0]) return null;
+    dir = r.filePaths[0];
+  }
+  const root = join(dir, folderName);
+  const written: string[] = [];
+  for (const f of files) {
+    await mkdir(join(root, f.set), { recursive: true });
+    await writeFile(join(root, f.set, f.name), f.bytes);
+    written.push(`${f.set}/${f.name}`);
+  }
+  return { savedTo: root, files: written };
+}
+
+// B17: the shelves for the library panel, and a nudge when they change (Muse can star too)
+ipcMain.handle('shelf:list', () => ctx.shelf!.list());
+ctx.shelf!.subscribe(() => win?.webContents.send('shelf:changed'));
+ipcMain.handle('shelf:audio', async (_e, id: string) => {
+  const item = ctx.shelf!.get(String(id));
+  if (!item) throw new Error(`no shelf sound ${id}`);
+  if (item.library) {
+    const path = getLibrary().pathOf(item.library);
+    if (!path) throw new Error(`library item ${item.library} is gone`);
+    return new Uint8Array(await readFile(path));
+  }
+  const bytes = ctx.shelf!.audio(item.id);
+  if (!bytes) throw new Error(`the audio of "${item.name}" is missing`);
+  return bytes;
+});
 
 // B9: measure_track renders in the renderer, which holds the audio; ask it and wait for the answer
 let measureSeq = 0;

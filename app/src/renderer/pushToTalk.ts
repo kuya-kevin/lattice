@@ -6,8 +6,15 @@ import { MAX_CLIP_S, STT_SAMPLE_RATE } from '../core/stt';
 
 // While a track records (ControlBar sets this) the mic is busy: push-to-talk waits.
 let recording = false;
+const recordingListeners = new Set<(on: boolean) => void>();
 export function setRecordingActive(on: boolean) {
+  if (on === recording) return;
   recording = on;
+  for (const l of recordingListeners) l(on); // B14: a recording cuts Muse's speech off
+}
+export function onRecordingChange(fn: (on: boolean) => void): () => void {
+  recordingListeners.add(fn);
+  return () => recordingListeners.delete(fn);
 }
 export const recordingActive = () => recording;
 

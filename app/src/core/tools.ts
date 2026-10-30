@@ -9,9 +9,17 @@ import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
 import { MIDI_TOOLS } from './midiTools'; // [S3 midi]
 import { KIT_TOOLS } from './kitTools'; // B12 drum pads
+import { VOICE_TOOLS } from './voiceTools'; // B14 spoken replies
 import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
 import { VERSION_TOOLS, versionsLine, type VersionLibrary } from './versions';
+import { EDIT_TOOLS, timeArg } from './editTools'; // B16 arrange/mix/track/edit tools
+import { barLength } from './metronome';
 import type { Features } from './ears';
+import { SHELF_TOOLS } from './shelfTools'; // B17 sound shelves
+import { MIX_TOOLS } from './mixTools'; // B18 dry / wet
+import { shelvesLine, soundShelf, type SoundShelf } from './shelf';
+import type { Render } from './mixView';
+import type { LibraryEntry } from './library';
 
 export type JsonSchema = {
   type: 'object';
@@ -31,18 +39,29 @@ export interface ToolContext {
   /** B9: render a track as heard and without its effects, and measure both (the renderer
    *  holds the audio); absent where there is no audio (tests, fixtures) */
   measureTrack?: (session: S.Session, trackId: string) => Promise<{ wet: Features; dry: Features }>;
+  /** B17: the Starred and My Sounds shelves (span projects); in memory if omitted */
+  shelf?: SoundShelf;
+  /** B17/B18: render a sound, stems or loudness in the renderer (it holds the audio) */
+  render?: Render;
+  /** B17: make audio from a shelf loadable under a new source id (as B11 restores do) */
+  adoptAudio?: (sourceId: string, ref: { bytes: Uint8Array } | { library: string }) => Promise<void> | void;
+  /** B17: a library item by id (to star it) */
+  findLibrary?: (id: string) => Promise<LibraryEntry | undefined>;
+  /** B18: save stems where the user chooses (null = cancelled) */
+  saveFiles?: (files: { set: string; name: string; bytes: Uint8Array }[], folderName: string) => Promise<{ savedTo: string; files: string[] } | null>;
 }
 
 /** The session summary Muse sees, with saved chains and versions. */
 export function museSummary(ctx: ToolContext): string {
-  return S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name), versions: versionsLine(ctx) });
+  return S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name), versions: versionsLine(ctx), shelves: shelvesLine(soundShelf(ctx)) });
 }
 
 export interface ToolDef {
   name: string;
   description: string;
   parameters: JsonSchema;
-  /** user-only tools are hidden from Muse (they need audio the renderer holds) */
+  /** user-only tools are hidden from Muse (they need audio the renderer holds, or, like
+   *  suggest_moves since B16, are no longer offered to it) */
   userOnly?: boolean;
   /** quiet tools (transport, selection) aren't logged as user feedback or undo history */
   quiet?: boolean;
@@ -189,16 +208,24 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'trim_clip',
     description:
-      'Trim a clip so it plays only from start to end (timeline seconds). The audio stays in place; ' +
-      'edges are clamped to the recorded audio. Defaults to the selected clip.',
-    parameters: obj(
-      { clip_id: str('Clip id, e.g. "c2". Omit to use the selected clip.'), start: num('New start, timeline seconds'), end: num('New end, timeline seconds') },
-      ['start', 'end'],
-    ),
+      'Trim a clip so it plays only from start to end (timeline seconds), or from_bar..to_bar (inclusive bars, "bars 5-8"). ' +
+      'An edge you leave out stays where it is. The audio stays in place; edges are clamped to the recorded audio. Defaults to the selected clip.',
+    parameters: obj({
+      clip_id: str('Clip id, e.g. "c2". Omit to use the selected clip.'),
+      start: num('New start, timeline seconds'),
+      end: num('New end, timeline seconds'),
+      from_bar: num('Or: new start at this bar'),
+      to_bar: num('Or: new end at the end of this bar (inclusive)'),
+    }),
     run: (ctx, a) => {
-      const clipId = a.clip_id ?? ctx.store.get().selection.clipId;
+      const s0 = ctx.store.get();
+      const clipId = a.clip_id ?? s0.selection.clipId;
       if (!clipId) throw new S.SessionError('no clip_id given and no clip selected');
-      const s = edit(ctx, (s) => S.trimClip(s, clipId, a.start, a.end));
+      const { clip: was } = S.findClip(s0, clipId);
+      const start = timeArg(s0, a.from_bar, a.start);
+      const end = timeArg(s0, a.to_bar === undefined ? undefined : a.to_bar + 1, a.end);
+      if (start === null && end === null) throw new S.SessionError('give start/end or from_bar/to_bar');
+      const s = edit(ctx, (s) => S.trimClip(s, clipId, start ?? was.start, end ?? was.start + was.duration));
       const { clip } = S.findClip(s, clipId);
       return { clip_id: clipId, start: clip.start, end: clip.start + clip.duration };
     },
@@ -273,11 +300,18 @@ export const TOOLS: ToolDef[] = [
     name: 'move_clip',
     description:
       'Move a clip to a new timeline start (seconds), optionally onto another track (track_id). ' +
-      'The clip keeps its trim and id. Use the session tempo to land on bars: bar n starts at (n-1) * beats_per_bar * 60/BPM s (for x/4).',
-    parameters: obj({ clip_id: str('Clip id, e.g. "c2"'), start: num('New start, timeline seconds'), track_id: str('Destination track id; omit to stay on the same track') }, ['clip_id', 'start']),
+      'The clip keeps its trim and id. Give bar (1-based, e.g. 9) to land on a bar.',
+    parameters: obj({
+      clip_id: str('Clip id, e.g. "c2"'),
+      start: num('New start, timeline seconds'),
+      bar: num('Or: new start at this bar (1-based, decimals ok)'),
+      track_id: str('Destination track id; omit to stay on the same track'),
+    }, ['clip_id']),
     run: (ctx, a) => {
       const from = S.findClip(ctx.store.get(), a.clip_id);
-      const s = edit(ctx, (s) => S.moveClip(s, a.clip_id, a.start, a.track_id));
+      const start = timeArg(ctx.store.get(), a.bar, a.start);
+      if (start === null) throw new S.SessionError('give start or bar');
+      const s = edit(ctx, (s) => S.moveClip(s, a.clip_id, start, a.track_id));
       const to = S.findClip(s, a.clip_id);
       return { clip_id: a.clip_id, from_track: from.track.id, from_start: from.clip.start, track_id: to.track.id, start: to.clip.start };
     },
@@ -295,13 +329,16 @@ export const TOOLS: ToolDef[] = [
     parameters: obj({
       clip_ids: { type: 'array', items: { type: 'string' }, description: 'Clip ids; omit to use the selected clips' },
       delta: num('Seconds to move by'),
+      bars: num('Or: bars to move by (negative = earlier)'),
       track_offset: num('Tracks to move down (negative = up); default 0'),
-    }, ['delta']),
+    }),
     run: (ctx, a) => {
       const ids: string[] = a.clip_ids ?? S.selectedClipIds(ctx.store.get());
       if (!ids.length) throw new S.SessionError('no clip_ids given and no clips selected');
+      const delta = a.bars !== undefined ? a.bars * barLength(ctx.store.get()) : a.delta;
+      if (delta === undefined && a.track_offset === undefined) throw new S.SessionError('give delta, bars or track_offset');
       const before = ids.map((id) => S.findClip(ctx.store.get(), id));
-      const s = edit(ctx, (s) => S.moveClips(s, ids, a.delta, a.track_offset ?? 0));
+      const s = edit(ctx, (s) => S.moveClips(s, ids, delta ?? 0, a.track_offset ?? 0));
       const after = ids.map((id) => S.findClip(s, id));
       return {
         clip_ids: ids,
@@ -410,13 +447,20 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'duplicate_clip',
     description:
-      'Copy a clip (same audio or MIDI notes, same trim) to a timeline start (seconds), optionally on another track. ' +
+      'Copy a clip (same audio or MIDI notes, same trim) to a timeline start (seconds) or a bar, optionally on another track. ' +
       'The copy gets a new id and becomes the selected clip. The user\'s copy/paste (Cmd-C, Cmd-V) uses this.',
-    parameters: obj({ clip_id: str('Clip to copy, e.g. "c2"'), start: num('Start of the copy, timeline seconds'), track_id: str('Destination track id; omit for the same track') }, ['clip_id', 'start']),
+    parameters: obj({
+      clip_id: str('Clip to copy, e.g. "c2"'),
+      start: num('Start of the copy, timeline seconds'),
+      bar: num('Or: start of the copy at this bar (1-based)'),
+      track_id: str('Destination track id; omit for the same track'),
+    }, ['clip_id']),
     run: (ctx, a) => {
+      const start = timeArg(ctx.store.get(), a.bar, a.start);
+      if (start === null) throw new S.SessionError('give start or bar');
       let out!: { clip_id: string; track_id: string; start: number };
       edit(ctx, (s) => {
-        const [s1, c] = S.duplicateClip(s, a.clip_id, a.start, a.track_id);
+        const [s1, c] = S.duplicateClip(s, a.clip_id, start, a.track_id);
         const trackId = S.findClip(s1, c.id).track.id;
         out = { clip_id: c.id, track_id: trackId, start: c.start };
         return S.select(s1, trackId, c.id);
@@ -651,6 +695,10 @@ export const TOOLS: ToolDef[] = [
   ...MIDI_TOOLS,
   ...KIT_TOOLS,
   ...VERSION_TOOLS, // B11
+  ...EDIT_TOOLS, // B16
+  ...SHELF_TOOLS, // B17
+  ...MIX_TOOLS, // B18
+  ...VOICE_TOOLS, // B14
 
   // ---- user-only (UI) tools ----
   {

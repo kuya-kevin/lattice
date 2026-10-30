@@ -5,6 +5,8 @@ import type { LibraryEntry } from './library';
 import type { Features } from './ears';
 import type { Session } from './session';
 import type { ToolOutcome } from './tools';
+import type { RenderJob, RenderOut } from './mixView';
+import type { ShelfItem } from './shelf';
 
 export interface Bridge {
   mode: 'electron' | 'web';
@@ -32,6 +34,14 @@ export interface Bridge {
   /** B9: the renderer answers measure_track (it holds the audio): render the track in this
    *  session as heard and without effects, and measure both. */
   serveMeasure(fn: (session: Session, trackId: string) => Promise<{ wet: Features; dry: Features }>): void;
+  /** B17/B18: the renderer answers render jobs (export_sound, star_sound, export_stems, the
+   *  dry/wet loudness match): it holds the audio. */
+  serveRender(fn: <J extends RenderJob>(session: Session, job: J) => Promise<RenderOut[J['kind']]>): void;
+  /** B17: the sound shelves (Starred, My Sounds), newest first; and a call when they change. */
+  listShelf(): Promise<ShelfItem[]>;
+  onShelf(cb: () => void): () => void;
+  /** B17: a shelf sound's encoded audio (for preview). */
+  loadShelfAudio(id: string): Promise<ArrayBuffer>;
   /** Electron only: the on-disk path of a dropped or picked file ('' if it has none). */
   pathForFile?(file: File): string;
   /** Electron only: zoom the whole window (Chromium page zoom, like ⌘+ / ⌘−). Every layout

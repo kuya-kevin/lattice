@@ -10,18 +10,18 @@
 
 ### 1. Pitch
 
-**Lattice: a mini-DAW where Muse is your sound designer and your session engineer.** You bring a voice note or a sound from a song, trim it, and *talk* about the vibe you want. Muse proposes versions you can hear, compare and tweak by hand, and keeps going from your changes. Muse also runs the session: punch-in, take picking, drum quantize, trimming, cleanup. We build our own DAW (not Logic) so every agent action is a typed tool call on a session model we own; Logic stays the finishing tool via stem/MIDI export.
+**Lattice: a mini-DAW where Muse is your sound designer and your session engineer.** You bring a voice note, trim it, and *tell* Muse what to do in plain words ("move the vocal to bar 9", "pan the double 30% left", "fade this out"). Muse carries out concrete instructions as tool calls you can see, undo and tweak by hand, and keeps going from your changes. Muse also runs the session: punch-in, take picking, drum quantize, trimming, cleanup. We build our own DAW (not Logic) so every agent action is a typed tool call on a session model we own; Logic stays the finishing tool via stem/MIDI export.
 
 ### 1a. Positioning (checked Oct 27)
 
 "Agentic DAW" is already a named, crowded category. Don't claim first AI DAW, first text-to-preset,
 first hum-to-MIDI, or stem separation as the headline. What is new is the whole loop and how it
-works: hum → notes or sample → a synth Muse designs → competing versions → your hand move read
-as feedback → version tree → Logic export. Nobody found does all of that.
+works: hum → notes or sample → spoken or typed instructions carried out as visible tool calls →
+your hand move read as feedback → version history → Logic export. Nobody found does all of that.
 
 | Closest work | What it does | Difference |
 |---|---|---|
-| Moises Studio Agentic Mode (launched Sept 2 2026) | "comp the best takes, clean up a noisy recording, build an effect chain", every step visible and reversible (their press release) | the same as our engineer half; no competing versions, no hand moves as feedback |
+| Moises Studio Agentic Mode (launched Sept 2 2026) | "comp the best takes, clean up a noisy recording, build an effect chain", every step visible and reversible (their press release) | the same as our engineer half; no hand moves as feedback |
 | DAWZY (arXiv 2512.03289, NeurIPS 2025 workshop) | GPT-5 + MCP drives REAPER, Basic Pitch hum-to-MIDI, undo markers | research prototype; cite it |
 | Keeble Weil | plugin synth where Claude sets every knob from a description ("darker", "more movement") | one synth, not a session; vendor claims, no reviews found |
 | Jamu (Ableton), FL Studio 2026 Gopher | plain language → DAW actions and device settings | inside an existing DAW; Gopher can't add notes or pick presets |
@@ -37,12 +37,14 @@ of the prompt."
 
 | | **Sound designer** (centerpiece) | **Session engineer** (a given) |
 |---|---|---|
-| Rhythm | many rounds on one sound | one command, one result |
-| Output | variants as device chains with real knobs | session edits: takes, cuts, fades, timing |
+| Rhythm | instruction by instruction on one sound | one command, one result |
+| Output | device chains with real knobs, set as asked | session edits: takes, cuts, fades, timing |
 | Human control | grab any knob any time; Muse reads the move as feedback | review, keep or undo |
 | Model | Muse/Meta first; **pivot to Magenta RT2 if Muse's results are weak** (tested: `docs/spike-results.md`) | Muse |
 
-**Sound-design loop:** source (voice note / song snippet) → cleanup → trim → describe the vibe → Muse proposes 2-3 versions → you react with words, picks ("B > C") or **knob moves** → Muse revises from there → keep. History is a tree of versions, not a chat log.
+**Instruction loop (decided Oct 29, B16):** source (voice note) → cleanup → trim → you give concrete instructions (arrange, mix, tracks, edits, devices) → Muse does exactly that and says what it did in one spoken sentence → you adjust by hand or give the next instruction. Vague sound words ("make it better", "more open", "wider") get one short question offering one or two concrete changes ("Brighter how: raise the top-end EQ, or cut the low-mids?"), not a guess. History is the Versions list (before/after each Muse turn), not a chat log.
+
+Dropped (Oct 29): "Muse proposes 2-3 competing versions" from a vibe description. Muse can't hear, so its guesses at a vibe were the weak part; concrete instructions are what it does reliably. Later possibility: a reference clip ("make the drums sound like this") measured with our features and turned into concrete moves the user confirms.
 
 **Two ways forward from a source:** use it as a sample (resample, pitch, chop, effects), or turn it into notes (basic-pitch, Apache-2.0: hum → MIDI) that play a synth Muse designs.
 
@@ -79,7 +81,7 @@ Testing: recorded Muse fixtures for the tool loop; pytest on audio with measurab
 
 ### 6. Demo (3 min)
 
-1. Sound design (~1:45): hum a voice note → clean + trim → "dark, gritty synth" → Muse plays 3 versions → you pull the drive back by hand → Muse adjusts → octave down, sidechain to the kick → keep.
+1. Sound design (~1:45): hum a voice note → clean + trim → turn it into MIDI → "put saturation on the keys, drive at 12 dB" → you pull the drive back by hand → "now an octave down, and loop it through bar 16" → keep.
 2. Engineering (~0:50): punch in vocals at bar 9 → Muse picks the best take → quantize the drum loop → trim breaths.
 3. Wrap (~0:25): export stems to Logic, show the version tree and provenance.
 

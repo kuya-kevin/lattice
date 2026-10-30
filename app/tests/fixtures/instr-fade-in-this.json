@@ -1,0 +1,146 @@
+{
+  "name": "instr-fade-in-this",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drums",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass",
+        "duration": 16
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c6",
+        "start": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-double",
+        "name": "Vocal Double",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c8",
+        "start": 8
+      }
+    },
+    {
+      "tool": "add_track",
+      "args": {
+        "name": "Keys"
+      }
+    },
+    {
+      "tool": "record_midi",
+      "args": {
+        "track_id": "t9",
+        "start": 0,
+        "duration": 8,
+        "notes": [
+          {
+            "pitch": 60,
+            "velocity": 90,
+            "start": 0.03,
+            "duration": 0.9
+          },
+          {
+            "pitch": 64,
+            "velocity": 90,
+            "start": 0.52,
+            "duration": 0.9
+          },
+          {
+            "pitch": 67,
+            "velocity": 90,
+            "start": 1.07,
+            "duration": 0.9
+          },
+          {
+            "pitch": 72,
+            "velocity": 90,
+            "start": 1.49,
+            "duration": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "tool": "select",
+      "args": {}
+    },
+    {
+      "tool": "select",
+      "args": {
+        "track_id": "t3",
+        "clip_id": "c4"
+      }
+    }
+  ],
+  "turns": [
+    {
+      "user": "Fade this in over half a second."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-30T02:31:15.097Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Applying a half-second fade-in to the Bass.",
+        "tool_calls": [
+          {
+            "id": "call_31d6d11c-aeee-4b57-89ff-11c72691d953",
+            "type": "function",
+            "function": {
+              "name": "set_fade",
+              "arguments": "{\"clip_id\":\"c4\",\"fade_in\":0.5}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13149,
+        "completion_tokens": 160
+      }
+    },
+    {
+      "message": {
+        "content": "Faded the Bass in over half a second."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 13286,
+        "completion_tokens": 46
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 26435,
+    "completion_tokens": 206
+  }
+}

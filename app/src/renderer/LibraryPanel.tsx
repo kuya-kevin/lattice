@@ -3,31 +3,41 @@
 // drag a row onto a track (or below the tracks for a new one) or press its + to add it to
 // Ideas (on no track, to try out on Musical Typing first), and an info area at the bottom with
 // the credit line CC-BY sounds need.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import {
   CHIPS, SET_LABELS, attribution, categoriesBySet, categoryLabel, filterLibrary, needsAttribution,
   type LibraryEntry, type LibrarySet,
 } from '../core/library';
 import { LIBRARY_MIME, libraryDrag, preview, stopPreview } from './libraryAudio';
+import { ShelfList, StarButton, useShelfItems, useShowShelf } from './Shelves'; // B17 sound shelves
+import { SHELF_LABELS, type ShelfName } from '../core/shelf';
 
-type Scope = LibrarySet | 'all';
+type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
+type Scope = LibrarySet | 'all' | ShelfName;
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'freesound', label: 'Instruments' },
   { id: 'material', label: 'Material' },
   { id: 'voice_notes', label: 'Voice notes' },
+  { id: 'starred', label: '★ Starred' }, // B17: shelves that span projects
+  { id: 'mine', label: 'My Sounds' },
 ];
+const isShelf = (s: Scope): s is ShelfName => s === 'starred' || s === 'mine';
 
 const fmtDur = (s: number) => (s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
 const licenseBadge = (l: string) => (/^CC0/i.test(l) ? 'CC0' : /^CC-BY/i.test(l) ? 'CC BY' : l === 'own recording' ? 'Own' : l);
 
-export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open: boolean; onAddIdea: (id: string) => void }) {
+export function LibraryPanel({ bridge, open, onAddIdea, run }: { bridge: Bridge; open: boolean; onAddIdea: (id: string) => void; run: Run }) {
   const [items, setItems] = useState<LibraryEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [text, setText] = useState('');
   const [scope, setScope] = useState<Scope>('all');
   const [category, setCategory] = useState<string | null>(null);
+  // B17: the Export notice's Show opens a shelf; the footer counts the shelf, not the library
+  useShowShelf(useCallback((shelf: ShelfName) => { setScope(shelf); setCategory(null); }, []));
+  const shelfItems = useShelfItems();
+  const shelfCount = isShelf(scope) ? shelfItems.filter((i) => i.shelf === scope).length : 0;
   const [chips, setChips] = useState<string[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [playing, setPlaying] = useState<string | null>(null);
@@ -45,9 +55,10 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
   }, [open]);
 
   const all = items ?? [];
-  const results = useMemo(() => filterLibrary(all, { text, set: scope, category, chips }), [all, text, scope, category, chips]);
+  const set = isShelf(scope) ? 'all' : scope;
+  const results = useMemo(() => filterLibrary(all, { text, set, category, chips }), [all, text, set, category, chips]);
   const browsing = !text.trim() && !category && chips.length === 0;
-  const groups = useMemo(() => categoriesBySet(scope === 'all' ? all : all.filter((i) => i.set === scope)), [all, scope]);
+  const groups = useMemo(() => categoriesBySet(set === 'all' ? all : all.filter((i) => i.set === set)), [all, set]);
   const sel = all.find((i) => i.id === selected) ?? null;
 
   const toggleChip = (id: string) => setChips((c) => (c.includes(id) ? c.filter((x) => x !== id) : [...c, id]));
@@ -72,12 +83,12 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
       </div>
       <div className="lib-scopes" role="tablist" aria-label="Sound sets">
         {SCOPES.map((s) => (
-          <button key={s.id} role="tab" aria-selected={scope === s.id} className={scope === s.id ? 'on' : ''} onClick={() => { setScope(s.id); setCategory(null); }}>
+          <button key={s.id} role="tab" aria-selected={scope === s.id} className={`${scope === s.id ? 'on' : ''}${isShelf(s.id) ? ' shelf-tab' : ''}`} onClick={() => { setScope(s.id); setCategory(null); }}>
             {s.label}
           </button>
         ))}
       </div>
-      <div className="lib-chips" aria-label="Filters">
+      <div className="lib-chips" aria-label="Filters" hidden={isShelf(scope)}>
         {CHIPS.map((c) => (
           <button key={c.id} className={`chip${chips.includes(c.id) ? ' on' : ''}`} aria-pressed={chips.includes(c.id)} onClick={() => toggleChip(c.id)}>
             {c.label}
@@ -89,6 +100,8 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
       </div>
 
       <div className="lib-body">
+        {isShelf(scope) && <ShelfList bridge={bridge} run={run} shelf={scope} text={text} />}
+        {!isShelf(scope) && <>
         {items === null && !error && <p className="hint pad">Loading library…</p>}
         {error && <p className="lib-error pad" role="alert" onClick={() => setError(null)}>{error}</p>}
         {items && items.length === 0 && (
@@ -148,6 +161,7 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
                   <span className="nm">{i.name}</span>
                   <span className="meta">{categoryLabel(i.category)} · {fmtDur(i.duration)}{i.note ? ` · ${i.note}` : ''}{i.bpm ? ` · ${Math.round(i.bpm)} bpm` : ''}</span>
                   <span className={`lic${needsAttribution(i) ? ' by' : ''}`}>{licenseBadge(i.license)}</span>
+                  <StarButton run={run} args={{ library_id: i.id }} name={i.name} />
                   <button
                     className="add-idea" aria-label={`Add ${i.name} to Ideas`} title="Add to Ideas and try it on Musical Typing"
                     onClick={(e) => {
@@ -163,6 +177,7 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
             </ul>
           </>
         )}
+        </>}
       </div>
 
       <div className="lib-info" data-testid="lib-info">
@@ -180,7 +195,11 @@ export function LibraryPanel({ bridge, open, onAddIdea }: { bridge: Bridge; open
             </div>
           </>
         ) : (
-          <div className="hint">{items ? `${items.length} sounds. Click one to preview; drag it to a track.` : ''}</div>
+          <div className="hint">
+            {isShelf(scope)
+              ? `${shelfCount} sound${shelfCount === 1 ? '' : 's'} in ${SHELF_LABELS[scope]}. Click one to preview; + puts it in Ideas.`
+              : items ? `${items.length} sounds. Click one to preview; drag it to a track.` : ''}
+          </div>
         )}
       </div>
     </div>

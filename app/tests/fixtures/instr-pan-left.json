@@ -1,0 +1,139 @@
+{
+  "name": "instr-pan-left",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drums",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass",
+        "duration": 16
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c6",
+        "start": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-double",
+        "name": "Vocal Double",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c8",
+        "start": 8
+      }
+    },
+    {
+      "tool": "add_track",
+      "args": {
+        "name": "Keys"
+      }
+    },
+    {
+      "tool": "record_midi",
+      "args": {
+        "track_id": "t9",
+        "start": 0,
+        "duration": 8,
+        "notes": [
+          {
+            "pitch": 60,
+            "velocity": 90,
+            "start": 0.03,
+            "duration": 0.9
+          },
+          {
+            "pitch": 64,
+            "velocity": 90,
+            "start": 0.52,
+            "duration": 0.9
+          },
+          {
+            "pitch": 67,
+            "velocity": 90,
+            "start": 1.07,
+            "duration": 0.9
+          },
+          {
+            "pitch": 72,
+            "velocity": 90,
+            "start": 1.49,
+            "duration": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "tool": "select",
+      "args": {}
+    }
+  ],
+  "turns": [
+    {
+      "user": "Pan the double 30% left."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-30T02:30:38.118Z",
+  "responses": [
+    {
+      "message": {
+        "content": null,
+        "tool_calls": [
+          {
+            "id": "call_a49704f3-32cd-4c87-8dd5-f481f9f5ae85",
+            "type": "function",
+            "function": {
+              "name": "set_pan",
+              "arguments": "{\"pan\":-0.3,\"track_id\":\"t7\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13138,
+        "completion_tokens": 108
+      }
+    },
+    {
+      "message": {
+        "content": "Panned the Vocal Double 30 percent left."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 13260,
+        "completion_tokens": 61
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 26398,
+    "completion_tokens": 169
+  }
+}

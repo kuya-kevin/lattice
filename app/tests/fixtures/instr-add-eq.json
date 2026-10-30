@@ -1,0 +1,139 @@
+{
+  "name": "instr-add-eq",
+  "setup": [
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-drums",
+        "name": "Drums",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-bass",
+        "name": "Bass",
+        "duration": 16
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-vocal",
+        "name": "Vocal",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c6",
+        "start": 8
+      }
+    },
+    {
+      "tool": "import_audio",
+      "args": {
+        "source_id": "src-double",
+        "name": "Vocal Double",
+        "duration": 8
+      }
+    },
+    {
+      "tool": "move_clip",
+      "args": {
+        "clip_id": "c8",
+        "start": 8
+      }
+    },
+    {
+      "tool": "add_track",
+      "args": {
+        "name": "Keys"
+      }
+    },
+    {
+      "tool": "record_midi",
+      "args": {
+        "track_id": "t9",
+        "start": 0,
+        "duration": 8,
+        "notes": [
+          {
+            "pitch": 60,
+            "velocity": 90,
+            "start": 0.03,
+            "duration": 0.9
+          },
+          {
+            "pitch": 64,
+            "velocity": 90,
+            "start": 0.52,
+            "duration": 0.9
+          },
+          {
+            "pitch": 67,
+            "velocity": 90,
+            "start": 1.07,
+            "duration": 0.9
+          },
+          {
+            "pitch": 72,
+            "velocity": 90,
+            "start": 1.49,
+            "duration": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "tool": "select",
+      "args": {}
+    }
+  ],
+  "turns": [
+    {
+      "user": "Add an EQ to the vocal."
+    }
+  ],
+  "model": "muse-spark-1.3-contributor",
+  "recordedAt": "2026-10-30T02:31:17.166Z",
+  "responses": [
+    {
+      "message": {
+        "content": "Adding EQ to the vocal.",
+        "tool_calls": [
+          {
+            "id": "call_8ce7d2aa-a6fc-4d20-89b2-a22111ac73c7",
+            "type": "function",
+            "function": {
+              "name": "insert_device",
+              "arguments": "{\"device\":\"eq\",\"track_id\":\"t5\"}"
+            }
+          }
+        ]
+      },
+      "finish_reason": "tool_calls",
+      "usage": {
+        "prompt_tokens": 13137,
+        "completion_tokens": 139
+      }
+    },
+    {
+      "message": {
+        "content": "Added an EQ to the Vocal."
+      },
+      "finish_reason": "stop",
+      "usage": {
+        "prompt_tokens": 13283,
+        "completion_tokens": 25
+      }
+    }
+  ],
+  "freesound": {},
+  "usage": {
+    "prompt_tokens": 26420,
+    "completion_tokens": 164
+  }
+}

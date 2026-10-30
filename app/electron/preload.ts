@@ -37,6 +37,24 @@ const bridge: Bridge = {
       }
     });
   },
+  // B17/B18: main asks (render:req), the renderer renders (render:res), as for measure
+  serveRender: (fn) => {
+    ipcRenderer.removeAllListeners('render:req');
+    ipcRenderer.on('render:req', async (_e, reqId: number, session, job) => {
+      try {
+        ipcRenderer.send('render:res', reqId, { ok: true, result: await fn(session, job) });
+      } catch (e) {
+        ipcRenderer.send('render:res', reqId, { ok: false, error: e instanceof Error ? e.message : String(e) });
+      }
+    });
+  },
+  listShelf: () => ipcRenderer.invoke('shelf:list'), // B17
+  onShelf: (cb) => {
+    const listener = () => cb();
+    ipcRenderer.on('shelf:changed', listener);
+    return () => ipcRenderer.removeListener('shelf:changed', listener);
+  },
+  loadShelfAudio: async (id) => toArrayBuffer(await ipcRenderer.invoke('shelf:audio', id)),
   pathForFile: (file) => webUtils.getPathForFile(file),
   setZoom: (factor) => webFrame.setZoomFactor(factor),
   getZoom: () => webFrame.getZoomFactor(),

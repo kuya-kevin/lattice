@@ -1,6 +1,13 @@
 // B1 step 6: replay the fx- scenarios recorded with suggest_moves (tests/fixtures/fx-*.json; the
 // baseline without it is in tests/fixtures/baseline/). Each phrase must look up the words first,
 // end with the right devices on the right track only, and keep every knob inside its usual range.
+//
+// LEGACY since B16 (Oct 29): Muse no longer gets suggest_moves and no longer acts on vague sound
+// words ("make the bass warmer"); it asks for a concrete change instead. These fixtures were
+// recorded with the old prompt and tool list, so replaying them now fails at the first
+// suggest_moves call ("not available to the assistant"). They are skipped, not deleted: they
+// document the B1 result. suggest_moves itself is still tested directly in tests/vocab.test.ts,
+// and the instruction eval (tests/instructions.test.ts) replaces these as the agent-level check.
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -23,7 +30,7 @@ const EXPECT: Record<string, [string, string[]]> = {
   'fx-telephone': ['t1', ['eq', 'sat']],
 };
 
-describe('fx scenarios with suggest_moves (recorded Muse fixtures)', () => {
+describe.skip('LEGACY (B16 removed suggest_moves from Muse): fx scenarios with suggest_moves (recorded Muse fixtures)', () => {
   for (const [name, [track, devices]] of Object.entries(EXPECT)) {
     it(`${name}: looks the words up, then edits only ${track}`, async () => {
       const f = load(name);

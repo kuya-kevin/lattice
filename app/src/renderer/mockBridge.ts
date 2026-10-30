@@ -9,6 +9,8 @@ import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
 import { MemoryVersionLibrary } from '../core/versions';
+import { MemorySoundShelf } from '../core/shelf'; // B17
+import type { LibraryEntry } from '../core/library';
 
 /** Offline stand-in: lists the tracks once, then answers with what it saw. */
 const offlineMuse: ChatFn = async ({ messages }) => {
@@ -76,6 +78,15 @@ export function createMockBridge(): Bridge {
   const sourceAudio = new Map<string, ArrayBuffer>(); // [S3 midi]
   const sidecar = new WebSidecar(sourceAudio);
   let measurer: Parameters<Bridge['serveMeasure']>[0] | null = null; // B9: set by the page (App)
+  let renderer: Parameters<Bridge['serveRender']>[0] | null = null; // B17/B18: set by the page (App)
+  const shelf = new MemorySoundShelf(); // B17: kept for the page's lifetime only
+  const adopted = new Map<string, { bytes: Uint8Array } | { library: string }>(); // B17: shelf audio brought into the session
+  const libraryAudio = async (id: string) => {
+    const r = await fetch(`/api/library/audio/${encodeURIComponent(id)}`);
+    if (!r.ok) throw new Error(`library audio ${id}: HTTP ${r.status}`);
+    return r.arrayBuffer();
+  };
+  const copy = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
   const ctx: ToolContext = {
     measureTrack: (s, trackId) => (measurer ? measurer(s, trackId) : Promise.reject(new Error('the page has not loaded yet'))),
     store,
@@ -83,6 +94,14 @@ export function createMockBridge(): Bridge {
     searchFreesound: async () => ({ count: 0, results: [] }),
     chains: new MemoryChainLibrary(), // B10: kept for the page's lifetime only
     versions: new MemoryVersionLibrary(), // B11: same (no autosave in the browser build)
+    shelf,
+    render: (s, job) => (renderer ? renderer(s, job) : Promise.reject(new Error('the page has not loaded yet'))),
+    adoptAudio: (id, ref) => void adopted.set(id, ref),
+    findLibrary: async (id) => {
+      const r = await fetch('/api/library');
+      return r.ok ? ((await r.json()) as LibraryEntry[]).find((i) => i.id === id) : undefined;
+    },
+    saveFiles: async (files, folderName) => downloadFiles(files, folderName), // B18: one download per stem
   };
   const agent = new MuseAgent(ctx, offlineMuse);
   return {
@@ -95,16 +114,27 @@ export function createMockBridge(): Bridge {
       const r = await fetch('/api/library');
       return r.ok ? r.json() : [];
     },
-    loadLibraryAudio: async (id) => {
-      const r = await fetch(`/api/library/audio/${encodeURIComponent(id)}`);
-      if (!r.ok) throw new Error(`library audio ${id}: HTTP ${r.status}`);
-      return r.arrayBuffer();
-    },
+    loadLibraryAudio: libraryAudio,
     putSourceAudio: async (id, wav) => void sourceAudio.set(id, wav), // [S3 midi]
     // B11: audio buffers outlive any restore within the page, so only processed audio (B3) loads here
     keepSourceAudio: async () => {},
-    loadSourceAudio: async (id) => sidecar.processed.get(id)?.slice(0) ?? null,
+    loadSourceAudio: async (id) => {
+      const a = adopted.get(id); // B17
+      if (a) return 'library' in a ? libraryAudio(a.library) : copy(a.bytes);
+      return sidecar.processed.get(id)?.slice(0) ?? null;
+    },
     serveMeasure: (fn) => void (measurer = fn),
+    serveRender: (fn) => void (renderer = fn),
+    listShelf: async () => shelf.list(),
+    onShelf: (cb) => shelf.subscribe(cb),
+    loadShelfAudio: async (id) => {
+      const item = shelf.get(id);
+      if (!item) throw new Error(`no shelf sound ${id}`);
+      if (item.library) return libraryAudio(item.library);
+      const bytes = shelf.audio(id);
+      if (!bytes) throw new Error(`the audio of "${item.name}" is missing`);
+      return copy(bytes);
+    },
     // B2: dev:web transcribes through the Vite middleware (/api/stt), which holds the key
     transcribe: async (wav) => {
       const r = await fetch('/api/stt', { method: 'POST', body: wav });
@@ -119,4 +149,22 @@ export function createMockBridge(): Bridge {
       }
     },
   };
+}
+
+/** B18: the browser build saves stems as downloads, named "<folder> - <set> - <NN track>.wav". */
+function downloadFiles(files: { set: string; name: string; bytes: Uint8Array }[], folderName: string) {
+  const names: string[] = [];
+  for (const f of files) {
+    const name = `${folderName} - ${f.set} - ${f.name}`;
+    const url = URL.createObjectURL(new Blob([f.bytes as Uint8Array<ArrayBuffer>], { type: 'audio/wav' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    names.push(name);
+  }
+  return Promise.resolve({ savedTo: 'browser downloads', files: names });
 }

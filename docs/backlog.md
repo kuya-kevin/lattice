@@ -1,6 +1,6 @@
 # Backlog
 
-Updated 2026-10-28. One entry per remaining task, in priority order. Each says what "done" means,
+Updated 2026-10-29. One entry per remaining task, in priority order. Each says what "done" means,
 which files it touches, and what it depends on, so an agent can be pointed at one entry.
 Rules and commands: `CLAUDE.md`. Status: `HANDOFF.md`. Stream ids (S0–S8): `docs/session-plan.md`.
 
@@ -223,18 +223,118 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
 ### B14. Muse talks back (lane B)
 - **What:** an option for Muse to speak its reply, so a musician with hands on an instrument can
   push-to-talk in and hear the answer. Push-to-talk input already works (B2, Done).
-- **First, before building:** find out whether the Meta API offers text-to-speech (model, voices,
-  price, latency) and add it to `docs/model-map.md`. If it doesn't, stop and ask the user: the
-  OS voice (`speechSynthesis`, free, arguably not a Meta model under the Meta-only runtime rule)
-  or text only.
-- **Do:** a toggle, off by default, that is a tool like every other action. When on, Muse's final
-  reply is spoken (a short version if the reply is long); playback ducks or pauses while it speaks;
-  never speaks while a track records; pressing push-to-talk stops it.
+- **Facts checked (Oct 29):** the Meta Model API has no text-to-speech (dev.meta.ai models and
+  pricing pages; Muse Voice Transcribe "does not synthesize speech"). Decided (user, Oct 29): use
+  Meta's open-weight **MMS-TTS English** (`facebook/mms-tts-eng`, VITS), run in the app through the
+  Transformers.js `text-to-speech` pipeline (ONNX build `Xenova/mms-tts-eng`; the package is now
+  `@huggingface/transformers`, check current docs). Use fp32: int8 is reported to hurt VITS audio.
+  Weights are **CC BY-NC 4.0**: add a licence watchlist row. No API cost. One voice.
+- **First, a spike:** speak 5 typical confirmations on the Mac, log time to first audio and load
+  time, the user listens. If it fails by ear or is too slow, stop and ask (fallback: `speechSynthesis`).
+- **Do:** a toggle, off by default, that is a tool like every other action. When on, Muse speaks a
+  short confirmation of what it did, and its clarifying questions (B16); not long replies. Playback
+  ducks while it speaks; never speaks while a track records; pressing push-to-talk stops it.
 - **Done when:** a Playwright test asserts the toggle and speaking state through a mock voice in
-  the web build; checked by ear in Electron; cost per reply logged in the lane note.
-- **Files:** `renderer/pushToTalk.ts`, `renderer/ChatPanel.tsx`, a new `node/tts.ts` beside
-  `node/stt.ts`, `electron/main.ts` and `preload.ts` (IPC), `core/bridge.ts`, `renderer/mockBridge.ts`.
-- **Budget:** a few live test calls only, and not while another lane is calling Muse.
+  the web build; checked by ear in Electron; latency per reply logged in the lane note; row added to
+  `docs/model-map.md`.
+- **Files:** `renderer/pushToTalk.ts`, `renderer/ChatPanel.tsx`, a new `renderer/tts.ts` (or a worker),
+  `core/bridge.ts`, `renderer/mockBridge.ts`.
+
+### B16. Muse acts on clear instructions (replaces "competing versions")
+- **Why (user, Oct 29):** vague sound requests ("make it sound better / more open / wider") are out
+  for now: describing a sound in words is too hard without a model that can take reference audio.
+  Muse responds to concrete instructions.
+- **Do:**
+  - System prompt: act on concrete edits only. For a vague sound word, ask one short question that
+    offers one or two concrete changes ("brighter: raise the top-end EQ, or cut the low-mids?").
+  - Take `suggest_moves` out of Muse's tool list and the prompt line (`core/agent.ts:17`). Keep
+    `vocab.json` and the tool code; update `tests/vocab.test.ts` and `tests/fx-agent.test.ts` to match.
+  - Resolve targets by selection ("this"), by name ("the vocal", "the double") and by position
+    ("bar 9", "bars 5-8"). Check `summarize()` gives Muse enough to do this (selection, track names,
+    regions in bars).
+  - Instruction families: **arrange** (move, copy, loop/repeat, delete bars, split), **mix** (gain,
+    pan, mute, solo), **tracks** (new, duplicate, rename, colour), **edit** (quantize, transpose,
+    trim, fade), **devices** (add, remove, set a knob to an exact value). Add any missing tool.
+  - An instruction eval: about 30 phrases across the families, each with the expected session change,
+    checked automatically from recorded fixtures.
+- **Done when:** every family has a tool and the eval passes from fixtures; `idea.md` no longer
+  describes the 2-3 versions loop.
+- **Cost:** recording the eval fixtures, about $0.03. Ask before recording.
+
+### B17. Sound shelves: Starred and My Sounds, across projects
+- **What:** two shelves in the library that persist in userData across projects (in memory on the
+  web, like saved chains): **Starred** (any sound starred from the library, Ideas or pads) and
+  **My Sounds** (the user's recordings and exported sounds).
+- **Export as a sound:** `export_sound(track or region, name)` renders through the track's effects
+  (`renderTrack`, `encodeWav` in `fx/engine/render.ts`), writes a WAV and adds it to My Sounds.
+  From a region or track context menu, the device panel, or Muse ("save this as dusty keys").
+  Keep the effect tail; trim trailing silence (default, not yet confirmed by the user).
+- **Remembers how it was made** if it isn't hard (user: a plain WAV is enough otherwise): keep the
+  source audio and the chain beside the WAV, so "reopen" puts the source on a new track with the
+  chain loaded. Saved chains (B10) and source bytes in userData (B11) already do most of this.
+- **Tools:** `star_sound`, `export_sound`, `find_sound_in_shelf`, so Muse can use them ("put my
+  starred kick on pad Q"). Also gives B12b "Muse fills a kit" a way to pull sounds in.
+- **Done when:** a star and an export survive an Electron relaunch (Electron test with a fresh
+  `LATTICE_USER_DATA`); Vitest for the tools; Playwright for star and export in the web build.
+
+### B18. Dry / wet mix
+- **Listen:** a control-bar A/B switch that bypasses every effect device on every track without
+  changing the session (gain and pan stay, so the balance holds). Loudness-matched by default so
+  louder doesn't win (not yet confirmed by the user). A tool like everything else.
+- **Hand off:** export stems, one WAV per track, as a dry set and a wet set (same render path as
+  `export_sound`), named by track.
+- **Done when:** Playwright asserts the switch state and that the session is unchanged; an export
+  test checks one file per track per set and that dry stems match the source audio.
+
+### B20. Detect a clip's key, and adopt it as the session key
+- **Idea from:** Bitwig Superpowers "Detect Event Key" (Oct 29 review). Muse can't hear music, so a
+  key it can read as text helps it with transposing and choosing sounds.
+- **Detect:** `detect_key(clip_id)` builds a pitch-class histogram from a MIDI clip's notes (weighted
+  by duration and velocity) and scores all 24 keys against the Krumhansl-Kessler profiles. Pure TS
+  in `core/`, no model and no sidecar. It returns the best key, a confidence, and the runner-up when
+  it is close (often the relative major or minor). It stores the result on the clip (e.g. `clip.key`),
+  and `summarize()` shows it.
+  - Audio clips: use the MIDI from `extract_midi` when the clip has some. An FFT chroma pass in the
+    renderer is optional and can come later.
+- **Adopt it (user, Oct 29):** an option to set the session key to the clip's key. Show a "Use as
+  session key" action on the clip's context menu and next to the detected key. It is `set_key` with
+  the clip's key, so it is one undo step and Muse can call it too ("match the project key to this
+  clip"). Tempo adoption in `extract_midi` is the model for how this works.
+- **Done when:** Vitest checks the scores on fixed note sets (a C major scale, an A minor
+  progression, a close relative-key case) and checks that adopting the key changes `session.key`.
+  Playwright checks the menu action through `window.lattice.getSession()`.
+- **Files:** a new `core/key.ts`, `core/midiTools.ts`, `core/session.ts` (`Clip`, `summarize`),
+  the clip context menu in the renderer.
+
+### B21. Capture MIDI: keep what was just played
+- **Idea from:** Bitwig Superpowers "Capture MIDI". You play something on Musical Typing without
+  recording, then press Capture and it becomes a clip.
+- **Do:** Musical Typing keeps the last 30 s of note on/off events in a rolling buffer, whether or
+  not anything is recording. `capture_midi(track_id?)` turns the buffer into a MIDI clip through the
+  same path as `record_midi`. While playing, the notes land on the bars where they were played. When
+  stopped, they start at the playhead. The capture goes on a new track if a clip is in the way (it
+  never replaces one), and it empties the buffer so the next capture never repeats notes.
+- **Where:** a Capture button next to the transport, plus a shortcut. Muse can call the tool too
+  ("capture that and quantize it"), and like other UI calls it is logged as a hand edit.
+- **Done when:** Vitest checks placement while playing and while stopped, the new-track case and that
+  the buffer empties. Playwright plays notes with Musical Typing, captures, and asserts the clip in
+  `getSession()`.
+- **Files:** `renderer/MusicalTyping.tsx`, `core/midiTools.ts`, `renderer/ControlBar.tsx`.
+
+### B22. MIDI transforms: arpeggiate, strum, chop, velocity ramp
+- **Idea from:** Bitwig Superpowers MIDI Tools and Ramp. These map onto things a producer would ask
+  Muse for ("strum those chords", "arpeggiate it in sixteenths", "fade the velocity in"), and they
+  fit B16's concrete **edit** instructions.
+- **Do:** pure note functions in `core/midiTools.ts`, each a tool and one undo step, working on a
+  clip or on the selected notes:
+  - `arpeggiate`: style (up, down, up-down, random), rate (a grid value) and gate.
+  - `strum`: the delay between the notes of each chord, and the direction (up or down).
+  - `chop`: split notes at every grid line. This is also Cmd+E in the piano roll.
+  - `ramp_velocity`: start and end velocity, applied in time order.
+  - Optionally `humanize` (small timing and velocity jitter, seeded so tests are repeatable).
+- **Done when:** Vitest covers each transform on fixed note sets. Playwright covers one of them from
+  the piano roll. If B16's eval exists, it gets two or three phrases for these tools.
+- **Files:** `core/midiTools.ts`, `renderer/PianoRoll.tsx` (menu and footer for the ramp).
 
 ### B15. Layout variants (lane S)
 - **What:** variants for a more modern layout, the way Google Stitch was used before. The canvas
@@ -356,7 +456,19 @@ roughly in order of demo value:
 ### B8. Move live sidecar code out of `spikes/`
 Into a top-level `sidecar/` with one entry point. On hold until B3 is done and the user agrees.
 
+### B19. Recording delay calibration and vocal stacking — tabled (user, Oct 29)
+- **Come back to this.** The user is thinking it over. Draft: per device-pair loopback calibration
+  (click out, mic in, cross-correlate; clap-along fallback for headphones; warn on Bluetooth) to
+  replace the unreliable `outputLatency` / track `latency` estimates (`renderer/audioClock.ts`);
+  align a double to the lead per phrase (split at silences, shift by envelope cross-correlation,
+  ±80 ms, no stretching); tools `make_double`, `fake_double` (delay + detune, DSP).
+- **Open questions:** the user's mic and headphone setup; whether a per-phrase shift is tight enough;
+  harmonies in scope; align every double automatically or on request.
+
 ## Dropped
+
+- Competing versions ("Muse proposes 2-3 versions, you pick") and vague sound requests (Oct 29):
+  too hard to describe in words. Revisit with a model that takes reference audio (B16).
 
 - SAM Audio GGUF for stems (B4, Oct 27): lost to htdemucs_6s / Mel-RoFormer on every scored part
   and by ear on 6 voice notes; 8–12 GB VRAM vs ~1.5 GB. Details: `spikes/l_sam_audio/README.md`.

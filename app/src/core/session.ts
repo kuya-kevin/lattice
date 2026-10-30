@@ -5,6 +5,10 @@
 import { describeSettings, type ParamValues } from '../fx/catalog';
 import { describeMidi, type MidiData } from './midi'; // [S3 midi]
 import { describeKits, emptyPad, type Kit } from './kit'; // B12 sample pads
+import { barLength } from './metronome';
+import { colorName } from './trackColors'; // B16
+import { mixViewLine, type MixView } from './mixView'; // B18 dry / wet listening
+import { voiceLine } from './voiceTools'; // B14 spoken replies
 
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated' | 'processed';
 
@@ -32,6 +36,9 @@ export interface Clip {
    *  carries the length; the renderer synthesizes the sound from the notes. Keeping the notes
    *  on the clip (not the source) lets undo restore them. */
   midi?: MidiData;
+  /** B16: fade-in / fade-out length (s) at the clip's edges. Absent = none. */
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 /** One effect device on a track's insert chain (kind = catalog device id, e.g. "eq"). */
@@ -75,6 +82,10 @@ export interface Session {
   punchIn: { trackId: string; start: number; end: number } | null;
   /** B12: drum pads (kits), by id. Optional for older sessions. */
   kits?: Record<string, Kit>;
+  /** B18: listening dry (every effect bypassed) or wet. A view setting: undo keeps it. Absent = wet. */
+  mixView?: MixView;
+  /** B14: read Muse's replies aloud (core/voiceTools.ts). Absent = off. A preference: undo keeps it. */
+  voiceReply?: boolean;
   seq: number; // id counter, keeps ids short and deterministic (t1, c2, ...)
 }
 
@@ -548,34 +559,50 @@ export function sessionEnd(s: Session): number {
 }
 
 /** Compact text view of the session for Muse (it can't see the screen or hear audio). */
-export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string } = {}): string {
+export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string; shelves?: string } = {}): string {
+  const extra = [mixViewLine(s), opts.shelves ?? ''].filter(Boolean).map((l) => `\n${l}`).join(''); // B18, B17
   const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
   const versions = opts.versions ? `\nVersions: ${opts.versions}` : '';
   const kits = describeKits(s);
-  return summarizeSession(s) + (kits ? `\n${kits}` : '') + saved + versions;
+  const voice = voiceLine(s) ? `\n${voiceLine(s)}` : ''; // B14
+  return summarizeSession(s) + (kits ? `\n${kits}` : '') + saved + versions + extra + voice;
 }
 
 function summarizeSession(s: Session): string {
   const click = s.metronome.on ? `click on${s.metronome.countIn ? ', 1-bar count-in' : ''}` : 'click off';
   const header = `Tempo ${s.tempo} BPM, ${s.timeSignature.join('/')}, key ${s.key ?? 'not set'}, ${click}.`;
   if (!s.tracks.length) return `${header}\nSession is empty (no tracks).`;
-  const lines = s.tracks.map((t) => {
+  const lines = s.tracks.map((t, i) => {
     const flags = [t.muted && 'muted', t.soloed && 'soloed', t.armed && 'record-armed'].filter(Boolean).join(', ');
     const clips = t.clips
       .map((c) => {
         const done = s.sources[c.sourceId]?.processed; // B3
         const orig = done ? rootSource(s, c.sourceId) : null; // use_audio_version brings it back
-        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}${orig !== c.sourceId ? `; original ${orig}` : ''}]` : ''}`;
+        const fades = [c.fadeIn && `fade in ${c.fadeIn}s`, c.fadeOut && `fade out ${c.fadeOut}s`].filter(Boolean).join(', '); // B16
+        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}${orig !== c.sourceId ? `; original ${orig}` : ''}]` : ''}` +
+          ` (bar ${barOf(s, c.start)} to ${barOf(s, c.start + c.duration)}${fades ? `; ${fades}` : ''})`;
       })
       .join('; ');
     const fx = describeChain(t);
-    return `- ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;
+    return `- (${colorName(t.color, i)}) ${t.id} "${t.name}" gain ${t.gainDb} dB${flags ? ` (${flags})` : ''}: ${clips || 'no clips'}${fx ? `\n  fx: ${fx}` : ''}`;
   });
   const multi = s.selection.clipIds;
-  const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${s.selection.clipId}` : s.selection.trackId ? `selected track ${s.selection.trackId}` : 'nothing selected';
+  // B16: name what is selected, so "this" resolves without looking ids up
+  const clipRef = (id: string) => {
+    const f = s.tracks.flatMap((t) => t.clips.map((c) => ({ t, c }))).find((x) => x.c.id === id);
+    return f ? `${id} ("${f.c.name}" on ${f.t.id} "${f.t.name}")` : id;
+  };
+  const selTrack = s.tracks.find((t) => t.id === s.selection.trackId);
+  const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${clipRef(s.selection.clipId)}` : selTrack ? `selected track ${selTrack.id} "${selTrack.name}"` : 'nothing selected';
   const punch = s.punchIn ? `; punch-in armed on ${s.punchIn.trackId} ${s.punchIn.start}-${s.punchIn.end}s` : '';
-  return `${header}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s${punch})`;
+  const bars = `Bars are 1-based: bar n starts at ${round(barLength(s))} * (n-1) s; "bar 5.5" is halfway through bar 5, and a clip "bar 1 to 5" fills bars 1-4.`;
+  return `${header}\n${bars}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s, bar ${barOf(s, s.transport.position)}${punch})`;
 }
+
+/** B16: timeline seconds -> 1-based bar position (decimals inside a bar), for Muse. */
+export const barOf = (s: Session, seconds: number) => Math.round((seconds / barLength(s) + 1) * 100) / 100;
+/** B16: 1-based bar position -> timeline seconds. */
+export const barToSeconds = (s: Session, bar: number) => round((bar - 1) * barLength(s));
 
 /** Text view of a track's insert chain for Muse, e.g. `d3 eq(b3_gain=3 dB) -> d4 comp[off](defaults)`. */
 export function describeChain(t: Track): string {

@@ -35,8 +35,9 @@ export const FX_TOOLS: ToolDef[] = [
     name: 'suggest_moves',
     description:
       'For sound words ("muddy", "punchy", "stand out", "wider", "telephone"), the knob moves that usually fix them: which devices, which knobs, ' +
-      'how far, tuned per source type (a warm bass differs from a warm vocal). Call this before insert_device/set_param for any request in sound words. ' +
-      'Give track_id so the source type comes from the track name, and the result lists the devices the track already has (adjust those with set_param instead of inserting duplicates).',
+      'how far, tuned per source type (a warm bass differs from a warm vocal). ' +
+      'Give track_id so the source type comes from the track name, and the result lists the devices the track already has (adjust those with set_param instead of inserting duplicates). ' +
+      'B16: no longer offered to Muse (it acts on concrete instructions); kept for the vocab tests and a later UI.',
     parameters: obj(
       {
         words: { type: 'array', items: { type: 'string' }, description: 'The sound words, one per item, e.g. ["wider", "spacious"]' },
@@ -46,6 +47,7 @@ export const FX_TOOLS: ToolDef[] = [
       },
       ['words'],
     ),
+    userOnly: true, // B16
     quiet: true,
     run: (ctx, a) => {
       const words: string[] = (Array.isArray(a.words) ? a.words : [a.words]).map(String).filter((w: string) => w.trim());
@@ -95,13 +97,14 @@ export const FX_TOOLS: ToolDef[] = [
     name: 'insert_device',
     description:
       'Insert an effect device on a track\'s chain (signal flows in list order). Optionally give a position (0 = first) and starting knob values, ' +
-      'e.g. {"device":"eq","params":{"b3_gain":3}}. Returns the device_id for set_param.',
+      'e.g. {"device":"eq","params":{"b3_gain":3}}. Returns the device_id for set_param. exact: true when the user named these values (see set_param).',
     parameters: obj(
       {
         track_id: str('Track id, e.g. "t1"'),
         device: str('Device id', { enum: DEVICE_IDS }),
         position: num('Index in the chain; omit to append'),
         params: { type: 'object', description: 'Knob id -> value (see list_devices)' },
+        exact: { type: 'boolean', description: 'true when the user named these exact values: the full knob range applies' },
       },
       ['track_id', 'device'],
     ),
@@ -115,7 +118,7 @@ export const FX_TOOLS: ToolDef[] = [
       const preset = getDevice(dev.kind).presetParam;
       const entries = Object.entries(a.params ?? {}).sort(([x], [y]) => Number(y === preset) - Number(x === preset));
       for (const [k, v] of entries) {
-        const [s2, ch] = C.setDeviceParam(s, a.track_id, dev.id, k, v, { range: by === 'muse' ? 'agent' : 'full' });
+        const [s2, ch] = C.setDeviceParam(s, a.track_id, dev.id, k, v, { range: by === 'muse' && !a.exact ? 'agent' : 'full' });
         if (ch.clamped) clamped.push(`${k}=${ch.value}`);
         s = s2;
       }
@@ -127,7 +130,8 @@ export const FX_TOOLS: ToolDef[] = [
     name: 'set_param',
     description:
       'Set one knob on a device. device_id is the id from insert_device (or the device name if the track has only one). ' +
-      'op: "set" (default), "add" (e.g. +3 dB), "mul", or "nudge" (value = steps, 1 = "a bit more", -1 = "a bit less"). Values are clamped to the knob range.',
+      'op: "set" (default), "add" (e.g. +3 dB), "mul", or "nudge" (value = steps, 1 = "a bit more", -1 = "a bit less"). Values are clamped to the knob range. ' +
+      'Your own values are held to the knob\'s usual range; when the user names the value ("set the threshold to -50 dB"), pass exact: true and it is set as asked.',
     parameters: obj(
       {
         track_id: str('Track id'),
@@ -135,17 +139,19 @@ export const FX_TOOLS: ToolDef[] = [
         param: str('Knob id, e.g. "thresh"'),
         value: { description: 'Number, enum option string, or boolean' },
         op: str('How to apply value', { enum: ['set', 'add', 'mul', 'nudge'] }),
+        exact: { type: 'boolean', description: 'true when the user named this exact value: the full knob range applies' },
       },
       ['track_id', 'device_id', 'param', 'value'],
     ),
     run: (ctx, a, by) => {
       const s0 = ctx.store.get();
       const dev = C.resolveDevice(s0, a.track_id, a.device_id);
-      const [s1, ch] = C.setDeviceParam(s0, a.track_id, dev.id, a.param, a.value, { op: a.op, range: by === 'muse' ? 'agent' : 'full' });
+      const held = by === 'muse' && !a.exact;
+      const [s1, ch] = C.setDeviceParam(s0, a.track_id, dev.id, a.param, a.value, { op: a.op, range: held ? 'agent' : 'full' });
       ctx.store.set(s1);
       const p = getDevice(dev.kind).params.find((p) => p.id === a.param)!;
       const note = ch.clamped
-        ? by === 'muse' && p.agentRange
+        ? held && p.agentRange
           ? `clamped to the usual range ${p.agentRange[0]}..${p.agentRange[1]}; ask the user before going further`
           : `clamped to ${p.min}..${p.max}`
         : undefined;

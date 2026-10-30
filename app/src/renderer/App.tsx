@@ -37,6 +37,9 @@ import { importRef, keepSourceAudio, useSourceAudioReload, type KeepAudio } from
 import { useServeMeasure } from './ears'; // B9
 import { useMidiRenders } from './midiSynth'; // [S3 midi] MIDI clip playback
 import { MusicalTypingButton, MusicalTypingKeyboard, musicalTyping } from './MusicalTyping'; // letter keys play notes
+import { useServeRender } from './renderServe'; // B17/B18: export_sound, export_stems, dry/wet loudness
+import { Notice, SoundMenu, useShelfSync, useShowShelf } from './Shelves'; // B17 sound shelves
+import { heardSession } from '../core/mixView'; // B18 dry / wet listening
 
 // Canvas theme on top of the library's dark theme: blue-black islands, regions tinted by track
 // colour (see trackColorCss), white bar waveforms that styles.css tints to the track colour.
@@ -107,6 +110,7 @@ export function App({ bridge }: { bridge: Bridge }) {
 
   // ─── region: layout state (floating panels, device chain, snap) ───
   const [libraryOpen, setLibraryOpen] = useState(false);
+  useShowShelf(useCallback(() => setLibraryOpen(true), [])); // B17: the export notice's Show
   const [museOpen, setMuseOpen] = useState(false); // the conversation panel: closed at startup, the rail's spark opens it
   const [smartOpen, setSmartOpen] = useState(true); // the editor area under the board
   const [editorTab, setEditorTab] = useState<EditorTab>('fx'); // device chain or Piano Roll
@@ -123,7 +127,7 @@ export function App({ bridge }: { bridge: Bridge }) {
     return bridge.onSession(setSession);
   }, [bridge]);
 
-  useFxEngine(session); // [S1 fx] keep live effect chains in step with the session
+  useFxEngine(session && heardSession(session)); // [S1 fx] keep live effect chains in step with the session (B18: as heard, dry or wet)
 
   // session (+ audio) -> playlist tracks; keep the engine's array if nothing changed
   useEffect(() => {
@@ -151,6 +155,8 @@ export function App({ bridge }: { bridge: Bridge }) {
   }, [bridge]);
   useSourceAudioReload(bridge, session, addBuffer, setError); // B11
   useServeMeasure(bridge); // B9: measure_track renders here, where the audio is
+  useServeRender(bridge); // B17/B18: so do exports and the dry/wet loudness match
+  useShelfSync(bridge); // B17
 
   // ─── region: [S3 midi] MIDI clip playback (rendered offline, played as audio) ───
   const setMidiRender = useCallback((id: string, b: AudioBuffer) => {
@@ -429,10 +435,22 @@ export function App({ bridge }: { bridge: Bridge }) {
           open={museOpen}
           onOpenChange={setMuseOpen}
           context={museContext}
-          pausePlayback={() => sessionRef.current?.transport.playing && run('stop', { at: playheadRef.current() })}
+          pausePlayback={() => {
+            const t = sessionRef.current?.transport;
+            if (!t?.playing) return null;
+            void run('stop', { at: playheadRef.current() });
+            return { rev: t.rev };
+          }}
+          resumePlayback={(token) => {
+            // B14: only if nothing else moved the transport meanwhile: our stop, plus at most the
+            // stop TransportSync adds to correct the position (rev +1 or +2)
+            const t = sessionRef.current?.transport;
+            if (t && !t.playing && t.command === 'stop' && t.rev - (token as { rev: number }).rev <= 2) void run('play');
+          }}
+          voiceOn={session.voiceReply === true}
         />
         <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
-          <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} />
+          <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} run={run} />
         </aside>
         <nav className="rail island" aria-label="Panels">
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>
@@ -445,6 +463,8 @@ export function App({ bridge }: { bridge: Bridge }) {
         </nav>
         <ZoomBar run={run} bridge={bridge} />
         <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} onFilesToPad={filesToPad} />
+        <SoundMenu session={session} run={run} /> {/* B17: right-click a region or track to export it as a sound */}
+        <Notice /> {/* B17: where an exported sound went */}
         {/* ─── end region: floating chrome ─── */}
       </div>
     </WaveformPlaylistProvider>

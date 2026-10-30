@@ -16,6 +16,8 @@ import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 import { musicalTyping } from './MusicalTyping';
 import { VersionsMenu } from './Versions'; // B11
+import { DryWetToggle, StemsButton } from './MixControls'; // B18 dry / wet, stems
+import './ControlBar.css'; // Oct 29: the bar fits again with Versions, Dry and Stems
 import { setRecordingActive } from './pushToTalk'; // B2
 import { takeToNotes, type PlayedNote, type TypingInstrument } from '../core/musicalTyping';
 
@@ -137,11 +139,13 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
           <button onClick={actions.countIn} title={tip('countIn', 'Count-in (1 bar)')} aria-label="Count-in" aria-pressed={session.metronome.countIn} className={`count-in${session.metronome.countIn ? ' on' : ''}`}>
             1234
           </button>
+          <DryWetToggle session={session} run={run} />
         </div>
       </div>
 
       <div className="group actions">
         <VersionsMenu session={session} run={run} />
+        <StemsButton session={session} run={run} />
         <button className="island btn" onClick={() => fileRef.current?.click()}><Icon name="import" size={16} />Import…</button>
         <input ref={fileRef} type="file" accept="audio/*" multiple hidden data-testid="file-input" onChange={(e) => e.target.files && importFiles(e.target.files)} />
         <button className="island btn" onClick={() => run('add_track', { name: `Track ${session.tracks.length + 1}` })}><Icon name="plus" size={16} />Track</button>

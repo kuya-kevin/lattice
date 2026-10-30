@@ -1,5 +1,8 @@
 // B1: suggest_moves (sound words -> knob moves). Following its "how" on the fx- scenario tracks
 // must land every knob where the vocab says, with nothing clamped and no other track touched.
+// B16 took suggest_moves off Muse's tool list (Muse acts on concrete instructions now); the tool
+// and vocab.json stay, so these tests call it as the user. The moves are still applied as Muse
+// would (actor 'muse'), which holds them to each knob's usual range.
 import { describe, expect, it } from 'vitest';
 import * as S from '../src/core/session';
 import { StubSidecar } from '../src/core/sidecar';
@@ -35,12 +38,15 @@ async function apply(c: ToolContext, trackId: string, moves: Move[]) {
 }
 
 describe('suggest_moves (B1)', () => {
-  it('is a Muse tool and read-only', async () => {
-    expect(museToolSpecs().map((t) => t.function.name)).toContain('suggest_moves');
+  it('is not offered to Muse (B16), and is read-only', async () => {
+    expect(museToolSpecs().map((t) => t.function.name)).not.toContain('suggest_moves');
     const c = await mix();
+    expect(await runTool(c, 'suggest_moves', { words: ['muddy'], track_id: 't3' }, 'muse')).toMatchObject({ ok: false, error: expect.stringMatching(/not available/) });
     const before = c.store.get();
-    await runTool(c, 'suggest_moves', { words: ['muddy'], track_id: 't3' }, 'muse');
+    c.store.takeUserEdits();
+    expect((await runTool(c, 'suggest_moves', { words: ['muddy'], track_id: 't3' }, 'user')).ok).toBe(true);
     expect(c.store.get()).toBe(before);
+    expect(c.store.takeUserEdits()).toEqual([]); // quiet: not logged as a hand edit
   });
 
   const phrases: [string, string, string[], string[]][] = [
@@ -59,7 +65,7 @@ describe('suggest_moves (B1)', () => {
   for (const [name, track, words, devices] of phrases) {
     it(`fx-${name}: the suggested moves apply cleanly to ${track} only`, async () => {
       const c = await mix();
-      const r = await runTool(c, 'suggest_moves', { words, track_id: track }, 'muse');
+      const r = await runTool(c, 'suggest_moves', { words, track_id: track }, 'user');
       expect(r.ok).toBe(true);
       const res = r.result as { suggestions: { moves?: Move[]; no_match?: true }[]; track_devices: unknown[] };
       expect(res.suggestions.every((s) => s.moves?.length), JSON.stringify(res)).toBe(true);
@@ -74,21 +80,21 @@ describe('suggest_moves (B1)', () => {
 
   it('punchy keeps a slow attack even though it sets a style', async () => {
     const c = await mix();
-    const r = await runTool(c, 'suggest_moves', { words: ['punchy'], track_id: 't5' }, 'muse');
+    const r = await runTool(c, 'suggest_moves', { words: ['punchy'], track_id: 't5' }, 'user');
     await apply(c, 't5', (r.result as { suggestions: { moves: Move[] }[] }).suggestions[0].moves);
     expect(S.getTrack(c.store.get(), 't5').devices[0].params).toMatchObject({ style: 'vca', attack: 25, release: 80, ratio: 4, thresh: -24 });
   });
 
   it('says when a word has no entry, and which devices mention it', async () => {
     const c = await mix();
-    const r = await runTool(c, 'suggest_moves', { words: ['shimmer'], track_id: 't7' }, 'muse');
+    const r = await runTool(c, 'suggest_moves', { words: ['shimmer'], track_id: 't7' }, 'user');
     expect(r.result).toMatchObject({ source_type: 'pad', suggestions: [{ word: 'shimmer', no_match: true, devices_with_this_word: ['mod'] }] });
   });
 
   it('lists the devices the track already has, and scales by amount', async () => {
     const c = await mix();
     await runTool(c, 'insert_device', { track_id: 't3', device: 'sat' }, 'muse');
-    const r = await runTool(c, 'suggest_moves', { words: ['gritty'], track_id: 't3', amount: 'a bit' }, 'muse');
+    const r = await runTool(c, 'suggest_moves', { words: ['gritty'], track_id: 't3', amount: 'a bit' }, 'user');
     expect(r.result).toMatchObject({ source_type: 'bass', amount: 'a bit', track_devices: [{ device: 'sat' }], suggestions: [{ moves: expect.arrayContaining([expect.objectContaining({ param: 'drive', value: 3 })]) }] });
   });
 });

@@ -18,6 +18,7 @@ import { IDEA_MIME, KIT_MIME, previewBuffer, soundDrag, stopPreview } from './li
 import './Ideas.css';
 import { musicalTyping, openDrumPad } from './MusicalTyping';
 import { trackColor } from './TrackHeader';
+import { StarButton } from './Shelves'; // B17
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -174,6 +175,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
                 )}
               </div>
             )}
+            {src.origin !== 'generated' && <StarButton run={run} args={{ source_id: src.id }} name={src.name} />}
             <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
             {confirm === src.id && (
               <div className="idea-confirm" data-testid="idea-confirm" role="alertdialog" aria-label={`Delete ${src.name}?`} onKeyDown={(e) => e.key === 'Escape' && setConfirm(null)}>
