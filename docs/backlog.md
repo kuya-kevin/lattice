@@ -7,7 +7,7 @@ Rules and commands: `CLAUDE.md`. Status: `HANDOFF.md`. Stream ids (S0–S8): `do
 When you finish an entry: say so in your lane note; the merge step moves it to "Done" at the bottom
 with the date and a one-line result and updates the `HANDOFF.md` status table (`docs/parallel-work.md`).
 
-**Lanes (Oct 29):** A = B0. B = B14, then B12b pad UI, B2. C = B12b "Muse fills a kit", then B6.
+**Lanes (Oct 29):** A = B0. B = B12b pad UI, then B2 (B14 done). C = B12b "Muse fills a kit", then B6.
 S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians to work in.
 
 ## Now
@@ -220,72 +220,6 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
 
 ## Next
 
-### B14. Muse talks back (lane B)
-- **What:** an option for Muse to speak its reply, so a musician with hands on an instrument can
-  push-to-talk in and hear the answer. Push-to-talk input already works (B2, Done).
-- **Facts checked (Oct 29):** the Meta Model API has no text-to-speech (dev.meta.ai models and
-  pricing pages; Muse Voice Transcribe "does not synthesize speech"). Decided (user, Oct 29): use
-  Meta's open-weight **MMS-TTS English** (`facebook/mms-tts-eng`, VITS), run in the app through the
-  Transformers.js `text-to-speech` pipeline (ONNX build `Xenova/mms-tts-eng`; the package is now
-  `@huggingface/transformers`, check current docs). Use fp32: int8 is reported to hurt VITS audio.
-  Weights are **CC BY-NC 4.0**: add a licence watchlist row. No API cost. One voice.
-- **First, a spike:** speak 5 typical confirmations on the Mac, log time to first audio and load
-  time, the user listens. If it fails by ear or is too slow, stop and ask (fallback: `speechSynthesis`).
-- **Do:** a toggle, off by default, that is a tool like every other action. When on, Muse speaks a
-  short confirmation of what it did, and its clarifying questions (B16); not long replies. Playback
-  ducks while it speaks; never speaks while a track records; pressing push-to-talk stops it.
-- **Done when:** a Playwright test asserts the toggle and speaking state through a mock voice in
-  the web build; checked by ear in Electron; latency per reply logged in the lane note; row added to
-  `docs/model-map.md`.
-- **Files:** `renderer/pushToTalk.ts`, `renderer/ChatPanel.tsx`, a new `renderer/tts.ts` (or a worker),
-  `core/bridge.ts`, `renderer/mockBridge.ts`.
-
-### B16. Muse acts on clear instructions (replaces "competing versions")
-- **Why (user, Oct 29):** vague sound requests ("make it sound better / more open / wider") are out
-  for now: describing a sound in words is too hard without a model that can take reference audio.
-  Muse responds to concrete instructions.
-- **Do:**
-  - System prompt: act on concrete edits only. For a vague sound word, ask one short question that
-    offers one or two concrete changes ("brighter: raise the top-end EQ, or cut the low-mids?").
-  - Take `suggest_moves` out of Muse's tool list and the prompt line (`core/agent.ts:17`). Keep
-    `vocab.json` and the tool code; update `tests/vocab.test.ts` and `tests/fx-agent.test.ts` to match.
-  - Resolve targets by selection ("this"), by name ("the vocal", "the double") and by position
-    ("bar 9", "bars 5-8"). Check `summarize()` gives Muse enough to do this (selection, track names,
-    regions in bars).
-  - Instruction families: **arrange** (move, copy, loop/repeat, delete bars, split), **mix** (gain,
-    pan, mute, solo), **tracks** (new, duplicate, rename, colour), **edit** (quantize, transpose,
-    trim, fade), **devices** (add, remove, set a knob to an exact value). Add any missing tool.
-  - An instruction eval: about 30 phrases across the families, each with the expected session change,
-    checked automatically from recorded fixtures.
-- **Done when:** every family has a tool and the eval passes from fixtures; `idea.md` no longer
-  describes the 2-3 versions loop.
-- **Cost:** recording the eval fixtures, about $0.03. Ask before recording.
-
-### B17. Sound shelves: Starred and My Sounds, across projects
-- **What:** two shelves in the library that persist in userData across projects (in memory on the
-  web, like saved chains): **Starred** (any sound starred from the library, Ideas or pads) and
-  **My Sounds** (the user's recordings and exported sounds).
-- **Export as a sound:** `export_sound(track or region, name)` renders through the track's effects
-  (`renderTrack`, `encodeWav` in `fx/engine/render.ts`), writes a WAV and adds it to My Sounds.
-  From a region or track context menu, the device panel, or Muse ("save this as dusty keys").
-  Keep the effect tail; trim trailing silence (default, not yet confirmed by the user).
-- **Remembers how it was made** if it isn't hard (user: a plain WAV is enough otherwise): keep the
-  source audio and the chain beside the WAV, so "reopen" puts the source on a new track with the
-  chain loaded. Saved chains (B10) and source bytes in userData (B11) already do most of this.
-- **Tools:** `star_sound`, `export_sound`, `find_sound_in_shelf`, so Muse can use them ("put my
-  starred kick on pad Q"). Also gives B12b "Muse fills a kit" a way to pull sounds in.
-- **Done when:** a star and an export survive an Electron relaunch (Electron test with a fresh
-  `LATTICE_USER_DATA`); Vitest for the tools; Playwright for star and export in the web build.
-
-### B18. Dry / wet mix
-- **Listen:** a control-bar A/B switch that bypasses every effect device on every track without
-  changing the session (gain and pan stay, so the balance holds). Loudness-matched by default so
-  louder doesn't win (not yet confirmed by the user). A tool like everything else.
-- **Hand off:** export stems, one WAV per track, as a dry set and a wet set (same render path as
-  `export_sound`), named by track.
-- **Done when:** Playwright asserts the switch state and that the session is unchanged; an export
-  test checks one file per track per set and that dry stems match the source audio.
-
 ### B20. Detect a clip's key, and adopt it as the session key
 - **Idea from:** Bitwig Superpowers "Detect Event Key" (Oct 29 review). Muse can't hear music, so a
   key it can read as text helps it with transposing and choosing sounds.
@@ -477,7 +411,7 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 ## Dropped
 
 - Competing versions ("Muse proposes 2-3 versions, you pick") and vague sound requests (Oct 29):
-  too hard to describe in words. Revisit with a model that takes reference audio (B16).
+  too hard to describe in words. Revisit with a model that takes reference audio (B16, Done).
 
 - SAM Audio GGUF for stems (B4, Oct 27): lost to htdemucs_6s / Mel-RoFormer on every scored part
   and by ear on 6 voice notes; 8–12 GB VRAM vs ~1.5 GB. Details: `spikes/l_sam_audio/README.md`.
@@ -487,6 +421,47 @@ Into a top-level `sidecar/` with one entry point. On hold until B3 is done and t
 
 ## Done
 
+- 2026-10-29: B16 Muse acts on clear instructions. The system prompt has Muse act on concrete edits
+  only, resolve "this" (selection), names and bars from the summary, and answer a vague sound word
+  with one short question offering one or two concrete changes; each turn ends with one sentence
+  meant to be spoken. `suggest_moves` is no longer offered to Muse (user-only; `vocab.json` stays);
+  the B1 fx- replays in `tests/fx-agent.test.ts` are skipped because they were recorded with it.
+  New tools (`core/editTools.ts`): `split_clip`, `repeat_clip`, `delete_bars`, `insert_bars`,
+  `copy_bars`, `set_pan` (via a Utility device), `duplicate_track`, `set_track_color`, `set_fade`;
+  `move_clip`/`duplicate_clip`/`move_clips`/`trim_clip` take bars; `set_param`/`insert_device` take
+  `exact: true`. The summary gains bars, clip bars, colours, fades, selection by name and the
+  playhead bar. Instruction eval (`core/instructionEval.ts`): 34 phrases over arrange, mix, tracks,
+  edit, devices and vague-ask, recorded Oct 29 ($0.09); replay 34/34 (31 right tool, 3 vague ones
+  ask and change nothing). `idea.md` no longer has the 2-3 versions loop. Left: offline renders
+  (`measure_track`) ignore fades; no pan knob in the mixer UI; tools don't take track names.
+- 2026-10-29: B17 sound shelves. Library tabs **Starred** and **My Sounds**, kept across projects
+  (Electron `userData/shelf/`: `index.json` + WAVs; web: in memory). Star from library rows, Ideas
+  cards and pads. Export a region or track as a sound (region/track menu, device panel, or Muse):
+  rendered through its effects, tail kept, trailing silence trimmed; a notice says where it went.
+  An export keeps its pre-effects audio and chain, so `reopen_sound` rebuilds it on a new track.
+  Tools (`core/shelfTools.ts`): `star_sound`, `unstar_sound`, `export_sound`, `find_sound_in_shelf`,
+  `use_shelf_sound`, `reopen_sound`. Tests: `tests/shelf.test.ts`, `e2e/shelves.spec.ts`,
+  `e2e/electron-shelves.spec.ts` (survives a relaunch). Left: recordings aren't added to My Sounds
+  automatically; removed items keep their WAVs on disk; no "Save WAV as…" for one sound.
+- 2026-10-29: B18 dry / wet mix. A **Dry** toggle in the transport bypasses every effect (Utility
+  keeps gain and pan), loudness-matched with one gain on every track; not an edit, so undo leaves it.
+  **Export stems** writes one 32-bit WAV per track as dry and wet sets (Electron: a folder; web:
+  downloads); dry stems equal the source audio when there is no gain or pan. Tools
+  (`core/mixTools.ts`): `set_mix_view`, `export_stems`; render jobs over `render:req/res` IPC.
+  Tests: `e2e/mix-view.spec.ts`, `e2e/electron-shelves.spec.ts`. Left: the match gain goes stale if
+  devices change while dry (toggle again). Oct 29 computer-use pass at 1400 px fixed the control bar
+  (Dry and Cycle were covered), the clipped My Sounds tab and the shelf footer count
+  (`e2e/oct29-layout.spec.ts`); `renderer/ControlBar.css` is for lane S to fold into `styles.css`.
+- 2026-10-29: B14 Muse talks back. A speaker button in the prompt bar (tool `set_voice_reply`, off by
+  default) speaks Muse's final reply (whole up to 160 characters, else its first sentence) with
+  Meta's MMS-TTS English (`Xenova/mms-tts-eng`, fp32) in a Web Worker: WebGPU in Electron, WASM
+  fallback. Numbers and units are written out as words first (`speakable()`). Playback pauses while
+  Muse speaks and resumes after; recording or push-to-talk cuts it off. The first use downloads
+  ~115 MB (about 75 s, then ~30 s to start); the prompt bar shows "Loading Muse's voice… N%" and any
+  load error. Electron WebGPU: ~0.2 s per phrase once loaded; WASM about real time. $0 per reply.
+  The web build uses the real voice too; Playwright gets a silent mock (`?voice=mock` forces it).
+  Tests: `tests/voice.test.ts`, `e2e/voice-reply.spec.ts`. Left: a new reply cutting off an older one
+  leaves playback paused; the voice ignores any future output-device choice.
 - 2026-10-28: B13 slice a drum loop by drum. Tool `slice_drums(clip_id)` cuts an audio clip at each
   hit and moves every slice to a new track per drum (`<track> Kick / Snare / Hat`, under the
   original, with its gain and effects copied); the slices abut, so together they replay the clip
