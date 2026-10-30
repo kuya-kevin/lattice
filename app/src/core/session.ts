@@ -39,6 +39,9 @@ export interface Clip {
   /** B16: fade-in / fade-out length (s) at the clip's edges. Absent = none. */
   fadeIn?: number;
   fadeOut?: number;
+  /** B20: the key detect_key found in its notes (or its extracted stems'), e.g. "A minor".
+   *  Dropped when the notes change. */
+  key?: string;
 }
 
 /** One effect device on a track's insert chain (kind = catalog device id, e.g. "eq"). */
@@ -290,7 +293,7 @@ export function addMidiClip(
 export function setClipMidi(s: Session, clipId: string, midi: MidiData): Session {
   const { clip } = findClip(s, clipId);
   if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
-  return mapClip(s, clipId, (c) => ({ ...c, midi }));
+  return mapClip(s, clipId, ({ key: _stale, ...c }) => ({ ...c, midi })); // B20: new notes, key unknown
 }
 // ─── end [S3 midi] ───
 
@@ -579,7 +582,7 @@ function summarizeSession(s: Session): string {
         const done = s.sources[c.sourceId]?.processed; // B3
         const orig = done ? rootSource(s, c.sourceId) : null; // use_audio_version brings it back
         const fades = [c.fadeIn && `fade in ${c.fadeIn}s`, c.fadeOut && `fade out ${c.fadeOut}s`].filter(Boolean).join(', '); // B16
-        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}${orig !== c.sourceId ? `; original ${orig}` : ''}]` : ''}` +
+        return `${c.id} "${c.name}" ${round(c.start)}-${round(c.start + c.duration)}s${c.midi ? ` [${describeMidi(c.midi)}]` : ''}${done ? ` [audio: ${done}${orig !== c.sourceId ? `; original ${orig}` : ''}]` : ''}${c.key ? ` [key ${c.key}, detected]` : ''}` +
           ` (bar ${barOf(s, c.start)} to ${barOf(s, c.start + c.duration)}${fades ? `; ${fades}` : ''})`;
       })
       .join('; ');

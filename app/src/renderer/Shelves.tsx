@@ -144,8 +144,8 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
   );
 }
 
-/** Right-click on a region or a track header: export it as a sound (My Sounds), or star the
- *  region's sound. Mount once (App); it listens on the arrangement element it is given. */
+/** Right-click on a region or a track header: export it as a sound (My Sounds), star the
+ *  region's sound, or detect its key and use it as the session key (B20). Mount once (App); it listens on the arrangement element it is given. */
 export function SoundMenu({ session, run }: { session: Session; run: Run }) {
   const [menu, setMenu] = useState<{ x: number; y: number; trackId: string; clipId: string | null } | null>(null);
   useEffect(() => {
@@ -185,9 +185,12 @@ export function SoundMenu({ session, run }: { session: Session; run: Run }) {
   const track = session.tracks.find((t) => t.id === menu.trackId);
   const clip = track?.clips.find((c) => c.id === menu.clipId);
   const src = clip && !clip.midi ? session.sources[clip.sourceId] : undefined;
+  // B20: a key comes from notes: a pitched MIDI region, or an audio region extract_midi has turned into notes
+  const hasNotes = !!clip && (clip.midi ? !clip.midi.drum : session.tracks.some((t) => t.clips.some((c) => c.midi && !c.midi.drum && c.name.startsWith(`${clip.name} `))));
   const pick = (tool: string, args: Record<string, unknown>) => {
     setMenu(null);
     if (tool === 'export_sound') void exportSound(run, args);
+    else if (tool === 'detect_key') void detectKey(run, args);
     else run(tool, args);
   };
   return (
@@ -200,6 +203,16 @@ export function SoundMenu({ session, run }: { session: Session; run: Run }) {
       {track && (
         <button role="menuitem" onClick={() => pick('export_sound', { track_id: track.id })} disabled={!track.clips.length}>
           Export Track as Sound <small>{track.name}</small>
+        </button>
+      )}
+      {clip && hasNotes && (
+        <button role="menuitem" onClick={() => pick('detect_key', { clip_id: clip.id })}>
+          Detect Key <small>{clip.key ?? 'from its notes'}</small>
+        </button>
+      )}
+      {clip && hasNotes && (
+        <button role="menuitem" onClick={() => pick('detect_key', { clip_id: clip.id, set_session_key: true })} disabled={!!clip.key && clip.key === session.key}>
+          Use as Session Key <small>{clip.key ? (clip.key === session.key ? `already ${clip.key}` : clip.key) : 'detects it first'}</small>
         </button>
       )}
       {src && (
@@ -221,6 +234,16 @@ export async function exportSound(run: Run, args: Record<string, unknown>) {
   const r = await run('export_sound', args);
   const msg: NoticeMsg = r.ok ? { text: `Saved "${r.result?.name}" to My Sounds`, showShelf: 'mine' } : { text: `Export failed: ${r.error}` };
   window.dispatchEvent(new CustomEvent(NOTICE, { detail: msg }));
+}
+
+/** B20: run detect_key and say what it found (and whether it is now the session key). */
+async function detectKey(run: Run, args: Record<string, unknown>) {
+  const r = await run('detect_key', args);
+  const x = r.result;
+  const text = !r.ok
+    ? `No key: ${r.error}`
+    : `Key: ${x.key}${x.certainty === 'clear' ? '' : ` (${x.certainty}${x.close_second ? `; or ${x.close_second}` : ''})`}${x.session_key_set ? ' — now the session key' : ''}`;
+  window.dispatchEvent(new CustomEvent(NOTICE, { detail: { text } satisfies NoticeMsg }));
 }
 
 /** Ask the library to open on a shelf (App opens the panel, LibraryPanel switches its tab). */

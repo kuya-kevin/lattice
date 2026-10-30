@@ -3,6 +3,7 @@
 // Also record_midi: a take played on the Musical Typing keyboard becomes a MIDI clip.
 import { GRIDS, quantizeNotes, stemToMidi, type MidiData, type MidiNote, type PrepManifest, type SampleRef } from './midi';
 import { getKit } from './kit';
+import { detectKey, type KeyGuess } from './key';
 import * as S from './session';
 import type { ExtractMode } from './sidecar';
 import type { ToolContext, ToolDef } from './tools';
@@ -117,7 +118,62 @@ export function recordMidiTake(
   return { session: { ...S.select(s1, trackId, clip.id), punchIn: null }, clip, notes: kept.length };
 }
 
+/** B20: the notes a clip's key is read from, in the part of the source the clip plays. A MIDI
+ *  clip's own (not drums); an audio clip's extracted stems (extract_midi names them
+ *  "<clip> <stem>" and lines them up under it). */
+function keyNotes(s: S.Session, clip: S.Clip): { notes: MidiNote[]; from: string[] } {
+  const inside = (c: S.Clip) => c.midi!.notes.filter((n) => n.start + n.duration > c.offset && n.start < c.offset + c.duration);
+  if (clip.midi) {
+    if (clip.midi.drum) throw new S.SessionError(`clip ${clip.id} is drums; drums have no key`);
+    return { notes: inside(clip), from: [clip.id] };
+  }
+  const end = clip.start + clip.duration;
+  const stems = s.tracks.flatMap((t) => t.clips).filter((c) => c.midi && !c.midi.drum && c.name.startsWith(`${clip.name} `) && c.start < end && c.start + c.duration > clip.start);
+  if (!stems.length) throw new S.SessionError(`audio clip ${clip.id} has no notes yet: run extract_midi on it first`);
+  return { notes: stems.flatMap(inside), from: stems.map((c) => c.id) };
+}
+
+/** Pure: detect a clip's key and keep it on the clip; with `adopt`, also make it the session key
+ *  (set_key). Exported for tests (detect_key wraps it). */
+export function detectClipKey(s: S.Session, clipId: string, adopt = false): { session: S.Session; guess: KeyGuess; from: string[] } {
+  const { track, clip } = S.findClip(s, clipId);
+  const { notes, from } = keyNotes(s, clip);
+  const guess = detectKey(notes);
+  if (!guess) throw new S.SessionError(`clip ${clip.id} has too few different notes to tell a key (needs 3 or more)`);
+  let next = S.mapTrack(s, track.id, (t) => ({ ...t, clips: t.clips.map((c) => (c.id === clip.id ? { ...c, key: guess.key } : c)) }));
+  if (adopt) next = S.setKey(next, guess.key);
+  return { session: next, guess, from };
+}
+
 export const MIDI_TOOLS: ToolDef[] = [
+  {
+    name: 'detect_key',
+    description:
+      "Detect a clip's key from its notes (a MIDI clip, or an audio clip that extract_midi has turned into notes) and note it on the clip. " +
+      'set_session_key=true also makes it the session key ("match the project key to this clip"). Drums have no key.',
+    parameters: obj({
+      clip_id: str('Clip id; omit to use the selected clip'),
+      set_session_key: bool('Also set the session key to it (default false)'),
+    }),
+    logText: (_a, r) => `detected ${r.key} in ${r.clip_id}${r.session_key_set ? ` and made it the session key` : ''}`,
+    run: (ctx: ToolContext, a) => {
+      const s = ctx.store.get();
+      const clipId = a.clip_id ?? s.selection.clipId;
+      if (!clipId) throw new S.SessionError('no clip_id given and no clip selected');
+      const r = detectClipKey(s, clipId, a.set_session_key);
+      ctx.store.set(r.session);
+      return {
+        clip_id: clipId,
+        key: r.guess.key,
+        certainty: r.guess.certainty,
+        fit: r.guess.r,
+        ...(r.guess.runnerUp ? { close_second: r.guess.runnerUp.key } : {}),
+        from_clips: r.from,
+        session_key: r.session.key,
+        ...(a.set_session_key ? { session_key_set: true } : {}),
+      };
+    },
+  },
   {
     name: 'record_midi',
     description: 'Add a MIDI take played on the Musical Typing keyboard to a track: notes are relative to the take start.',
