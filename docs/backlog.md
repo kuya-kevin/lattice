@@ -336,6 +336,15 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
   the piano roll. If B16's eval exists, it gets two or three phrases for these tools.
 - **Files:** `core/midiTools.ts`, `renderer/PianoRoll.tsx` (menu and footer for the ramp).
 
+### B23. Learn from user changes (lane C) — design Oct 29
+- **What:** turn the user's hand habits and corrections into rules kept in `taste.json` (userData),
+  learned when the user saves a version or starts a new session, applied across sessions. First
+  rule kind: side words in a track name -> pan (any track). Second: corrections to `suggest_moves`
+  knob moves (vocab word + source type).
+- **Design:** `docs/learn-from-edits.md` (demo script, capture, storage, build plan).
+- **Done when:** the demo script in the doc passes as a Playwright spec, the detectors have Vitest
+  tests, and Muse reports learned habits it applies.
+
 ### B15. Layout variants (lane S)
 - **What:** variants for a more modern layout, the way Google Stitch was used before. The canvas
   direction (Oct 27, `app/docs/ux-notes.md` Layout) is the starting point; Logic stays the
