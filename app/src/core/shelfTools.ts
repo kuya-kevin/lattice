@@ -36,7 +36,7 @@ function shelfItem(ctx: ToolContext, id: string): ShelfItem {
 
 /** Hand a shelf sound's audio to the session side under a new source id (the renderer loads it
  *  like a restored source, B11). Returns the new source id. */
-async function adopt(ctx: ToolContext, ref: { bytes: Uint8Array } | { library: string }): Promise<string> {
+export async function adopt(ctx: ToolContext, ref: { bytes: Uint8Array } | { library: string }): Promise<string> {
   if (!ctx.adoptAudio) throw new S.SessionError('shelf sounds cannot be loaded here');
   const id = `src-${Math.random().toString(36).slice(2, 10)}`;
   await ctx.adoptAudio(id, ref);

@@ -1,9 +1,12 @@
 // B12 sample pad tools: make a kit, put sounds on its pads, rename, clear, delete. The user does
-// these from the Ideas column and the pad view; Muse can too (sounds already in the session).
+// these from the Ideas column and the pad view; Muse can too. B12b: Muse also searches the sound
+// library and fills a kit from it (fill_kit), bringing each sound into the session first.
 import * as K from './kit';
+import { attribution, categoryLabel, filterLibrary, needsAttribution, type LibraryEntry } from './library';
 import { barLength } from './metronome';
 import { recordMidiTake } from './midiTools';
 import * as S from './session';
+import { adopt } from './shelfTools';
 import type { ToolContext, ToolDef } from './tools';
 
 const str = (description: string, extra: object = {}) => ({ type: 'string', description, ...extra });
@@ -17,7 +20,114 @@ function edit(ctx: ToolContext, fn: (s: S.Session) => S.Session) {
   ctx.store.set(fn(ctx.store.get()));
 }
 
+const r2 = (x: number) => Math.round(x * 100) / 100;
+
+async function library(ctx: ToolContext): Promise<LibraryEntry[]> {
+  if (!ctx.listLibrary) throw new S.SessionError('the sound library is not available here');
+  return ctx.listLibrary();
+}
+
+/** B12b: bring library items into the session as sources (Ideas), the way the user's + does:
+ *  the renderer loads each one's audio (adoptAudio), CC-BY items keep their credit. Returns a
+ *  session with the sources added (not yet stored) and the new source id per library id. */
+async function librarySources(ctx: ToolContext, s: S.Session, ids: string[]): Promise<{ session: S.Session; sourceOf: Map<string, string> }> {
+  const items = await library(ctx);
+  const sourceOf = new Map<string, string>();
+  let next = s;
+  for (const id of new Set(ids)) {
+    const item = items.find((i) => i.id === id);
+    if (!item) throw new S.SessionError(`no library sound "${id}" (find_library_sounds lists them)`);
+    const sourceId = await adopt(ctx, { library: item.id });
+    next = S.addSource(next, {
+      id: sourceId,
+      name: item.name,
+      duration: item.duration,
+      origin: item.set === 'voice_notes' ? 'record' : 'freesound',
+      ...(needsAttribution(item) ? { credit: attribution(item) } : {}),
+    });
+    sourceOf.set(id, sourceId);
+  }
+  return { session: next, sourceOf };
+}
+
+type PadFill = { pad: number; library_id?: string; source_id?: string; label?: string };
+
 export const KIT_TOOLS: ToolDef[] = [
+  {
+    name: 'find_library_sounds',
+    description:
+      'Search the sound library (curated Freesound one-shots and phrases, CC0 / CC-BY, plus the user\'s voice notes) by words in the name, tags, ' +
+      'category, author or note, and/or a category. Drum categories: kick, snare, clap, closed_hat, open_hat, percussion; also noise_vinyl, riser, ' +
+      'synth_lead, synth_bass, pad, pluck, piano_note, bell_mallet, brass_stab, organ, strings_note. Every word must match; for a mood ' +
+      '("dusty", "punchy") search by category and judge the names, tags and descriptions. Then fill_kit or set_pad with library_id.',
+    quiet: true,
+    parameters: obj({
+      query: str('Words to match, e.g. "808" or "vinyl"; omit to list a category'),
+      category: str('One category, e.g. "kick"'),
+      max_results: { type: 'integer', minimum: 1, maximum: 20, description: 'Default 8' },
+    }),
+    run: async (ctx, a) => {
+      if (!a.query && !a.category) throw new S.SessionError('give query or category');
+      const found = filterLibrary(await library(ctx), { text: a.query, category: a.category ?? null });
+      return {
+        count: found.length,
+        sounds: found.slice(0, a.max_results ?? 8).map((i) => ({
+          library_id: i.id,
+          name: i.name,
+          category: categoryLabel(i.category),
+          tags: i.tags.slice(0, 8),
+          duration: r2(i.duration),
+          license: i.license,
+          ...(i.note ? { note: i.note } : {}),
+          ...(i.description ? { description: i.description.slice(0, 140) } : {}),
+        })),
+      };
+    },
+  },
+  {
+    name: 'fill_kit',
+    description:
+      'Fill a sample pad in one step (one undo): put sounds on several pads, from the library (library_id, from find_library_sounds) or the session ' +
+      '(source_id). Without kit_id it makes a new kit called name. Library sounds are loaded into the session. Pick by what each pad is for (kick on 6, snare on 7, ' +
+      'hat on 2, open hat on 1, clap on 3, ...) and the mood asked for; give label to rename a pad.',
+    parameters: obj(
+      {
+        kit_id: str('Kit to fill; omit to make a new one'),
+        name: str('Name for a new kit, e.g. "Dusty lo-fi"'),
+        pads: {
+          type: 'array',
+          minItems: 1,
+          maxItems: K.PAD_COUNT,
+          items: obj({ pad: int(PAD_HELP), library_id: str('Library sound id'), source_id: str('Or: a session source id'), label: str('Pad name (optional)') }, ['pad']),
+        },
+      },
+      ['pads'],
+    ),
+    run: async (ctx, a) => {
+      const fills = a.pads as PadFill[];
+      if (!fills.length) throw new S.SessionError('give at least one pad');
+      for (const f of fills) if (!f.source_id === !f.library_id) throw new S.SessionError(`pad ${f.pad}: give source_id or library_id (one of them)`);
+      if (new Set(fills.map((f) => f.pad)).size !== fills.length) throw new S.SessionError('each pad once');
+      let s = ctx.store.get();
+      if (a.kit_id) K.getKit(s, a.kit_id);
+      for (const f of fills) if (f.source_id && !s.sources[f.source_id]) throw new S.SessionError(`no source "${f.source_id}"`);
+      const r = await librarySources(ctx, s, fills.flatMap((f) => (f.library_id ? [f.library_id] : [])));
+      s = r.session;
+      let kitId: string = a.kit_id;
+      if (!kitId) [s, { id: kitId }] = K.createKit(s, a.name);
+      for (const f of fills) s = K.setPad(s, kitId, f.pad, f.source_id ?? r.sourceOf.get(f.library_id!)!, f.label);
+      ctx.store.set(s);
+      const kit = K.getKit(s, kitId);
+      return {
+        kit_id: kitId,
+        name: kit.name,
+        ...(a.kit_id ? {} : { created: true }),
+        pads: fills.map((f) => `${f.pad} ${K.padKeyLabel(f.pad)} ${kit.pads[f.pad].label} = ${s.sources[kit.pads[f.pad].sample!.sourceId].name}`),
+        credits_needed: [...new Set(fills.map((f) => s.sources[kit.pads[f.pad].sample!.sourceId].credit).filter(Boolean))].length,
+      };
+    },
+    logText: (_a, r) => `${r.created ? 'made and filled' : 'filled'} sample pad ${r.kit_id} "${r.name}": ${r.pads.join(', ')}`,
+  },
   {
     name: 'create_kit',
     description: `Make a new sample pad (kit): ${K.PAD_COUNT} empty pads for any sounds (drums, chops, one-shots, FX), each on a General MIDI drum note, shown in the Ideas column. Fill it with set_pad.`,
@@ -35,12 +145,26 @@ export const KIT_TOOLS: ToolDef[] = [
   },
   {
     name: 'set_pad',
-    description: 'Put a sound (a source in the session, e.g. an Ideas sound) on a pad of a sample pad; it plays once through, unpitched, on the pad\'s note. The pad takes the sound\'s name unless you give a label or it was renamed.',
-    parameters: obj({ kit_id: str('Kit id, e.g. "k3"'), pad: int(PAD_HELP), source_id: str('Source id of the sound'), label: str('New pad name (optional)') }, ['kit_id', 'pad', 'source_id']),
-    run: (ctx, a) => {
-      edit(ctx, (s) => K.setPad(s, a.kit_id, a.pad, a.source_id, a.label));
-      const s = ctx.store.get();
-      return { kit_id: a.kit_id, pad: a.pad, label: K.getKit(s, a.kit_id).pads[a.pad].label, sound: s.sources[a.source_id].name };
+    description:
+      'Put a sound on a pad of a sample pad: a source in the session (e.g. an Ideas sound), or a library sound by library_id (find_library_sounds), ' +
+      'which is loaded into the session first. It plays once through, unpitched, on the pad\'s note. The pad takes the sound\'s name unless you give a label or it was renamed.',
+    parameters: obj(
+      { kit_id: str('Kit id, e.g. "k3"'), pad: int(PAD_HELP), source_id: str('Source id of the sound'), library_id: str('Or: a library sound id, e.g. "fs:858950"'), label: str('New pad name (optional)') },
+      ['kit_id', 'pad'],
+    ),
+    run: async (ctx, a) => {
+      if (!a.source_id === !a.library_id) throw new S.SessionError('give source_id or library_id (one of them)');
+      let s = ctx.store.get();
+      K.getKit(s, a.kit_id); // fail before loading audio
+      let sourceId: string = a.source_id;
+      if (a.library_id) {
+        const r = await librarySources(ctx, s, [a.library_id]);
+        s = r.session;
+        sourceId = r.sourceOf.get(a.library_id)!;
+      }
+      ctx.store.set(K.setPad(s, a.kit_id, a.pad, sourceId, a.label));
+      s = ctx.store.get();
+      return { kit_id: a.kit_id, pad: a.pad, label: K.getKit(s, a.kit_id).pads[a.pad].label, sound: s.sources[sourceId].name, source_id: sourceId };
     },
     logText: (a, r) => `put "${r.sound}" on pad ${a.pad} (${r.label}) of ${a.kit_id}`,
   },

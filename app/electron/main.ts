@@ -84,6 +84,7 @@ const ctx: ToolContext = {
     const { file: _f, ...entry } = item;
     return entry;
   },
+  listLibrary: async () => getLibrary().items.map(({ file: _f, ...entry }) => entry), // B12b
   saveFiles: (files, folderName) => saveStems(files, folderName), // B18
 };
 

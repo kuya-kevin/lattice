@@ -1,5 +1,6 @@
 // B12 drum pads: kits on the session, the pad tools, takes recorded on a kit, and what Muse sees.
 import { describe, expect, it } from 'vitest';
+import type { LibraryEntry } from '../src/core/library';
 import { DEFAULT_PADS, PAD_COUNT, padForKey, padForNote } from '../src/core/kit';
 import { StubSidecar } from '../src/core/sidecar';
 import { summarize } from '../src/core/session';
@@ -130,5 +131,78 @@ describe('kit tools', () => {
     expect(pad(0).label).toBe('Vox chop');
     expect((await runTool(c, 'rename_pad', { kit_id: kitId, pad: 0, label: ' ' }, 'user')).error).toMatch(/cannot be empty/);
     expect(c.store.takeUserEdits()).toContain(`renamed pad 0 of ${kitId} to "Vox chop"`);
+  });
+});
+
+// B12b: Muse fills a kit from the library (sounds not in the session yet)
+describe('Muse fills a kit from the library', () => {
+  const lib: LibraryEntry[] = [
+    { id: 'fs:1', set: 'freesound', category: 'kick', name: 'Dusty vinyl kick', tags: ['kick', 'lofi', 'dusty'], duration: 0.5, license: 'CC0-1.0' },
+    { id: 'fs:2', set: 'freesound', category: 'kick', name: 'Clean 909 kick', tags: ['kick', '909'], duration: 0.4, license: 'CC0-1.0' },
+    { id: 'fs:3', set: 'freesound', category: 'snare', name: 'Crusty snare', tags: ['snare', 'lofi'], duration: 0.3, license: 'CC-BY-4.0', author: 'tapes', url: 'https://freesound.org/s/3/' },
+    { id: 'fs:4', set: 'freesound', category: 'closed_hat', name: 'Tape hat', tags: ['hat'], duration: 0.2, license: 'CC0-1.0' },
+  ];
+  function libCtx() {
+    const adopted: [string, unknown][] = [];
+    const c: ToolContext = { ...ctx(), listLibrary: async () => lib, adoptAudio: (id, ref) => void adopted.push([id, ref]) };
+    return { c, adopted };
+  }
+
+  it('finds library sounds by words and by category, and Muse can call it', async () => {
+    const { c } = libCtx();
+    expect(museToolSpecs().map((t) => t.function.name)).toEqual(expect.arrayContaining(['find_library_sounds', 'fill_kit']));
+    const words = await runTool(c, 'find_library_sounds', { query: 'lofi' }, 'muse');
+    expect((words.result as any).sounds.map((x: any) => x.library_id)).toEqual(['fs:1', 'fs:3']);
+    const cat = await runTool(c, 'find_library_sounds', { category: 'kick' }, 'muse');
+    expect((cat.result as any).count).toBe(2);
+    expect((cat.result as any).sounds[0]).toMatchObject({ name: 'Dusty vinyl kick', category: 'Kick', license: 'CC0-1.0' });
+    expect((await runTool(c, 'find_library_sounds', {}, 'muse')).ok).toBe(false);
+  });
+
+  it('makes and fills a kit in one undo step; library sounds join Ideas with their credit and audio', async () => {
+    const { c, adopted } = libCtx();
+    const r = await runTool(c, 'fill_kit', { name: 'Dusty lo-fi', pads: [{ pad: 6, library_id: 'fs:1' }, { pad: 7, library_id: 'fs:3' }, { pad: 2, library_id: 'fs:4', label: 'Tape hat' }] }, 'muse');
+    expect(r.ok).toBe(true);
+    const s = c.store.get();
+    const kit = Object.values(s.kits!)[0];
+    expect(kit.name).toBe('Dusty lo-fi');
+    expect([6, 7, 2].map((i) => s.sources[kit.pads[i].sample!.sourceId].name)).toEqual(['Dusty vinyl kick', 'Crusty snare', 'Tape hat']);
+    expect(kit.pads[6].label).toBe('Dusty vinyl kick'); // a default-named pad takes the sound's name
+    expect(adopted.map(([, ref]) => ref)).toEqual([{ library: 'fs:1' }, { library: 'fs:3' }, { library: 'fs:4' }]);
+    expect(adopted.map(([id]) => id)).toEqual([6, 7, 2].map((i) => kit.pads[i].sample!.sourceId));
+    const snare = s.sources[kit.pads[7].sample!.sourceId];
+    expect(snare).toMatchObject({ origin: 'freesound' });
+    expect(snare.credit).toContain('tapes');
+    expect(s.sources[kit.pads[6].sample!.sourceId].credit).toBeUndefined(); // CC0
+    expect(summarize(s)).toContain('Z dusty vinyl kick(36)=Dusty vinyl kick');
+
+    await runTool(c, 'undo', {}, 'user');
+    expect(c.store.get().kits ?? {}).toEqual({});
+    expect(Object.keys(c.store.get().sources)).toHaveLength(3); // undo keeps sounds in Ideas (store.ts: audio stays loaded)
+  });
+
+  it('fills an existing kit, mixing library and session sounds; refuses bad input before loading audio', async () => {
+    const { c, adopted } = libCtx();
+    await runTool(c, 'add_sound', { source_id: 's-clap', name: 'My clap', duration: 0.3 }, 'user');
+    const kitId = ((await runTool(c, 'create_kit', {}, 'user')).result as any).kit_id;
+    const r = await runTool(c, 'fill_kit', { kit_id: kitId, pads: [{ pad: 3, source_id: 's-clap' }, { pad: 6, library_id: 'fs:2' }] }, 'muse');
+    expect(r.ok).toBe(true);
+    expect((r.result as any).created).toBeUndefined();
+    expect(Object.keys(c.store.get().kits!)).toEqual([kitId]);
+
+    const n = adopted.length;
+    expect((await runTool(c, 'fill_kit', { kit_id: kitId, pads: [{ pad: 1, library_id: 'fs:99' }] }, 'muse')).error).toMatch(/no library sound/);
+    expect((await runTool(c, 'fill_kit', { kit_id: 'k99', pads: [{ pad: 1, library_id: 'fs:1' }] }, 'muse')).error).toMatch(/no kit/);
+    expect((await runTool(c, 'fill_kit', { kit_id: kitId, pads: [{ pad: 1, library_id: 'fs:1', source_id: 's-clap' }] }, 'muse')).error).toMatch(/one of them/);
+    expect((await runTool(c, 'fill_kit', { kit_id: kitId, pads: [{ pad: 1, library_id: 'fs:1' }, { pad: 1, library_id: 'fs:2' }] }, 'muse')).error).toMatch(/each pad once/);
+    expect(adopted.length).toBe(n);
+  });
+
+  it('set_pad takes a library sound too', async () => {
+    const { c } = libCtx();
+    const kitId = ((await runTool(c, 'create_kit', {}, 'user')).result as any).kit_id;
+    const r = await runTool(c, 'set_pad', { kit_id: kitId, pad: 7, library_id: 'fs:3' }, 'muse');
+    expect(r.result).toMatchObject({ label: 'Crusty snare', sound: 'Crusty snare' });
+    expect((await runTool(c, 'set_pad', { kit_id: kitId, pad: 7 }, 'muse')).error).toMatch(/source_id or library_id/);
   });
 });

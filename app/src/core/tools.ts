@@ -47,6 +47,8 @@ export interface ToolContext {
   adoptAudio?: (sourceId: string, ref: { bytes: Uint8Array } | { library: string }) => Promise<void> | void;
   /** B17: a library item by id (to star it) */
   findLibrary?: (id: string) => Promise<LibraryEntry | undefined>;
+  /** B12b: every library item (Muse searches it to fill a sample pad) */
+  listLibrary?: () => Promise<LibraryEntry[]>;
   /** B18: save stems where the user chooses (null = cancelled) */
   saveFiles?: (files: { set: string; name: string; bytes: Uint8Array }[], folderName: string) => Promise<{ savedTo: string; files: string[] } | null>;
 }

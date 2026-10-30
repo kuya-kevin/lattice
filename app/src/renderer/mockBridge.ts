@@ -101,6 +101,10 @@ export function createMockBridge(): Bridge {
       const r = await fetch('/api/library');
       return r.ok ? ((await r.json()) as LibraryEntry[]).find((i) => i.id === id) : undefined;
     },
+    listLibrary: async () => {
+      const r = await fetch('/api/library'); // B12b
+      return r.ok ? r.json() : [];
+    },
     saveFiles: async (files, folderName) => downloadFiles(files, folderName), // B18: one download per stem
   };
   const agent = new MuseAgent(ctx, offlineMuse);
