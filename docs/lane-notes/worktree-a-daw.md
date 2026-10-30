@@ -52,3 +52,25 @@ Tests: vitest 374 passing (new: cycle.test.ts, oct30-edits.test.ts), tsc clean, 
 Muse spend: $0.00 (no live calls).
 Left / known issues:
 - Extending an audio region past its recording isn't possible (no looping regions yet).
+
+Follow-up (Oct 30, evening list):
+- Metronome drift, measured: with Cycle on, the click fell 0.8 ms further behind the audio every
+  pass (e2e/click-drift.spec.ts: 39 passes at 230 BPM, 30 ms off). Cause: Tone's Transport ends a
+  loop on its next tick (1/384 s), so each pass runs up to 2.6 ms long, while the click counted
+  beats straight on. The click now stops at the cycle end and re-syncs from the engine's
+  `loopStart` event (exact wrap time). After: 0.0 ms on every pass, 4 clicks a pass, none doubled.
+- Cmd-K take on a tried-out sound: it now records on an empty track already named for that sound
+  (e.g. one left by an undone take) instead of adding a second one (`takeTrack`, recordTiming.ts).
+- My Sounds: double-click a name to rename it; the "Saved to My Sounds" notice has Rename. Muse
+  has `rename_shelf_sound`.
+- Library: the Material tab and its items are hidden (Freesound stand-in voice notes for testing
+  source prep, not instruments). Data and Muse's search are unchanged.
+- Muse can change note lengths: `set_note_length` (beats, scale or legato; selected region or a
+  whole track; reports notes cut off by the region end). Prompt lists it with the note tools.
+- Check it: 1. Cycle bars 1-4 at 100 BPM with the click on, leave it looping for some minutes: the
+  click stays on the downbeat. 2. Undo a Cmd-K take, click the Ideas card, record again: same
+  track. 3. Export a sound, press Rename on the notice. 4. Ask Muse "make these notes a bar long".
+- Tests: vitest 392, tsc clean; e2e click-drift (new), ideas-flow, shelves, musical-typing,
+  record-timing, oct30-bugs, playback, shortcuts, tempo-change, drum-pad pass. Spend $0.
+- Open question (not built): moving a MIDI region to another track keeps its own instrument
+  (the instrument lives on the clip, not the track). See the reply in the session for options.
