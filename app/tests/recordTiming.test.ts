@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, trimTake } from '../src/core/recordTiming';
+import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, takeTrack, trimTake } from '../src/core/recordTiming';
+import { addTrack, emptySession, select, setArm } from '../src/core/session';
 
 // The transport plays timeline 4.0 s out of Web Audio at audio-clock 10.0 s.
 const anchor = { ctxTime: 10, pos: 4 };
@@ -97,5 +98,30 @@ describe('cycleMicTake (keeps the latest pass, as GarageBand shows the latest ta
   it('a last pass shorter than a beat falls back to the previous full one', () => {
     expect(cycleMicTake(6, 8.2, cycle, 0.5)).toEqual({ offset: 0, start: 6, duration: 2 }); // the first, partial pass
     expect(cycleMicTake(6, 16.3, cycle, 0.5)).toEqual({ offset: 2, start: 0, duration: 8 });
+  });
+});
+
+describe('takeTrack (which track a take records on)', () => {
+  const two = () => {
+    let s = emptySession();
+    [s] = addTrack(s, 'Pluck FX 2890 - 03'); // empty, e.g. left by an undone take
+    [s] = addTrack(s, 'Vocal');
+    return s;
+  };
+
+  it('reuses an empty track named for the take instead of adding another (Oct 30, Cmd-K pluck)', () => {
+    expect(takeTrack(two(), 'Pluck FX 2890 - 03')).toBe('t1');
+    expect(takeTrack(two(), 'Keys')).toBeNull(); // no such track: a new one
+  });
+
+  it('a track with regions on it is not reused by name', () => {
+    const s = two();
+    s.tracks[0].clips.push({ id: 'c1' } as never);
+    expect(takeTrack(s, 'Pluck FX 2890 - 03')).toBeNull();
+  });
+
+  it('the selected or armed track still wins', () => {
+    expect(takeTrack(select(two(), 't2', null), 'Pluck FX 2890 - 03')).toBe('t2');
+    expect(takeTrack(setArm(two(), 't2', true), 'Pluck FX 2890 - 03')).toBe('t2');
   });
 });

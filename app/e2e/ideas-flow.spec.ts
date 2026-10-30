@@ -76,6 +76,24 @@ test('library + puts a sound in Ideas on no track; it plays on Musical Typing; R
   // the card now belongs to that track: it says so and a wire runs to the track header
   await expect(page.locator('.idea-meta')).toContainText('on Fixture Sub Bass');
   await expect(page.locator('svg.wires path')).toHaveCount(1);
+
+  // Oct 30: undo the take (its empty track stays), try the sound again, record: the take goes
+  // on that empty track, not on a second one
+  const clipId = s.tracks[0].clips[0].id;
+  await page.evaluate((id) => window.lattice!.runTool('delete_clip', { clip_id: id }), clipId);
+  await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(0);
+  await page.locator('.idea').click();
+  await expect(page.getByTestId('mt-instrument')).toHaveText('Fixture Sub Bass');
+  await ground(page);
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('lcd')).toContainText('REC MIDI');
+  await page.waitForTimeout(200);
+  await page.keyboard.down('s');
+  await page.waitForTimeout(250);
+  await page.keyboard.up('s');
+  await page.keyboard.press('r');
+  await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
+  expect((await session(page)).tracks).toHaveLength(1);
   expect(errors).toEqual([]);
 });
 

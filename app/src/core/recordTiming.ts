@@ -3,6 +3,17 @@
 // the mic hands what they play back `inputDelay` after that, so both are compensated here,
 // the way GarageBand's recording delay / playhead latency compensation do.
 import type { PlayedNote } from './musicalTyping';
+import type { Session } from './session';
+
+/** The track a take records on: the punch-in track, else the record-armed one, else the selected
+ *  one, else an empty track already named for the take (e.g. one left by an undone take, or made
+ *  for the sound tried out from Ideas), else null for a new track called `name`. (Oct 30: Cmd-K on
+ *  a tried-out pluck made a second "Pluck" track beside the empty one.) */
+export function takeTrack(s: Session, name: string): string | null {
+  const chosen = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
+  if (chosen) return chosen;
+  return s.tracks.find((t) => !t.clips.length && t.name === name)?.id ?? null;
+}
 
 /** Timeline `pos` leaves Web Audio at ctx time `ctxTime` (the transport, or a count-in's downbeat). */
 export interface TransportAnchor {

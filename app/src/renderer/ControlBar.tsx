@@ -10,7 +10,7 @@ import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, selectedClipIds, type Ses
 import { cycleAround, type SnapMode } from '../core/snap';
 import { newSourceId, sliceBuffer } from './audio';
 import { audioContext, inputDelay, outputDelay, transportHandoff, waitForAudioTime, withLookAhead } from './audioClock';
-import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, trimTake, type Cycle, type TransportAnchor } from '../core/recordTiming';
+import { ctxTimeAt, cycleMicTake, foldMidiTake, heardPosition, onCycle, takeTrack, trimTake, type Cycle, type TransportAnchor } from '../core/recordTiming';
 import { clicks } from './click';
 import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
@@ -421,10 +421,11 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
       return;
     }
     const { session: s, meter: m, cycle: loop, isPlaying: rolling } = latest.current;
-    let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
-    const added = !trackId;
     // a new track for a MIDI take is named after the sound played (e.g. one tried out from Ideas)
-    if (!trackId) trackId = (await run('add_track', { name: midi ? musicalTyping.instrument()?.name ?? 'Keys' : 'Recording' })).result?.track_id ?? null;
+    const name = midi ? musicalTyping.instrument()?.name ?? 'Keys' : 'Recording';
+    let trackId = takeTrack(s, name);
+    const added = !trackId;
+    if (!trackId) trackId = (await run('add_track', { name })).result?.track_id ?? null;
     if (!trackId) return;
     // with Cycle on, a take from a stop starts at the cycle's left edge (Logic); while playing it
     // starts where the playhead is
