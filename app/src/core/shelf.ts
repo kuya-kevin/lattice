@@ -34,6 +34,8 @@ export interface SoundShelf {
   /** `audio`: the sound's WAV (none for library items); `recipeAudio`: the audio before the effects */
   add(item: NewShelfItem, audio?: Uint8Array, recipeAudio?: Uint8Array): ShelfItem;
   remove(id: string): ShelfItem | undefined;
+  /** Give a shelf sound a new name (its audio stays where it is). */
+  rename(id: string, name: string): ShelfItem | undefined;
   audio(id: string): Uint8Array | null;
   recipeAudio(id: string): Uint8Array | null;
   subscribe(fn: () => void): () => void;
@@ -73,6 +75,15 @@ export class MemorySoundShelf implements SoundShelf {
     this.items = this.items.filter((i) => i.id !== id);
     this.changed();
     return item;
+  }
+
+  rename(id: string, name: string): ShelfItem | undefined {
+    const item = this.get(id);
+    if (!item) return undefined;
+    const renamed = { ...item, name };
+    this.items = this.items.map((i) => (i.id === id ? renamed : i));
+    this.changed();
+    return renamed;
   }
 
   audio(id: string): Uint8Array | null {

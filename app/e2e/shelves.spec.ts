@@ -96,3 +96,27 @@ test('Export Sound in the device panel puts the track in My Sounds', async ({ pa
   await page.getByTestId('fx-export-sound').click();
   await expect.poll(async () => (await shelf(page)).map((i) => [i.shelf, i.name])).toEqual([['mine', 'pluck']]);
 });
+
+test('rename an exported sound: from the notice, and by double-clicking its name (Oct 30)', async ({ page }) => {
+  await page.goto('/');
+  await importTone(page, 'pluck.wav', 0.5);
+  await expect.poll(async () => (await tool(page, 'measure_track', { track_id: 't1' })).ok).toBe(true);
+  await page.getByTestId('fx-export-sound').click();
+  await page.getByTestId('notice').getByRole('button', { name: 'Rename' }).click();
+  const input = page.getByTestId('shelf-rename');
+  await expect(input).toBeFocused();
+  await input.fill('Lofi Pluck');
+  await input.press('Enter');
+  await expect.poll(async () => (await shelf(page)).map((i) => i.name)).toEqual(['Lofi Pluck']);
+
+  const mine = page.getByTestId('shelf-mine');
+  await mine.getByText('Lofi Pluck').dblclick();
+  await page.getByTestId('shelf-rename').fill('Bright Pluck');
+  await page.getByTestId('shelf-rename').press('Escape'); // Esc keeps the old name
+  await expect(mine.getByText('Lofi Pluck')).toBeVisible();
+  await mine.getByText('Lofi Pluck').dblclick();
+  await page.getByTestId('shelf-rename').fill('Bright Pluck');
+  await page.getByTestId('shelf-rename').blur();
+  await expect.poll(async () => (await shelf(page)).map((i) => i.name)).toEqual(['Bright Pluck']);
+  expect((await session(page)).tracks).toHaveLength(1); // r, l and friends typed no notes or shortcuts
+});

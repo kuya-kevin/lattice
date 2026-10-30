@@ -166,6 +166,20 @@ describe('sound shelves (B17)', () => {
     expect(again.recipeAudio(exp.shelf_id)).toEqual(wav(3));
     expect(JSON.parse(readFileSync(join(dir, 'index.json'), 'utf8')).items).toHaveLength(2);
   });
+
+  it('rename an exported sound (Oct 30); the new name is kept on disk', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lattice-shelf-'));
+    const { c } = ctx(new FileSoundShelf(dir));
+    await withTrack(c);
+    const exp = (await runTool(c, 'export_sound', { track_id: 't1' }, 'user')).result as { shelf_id: string };
+    const r = await runTool(c, 'rename_shelf_sound', { shelf_id: exp.shelf_id, name: '  Lofi Vox ' }, 'muse');
+    expect(r).toMatchObject({ ok: true, result: { name: 'Lofi Vox', was: 'Vox', reopenable: true } });
+    expect(new FileSoundShelf(dir).get(exp.shelf_id)).toMatchObject({ name: 'Lofi Vox', from: 'export' });
+    expect(new FileSoundShelf(dir).audio(exp.shelf_id)).toEqual(wav(2)); // same audio
+    expect(museSummary(c)).toContain('"Lofi Vox"');
+    expect((await runTool(c, 'rename_shelf_sound', { shelf_id: exp.shelf_id, name: ' ' }, 'user')).error).toMatch(/empty/);
+    expect((await runTool(c, 'rename_shelf_sound', { shelf_id: 'sh-nope', name: 'x' }, 'user')).ok).toBe(false);
+  });
 });
 
 describe('dry / wet (B18)', () => {

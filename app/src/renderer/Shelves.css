@@ -53,3 +53,9 @@
 }
 .notice button { height: 24px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--island-2); font-size: 12px; }
 .notice button:hover { background: var(--island-3); }
+
+/* Oct 30: double-click a shelf sound's name to rename it */
+.library .shelf-row .shelf-rename {
+  min-width: 0; padding: 0 4px; font: inherit; color: var(--text);
+  background: var(--island); border: 1px solid var(--accent); border-radius: 4px;
+}

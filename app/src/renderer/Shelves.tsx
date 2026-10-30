@@ -87,7 +87,18 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
   const list = all.filter((i) => i.shelf === shelf && words.every((w) => `${i.name} ${FROM[i.from]}`.toLowerCase().includes(w)));
   const [playing, setPlaying] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [renaming, setRenaming] = useState<string | null>(() => pendingRename);
   useEffect(() => () => stopPreview(), []);
+  useEffect(() => {
+    pendingRename = null;
+    const h = (e: Event) => ((pendingRename = null), setRenaming((e as CustomEvent<string>).detail)); // the export notice's Rename
+    window.addEventListener(RENAME, h);
+    return () => window.removeEventListener(RENAME, h);
+  }, []);
+  const rename = (i: ShelfItem, name: string) => {
+    setRenaming(null);
+    if (name.trim() && name.trim() !== i.name) act('rename_shelf_sound', { shelf_id: i.id, name });
+  };
   const play = async (id: string) => {
     if (playing === id) {
       stopPreview();
@@ -117,7 +128,25 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
         {list.map((i) => (
           <li key={i.id} className={`lib-row shelf-row${playing === i.id ? ' playing' : ''}`} data-testid={`shelf-item-${i.id}`} onClick={() => play(i.id)} title="Click to preview">
             <span className="play" aria-hidden>{playing === i.id ? '■' : '▶'}</span>
-            <span className="nm">{i.name}</span>
+            {renaming === i.id ? (
+              <input
+                className="nm shelf-rename"
+                data-testid="shelf-rename"
+                aria-label={`Rename ${i.name}`}
+                defaultValue={i.name}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onClick={(e) => e.stopPropagation()}
+                onKeyDown={(e) => {
+                  e.stopPropagation(); // typing a name doesn't play notes or move the transport
+                  if (e.key === 'Enter') rename(i, e.currentTarget.value);
+                  if (e.key === 'Escape') setRenaming(null);
+                }}
+                onBlur={(e) => renaming === i.id && rename(i, e.currentTarget.value)}
+              />
+            ) : (
+              <span className="nm" title="Double-click to rename" onDoubleClick={(e) => (e.stopPropagation(), stopPreview(), setPlaying(null), setRenaming(i.id))}>{i.name}</span>
+            )}
             <span className="meta">{FROM[i.from]} · {fmtDur(i.duration)}{i.recipe ? ` · ${i.recipe.devices.length} device${i.recipe.devices.length === 1 ? '' : 's'}` : ''}</span>
             {i.recipe ? (
               <button className="shelf-reopen" aria-label={`Reopen ${i.name}`} title="Reopen: the sound before its effects on a new track, with its device chain" onClick={(e) => (e.stopPropagation(), act('reopen_sound', { shelf_id: i.id }))}>
@@ -225,14 +254,22 @@ export function SoundMenu({ session, run }: { session: Session; run: Run }) {
 }
 
 // ---- what an export did, said where the user looks (the Export Sound button, the region menu) ----
-type NoticeMsg = { text: string; showShelf?: ShelfName };
+type NoticeMsg = { text: string; showShelf?: ShelfName; rename?: string };
 const NOTICE = 'lattice-notice';
 const SHOW_SHELF = 'lattice-show-shelf';
+const RENAME = 'lattice-rename-shelf-sound';
+
+// the shelf list may not be open yet when Rename is pressed: it picks this up when it mounts
+let pendingRename: string | null = null;
+function renameOnShelf(id: string) {
+  pendingRename = id;
+  window.dispatchEvent(new CustomEvent(RENAME, { detail: id }));
+}
 
 /** Run export_sound and say where the sound went (or why it didn't). */
 export async function exportSound(run: Run, args: Record<string, unknown>) {
   const r = await run('export_sound', args);
-  const msg: NoticeMsg = r.ok ? { text: `Saved "${r.result?.name}" to My Sounds`, showShelf: 'mine' } : { text: `Export failed: ${r.error}` };
+  const msg: NoticeMsg = r.ok ? { text: `Saved "${r.result?.name}" to My Sounds`, showShelf: 'mine', rename: r.result?.shelf_id } : { text: `Export failed: ${r.error}` };
   window.dispatchEvent(new CustomEvent(NOTICE, { detail: msg }));
 }
 
@@ -278,6 +315,9 @@ export function Notice() {
       {msg.text}
       {msg.showShelf && (
         <button onClick={() => { showShelf(msg.showShelf!); setMsg(null); }}>Show</button>
+      )}
+      {msg.rename && (
+        <button onClick={() => { renameOnShelf(msg.rename!); showShelf(msg.showShelf ?? 'mine'); setMsg(null); }}>Rename</button>
       )}
     </div>
   );

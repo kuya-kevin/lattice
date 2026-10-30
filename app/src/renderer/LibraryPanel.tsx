@@ -18,7 +18,6 @@ type Scope = LibrarySet | 'all' | ShelfName;
 const SCOPES: { id: Scope; label: string }[] = [
   { id: 'all', label: 'All' },
   { id: 'freesound', label: 'Instruments' },
-  { id: 'material', label: 'Material' },
   { id: 'voice_notes', label: 'Voice notes' },
   { id: 'starred', label: '★ Starred' }, // B17: shelves that span projects
   { id: 'mine', label: 'My Sounds' },
@@ -54,7 +53,8 @@ export function LibraryPanel({ bridge, open, onAddIdea, run }: { bridge: Bridge;
     setPlaying(null);
   }, [open]);
 
-  const all = items ?? [];
+  // the "producer material" set (stand-in voice notes for testing source prep) is hidden for now (Oct 30)
+  const all = useMemo(() => (items ?? []).filter((i) => i.set !== 'material'), [items]);
   const set = isShelf(scope) ? 'all' : scope;
   const results = useMemo(() => filterLibrary(all, { text, set, category, chips }), [all, text, set, category, chips]);
   const browsing = !text.trim() && !category && chips.length === 0;

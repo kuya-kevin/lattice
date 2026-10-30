@@ -105,6 +105,18 @@ export const SHELF_TOOLS: ToolDef[] = [
     logText: (_a, r) => `took "${r.name}" off ${r.shelf}`,
   },
   {
+    name: 'rename_shelf_sound',
+    description: 'Rename a sound on a shelf (Starred or My Sounds) by shelf_id, e.g. "call that export Lofi Pluck".',
+    parameters: obj({ shelf_id: str('Shelf id, e.g. "sh-3k2j9x1a"'), name: str('The new name') }, ['shelf_id', 'name']),
+    run: (ctx, a) => {
+      const item = shelfItem(ctx, a.shelf_id);
+      const name = String(a.name ?? '').trim();
+      if (!name) throw new S.SessionError('a name cannot be empty');
+      return { ...view(soundShelf(ctx).rename(item.id, name)!), was: item.name };
+    },
+    logText: (_a, r) => `renamed "${r.was}" to "${r.name}" in ${r.shelf}`,
+  },
+  {
     name: 'export_sound',
     description:
       'Export a region (clip_id) or a whole track (track_id) as a sound in My Sounds, rendered through the track\'s effects: the reverb/delay tail is kept and ' +
