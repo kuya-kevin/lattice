@@ -251,7 +251,7 @@ export const MIDI_TOOLS: ToolDef[] = [
   },
   {
     name: 'quantize_midi',
-    description: 'Quantize a MIDI clip (or every MIDI clip on a track) to the session tempo and bars. strength 0-1 (1 = hard snap). notes: indexes of the notes to quantize (default all; clip_id only).',
+    description: 'Quantize a MIDI clip (or every MIDI clip on a track) to the session tempo and bars. strength 0-1 (1 = hard snap). notes: indexes of the notes to quantize (default all; the selected notes are listed in the summary).',
     parameters: obj(
       {
         clip_id: str('MIDI clip id'),
@@ -264,17 +264,19 @@ export const MIDI_TOOLS: ToolDef[] = [
     ),
     run: (ctx: ToolContext, a) => {
       let s = ctx.store.get();
-      const clips = a.clip_id
-        ? [S.findClip(s, a.clip_id).clip]
+      const clipId = a.clip_id ?? (a.notes ? s.selection.clipId : undefined); // notes: in the selected clip
+      const clips = clipId
+        ? [S.findClip(s, clipId).clip]
         : S.getTrack(s, a.track_id ?? s.selection.trackId ?? '').clips.filter((c) => c.midi);
       if (!clips.length || clips.some((c) => !c.midi)) throw new S.SessionError('no MIDI clip to quantize');
-      const which = a.notes && a.clip_id ? new Set<number>(a.notes) : null;
+      const which = a.notes && clipId ? new Set<number>(a.notes) : null;
       for (const c of clips) {
         // notes are source-relative; put beat 1 of the grid at timeline 0
         const q = (ns: MidiNote[]) => quantizeNotes(ns, s.tempo, a.grid, a.strength ?? 1, c.offset - c.start);
         const all = c.midi!.notes;
-        const notes = which ? [...all.filter((_, i) => !which.has(i)), ...q(all.filter((_, i) => which.has(i)))].sort((x, y) => x.start - y.start || x.pitch - y.pitch) : q(all);
-        s = S.setClipMidi(s, c.id, { ...c.midi!, notes });
+        // one note at a time keeps their order, so the selection follows them through the sort
+        const notes = all.map((n, i) => (!which || which.has(i) ? q([n])[0] : n));
+        s = S.setClipNotes(s, c.id, notes);
       }
       ctx.store.set(s);
       return { clips: clips.map((c) => c.id), grid: a.grid, bpm: s.tempo, strength: a.strength ?? 1, ...(which ? { quantized: which.size } : {}) };
@@ -288,6 +290,7 @@ export const MIDI_TOOLS: ToolDef[] = [
       {
         clip_id: str('MIDI clip id'),
         notes: { type: 'array', items: obj({ pitch: num(''), velocity: num(''), start: num(''), duration: num('') }, ['pitch', 'velocity', 'start', 'duration']) },
+        selected: { type: 'array', items: num(''), description: 'Indexes into notes to leave selected' },
       },
       ['clip_id', 'notes'],
     ),
@@ -296,8 +299,8 @@ export const MIDI_TOOLS: ToolDef[] = [
       const s = ctx.store.get();
       const { clip } = S.findClip(s, a.clip_id);
       if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio, not MIDI`);
-      const notes = checkNotes(a.notes);
-      ctx.store.set(S.setClipMidi(s, clip.id, { ...clip.midi, notes }));
+      const notes = checkNotes(a.notes, false);
+      ctx.store.set(S.setClipNotes(s, clip.id, notes, a.selected ?? []));
       return { clip_id: clip.id, before: clip.midi.notes.length, notes: notes.length };
     },
   },
@@ -321,14 +324,66 @@ export const MIDI_TOOLS: ToolDef[] = [
       const which = a.notes ? new Set<number>(a.notes) : null;
       const notes = clip.midi.notes.map((n, i) => (!which || which.has(i) ? { ...n, pitch: n.pitch + a.semitones } : n));
       if (notes.some((n) => n.pitch < 0 || n.pitch > 127)) throw new S.SessionError('that would move notes outside MIDI 0-127');
-      ctx.store.set(S.setClipMidi(s, clip.id, { ...clip.midi, notes }));
+      ctx.store.set(S.setClipNotes(s, clip.id, notes));
       return { clip_id: clip.id, semitones: a.semitones, moved: which ? which.size : notes.length };
+    },
+  },
+  {
+    name: 'set_note_velocity',
+    description: 'Set or change the velocity (loudness, 1-127) of MIDI notes: velocity sets it, change adds to it (e.g. -20 = softer). notes: indexes (default all).',
+    parameters: obj(
+      {
+        clip_id: str('MIDI clip id'),
+        velocity: num('New velocity 1-127', { minimum: 1, maximum: 127 }),
+        change: num('Or: add this to each velocity, e.g. -20'),
+        notes: { type: 'array', items: num('note index'), description: 'Only these notes (indexes in start order); default all' },
+      },
+      ['clip_id'],
+    ),
+    logText: (_a, r) => `set the velocity of ${r.changed} note(s) on ${r.clip_id}`,
+    run: (ctx: ToolContext, a) => {
+      const s = ctx.store.get();
+      const { clip } = S.findClip(s, a.clip_id);
+      if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio, not MIDI`);
+      if ((a.velocity == null) === (a.change == null)) throw new S.SessionError('give either velocity or change');
+      const which = a.notes ? new Set<number>(a.notes) : null;
+      const v = (x: number) => Math.min(127, Math.max(1, Math.round(a.velocity ?? x + a.change)));
+      const notes = clip.midi.notes.map((n, i) => (!which || which.has(i) ? { ...n, velocity: v(n.velocity) } : n));
+      ctx.store.set(S.setClipNotes(s, clip.id, notes));
+      return { clip_id: clip.id, changed: which ? which.size : notes.length };
+    },
+  },
+  {
+    name: 'delete_midi_notes',
+    description: 'Delete MIDI notes from a clip by index (start order), e.g. the selected notes.',
+    parameters: obj({ clip_id: str('MIDI clip id'), notes: { type: 'array', items: num('note index') } }, ['clip_id', 'notes']),
+    logText: (_a, r) => `deleted ${r.deleted} note(s) from ${r.clip_id}`,
+    run: (ctx: ToolContext, a) => {
+      const s = ctx.store.get();
+      const { clip } = S.findClip(s, a.clip_id);
+      if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio, not MIDI`);
+      const gone = new Set<number>(a.notes);
+      const notes = clip.midi.notes.filter((_, i) => !gone.has(i));
+      ctx.store.set(S.setClipNotes(s, clip.id, notes, []));
+      return { clip_id: clip.id, deleted: clip.midi.notes.length - notes.length, left: notes.length };
+    },
+  },
+  {
+    name: 'select_notes',
+    description: 'Select notes in the Piano Roll (indexes into the clip\'s notes, start order).',
+    userOnly: true,
+    quiet: true,
+    parameters: obj({ clip_id: str('MIDI clip id'), notes: { type: 'array', items: num('note index') } }, ['clip_id', 'notes']),
+    run: (ctx: ToolContext, a) => {
+      ctx.store.set(S.selectNotes(ctx.store.get(), a.clip_id, a.notes));
+      return { ok: true };
     },
   },
 ];
 
-/** Validate Piano Roll notes and sort them by start (then pitch). */
-export function checkNotes(notes: MidiNote[]): MidiNote[] {
+/** Validate Piano Roll notes and sort them by start (then pitch); `sort` false keeps their order
+ *  (setClipNotes sorts them, keeping the selection). */
+export function checkNotes(notes: MidiNote[], sort = true): MidiNote[] {
   for (const n of notes) {
     if (!Number.isInteger(n.pitch) || n.pitch < 0 || n.pitch > 127) throw new S.SessionError(`pitch ${n.pitch} is not a MIDI note 0-127`);
     if (!(n.start >= 0)) throw new S.SessionError(`note start ${n.start} is before the clip`);
@@ -336,7 +391,6 @@ export function checkNotes(notes: MidiNote[]): MidiNote[] {
     if (!(n.velocity >= 1 && n.velocity <= 127)) throw new S.SessionError(`velocity ${n.velocity} is outside 1-127`);
   }
   const r4 = (x: number) => Math.round(x * 10000) / 10000;
-  return notes
-    .map((n) => ({ pitch: n.pitch, start: r4(n.start), duration: r4(n.duration), velocity: Math.round(n.velocity) }))
-    .sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const out = notes.map((n) => ({ pitch: n.pitch, start: r4(n.start), duration: r4(n.duration), velocity: Math.round(n.velocity) }));
+  return sort ? out.sort((a, b) => a.start - b.start || a.pitch - b.pitch) : out;
 }

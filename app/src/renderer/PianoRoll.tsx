@@ -14,7 +14,7 @@ import { getGlobalContext } from '@waveform-playlist/playout';
 import type { Bridge } from '../core/bridge';
 import { barLength, beatLength, type Meter } from '../core/metronome';
 import { GRIDS, noteName, type MidiData, type MidiNote } from '../core/midi';
-import type { Session } from '../core/session';
+import { selectedNotes, type Session } from '../core/session';
 import { isTyping } from './shortcuts';
 import { ExtractMidiControl } from './ExtractMidi';
 import { trackEffects } from '../fx/engine/live';
@@ -136,12 +136,29 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   const snapTl = (tl: number) => (step ? Math.round(tl / step) * step : tl);
   const play = (pitch: number, velocity = 100) => preview(midi, track?.id, pitch, velocity, kit);
 
-  // a new region: clear the selection and bring its notes into view
+  // a new region: drop any draft and bring its notes into view
   const clipId = clip?.id;
   useEffect(() => {
-    setSel(new Set());
     setDraft(null);
   }, [clipId]);
+
+  // The selection lives in the session too (select_notes), so Muse sees "these notes" and its
+  // edits move the selection with the notes. `sel` answers clicks at once; the session follows
+  // when no drag, marquee or edit is under way, and session changes come back when no select is.
+  const sessionSel = clip ? selectedNotes(session).join(',') : '';
+  const selKey = [...sel].sort((a, b) => a - b).join(',');
+  const pushing = useRef(0);
+  useEffect(() => {
+    if (pushing.current) return;
+    setSel((cur) => ([...cur].sort((a, b) => a - b).join(',') === sessionSel ? cur : new Set(sessionSel ? sessionSel.split(',').map(Number) : [])));
+  }, [clipId, sessionSel]);
+  const busy = marquee !== null || draft !== null;
+  useEffect(() => {
+    if (!clipId || busy || selKey === sessionSel) return;
+    pushing.current++;
+    run('select_notes', { clip_id: clipId, notes: [...sel] }).finally(() => pushing.current--);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clipId, selKey, busy]);
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el || !midi) return;
@@ -168,7 +185,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     const s = settle(next, nextSel);
     setDraft(s.notes); // hold the result until the session catches up
     setSel(s.sel);
-    await run('edit_midi_notes', { clip_id: clip.id, notes: s.notes });
+    await run('edit_midi_notes', { clip_id: clip.id, notes: s.notes, selected: [...s.sel] });
     setDraft(null);
   };
 

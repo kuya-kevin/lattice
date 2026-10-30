@@ -35,11 +35,20 @@ Check it: `npm install` first (three patches changed: browser, playout, new engi
   5. Add 12 tracks and scroll down: the ruler stays at the top. Double-click a library sound, then
      use "Add to track…" on its Ideas card.
 
+Follow-up (Oct 30): Muse sees the Piano Roll's note selection.
+- The selection is session state (`selection.notes`, indexes into the selected region's notes; a
+  quiet user tool `select_notes`). The summary's last line names the notes and their indexes, and
+  the prompt says "these notes" = those indexes. Undo keeps it (a view setting).
+- New Muse tools `set_note_velocity` (set or change) and `delete_midi_notes`; `quantize_midi` with
+  `notes` and no clip_id uses the selected region.
+- Edits that re-sort notes (quantize, transpose, Piano Roll edits) move the selection with its
+  notes (`setClipNotes`), which fixes the "selection points at neighbours" issue below.
+- Check it: select two notes, ask Muse "quantize these" / "make these softer" / "delete these".
+- Tests: tests/note-selection.test.ts (7), e2e/note-selection.spec.ts (2); vitest 381, web e2e 126,
+  electron 9 + 2, tsc clean. Spend $0.
+
 Tests: vitest 374 passing (new: cycle.test.ts, oct30-edits.test.ts), tsc clean, e2e: oct30-bugs.spec.ts
   (8, new), full web suite (see below), electron.spec.ts (new: first-press recording).
 Muse spend: $0.00 (no live calls).
 Left / known issues:
-- Muse can't see the Piano Roll's note selection, so "quantize these" from chat quantizes the region.
 - Extending an audio region past its recording isn't possible (no looping regions yet).
-- After Quantize on a selection, the selection keeps its indexes; if the notes re-sort, it may point
-  at neighbours.

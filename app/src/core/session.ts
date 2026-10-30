@@ -3,7 +3,7 @@
 // renderer's audio store, keyed by source id). Every op is pure: (session, ...) -> session.
 
 import { describeSettings, type ParamValues } from '../fx/catalog';
-import { describeMidi, type MidiData } from './midi'; // [S3 midi]
+import { describeMidi, noteName, type MidiData, type MidiNote } from './midi'; // [S3 midi]
 import { describeKits, emptyPad, type Kit } from './kit'; // B12 sample pads
 import { barLength } from './metronome';
 import { colorName } from './trackColors'; // B16
@@ -74,8 +74,9 @@ export interface Session {
   tracks: Track[];
   sources: Record<string, Source>;
   /** `clipIds` lists every selected clip when more than one is (shift/cmd-click or a marquee);
-   *  `clipId` is then the one clicked last. Absent = just `clipId`. */
-  selection: { trackId: string | null; clipId: string | null; clipIds?: string[] };
+   *  `clipId` is then the one clicked last. Absent = just `clipId`. `notes`: the notes selected in
+   *  the Piano Roll, as indexes into `clipId`'s notes (start order); read it with selectedNotes(). */
+  selection: { trackId: string | null; clipId: string | null; clipIds?: string[]; notes?: number[] };
   /** `command` + `rev` let the UI replay a transport request even when the values repeat. */
   transport: { playing: boolean; position: number; command: 'play' | 'stop' | 'locate'; rev: number };
   tempo: number; // BPM (quarter notes)
@@ -303,6 +304,41 @@ export function setClipMidi(s: Session, clipId: string, midi: MidiData): Session
   const { clip } = findClip(s, clipId);
   if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
   return mapClip(s, clipId, ({ key: _stale, ...c }) => ({ ...c, midi })); // B20: new notes, key unknown
+}
+
+/** A MIDI clip's new notes, sorted by start (then pitch), with the Piano Roll's note selection
+ *  following its notes through the sort. `selected` indexes `notes`; absent, a selection on this
+ *  clip is kept when `notes` lines up with the old notes (same count), else cleared. */
+export function setClipNotes(s: Session, clipId: string, notes: MidiNote[], selected?: Iterable<number>): Session {
+  const { clip } = findClip(s, clipId);
+  if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
+  const ours = s.selection.clipId === clipId;
+  const sel = new Set(selected ?? (ours && notes.length === clip.midi.notes.length ? selectedNotes(s) : []));
+  const tagged = notes.map((n, i) => ({ n, sel: sel.has(i) })).sort((a, b) => a.n.start - b.n.start || a.n.pitch - b.n.pitch);
+  const out = setClipMidi(s, clipId, { ...clip.midi, notes: tagged.map((t) => t.n) });
+  if (!ours) return out;
+  const { notes: _old, ...rest } = out.selection;
+  const idx = tagged.flatMap((t, i) => (t.sel ? [i] : []));
+  return { ...out, selection: idx.length ? { ...rest, notes: idx } : rest };
+}
+
+/** Select notes of a MIDI clip (Piano Roll), which also selects the clip. Indexes past the
+ *  last note are dropped; none = no notes selected. */
+export function selectNotes(s: Session, clipId: string, indexes: number[]): Session {
+  const { track, clip } = findClip(s, clipId);
+  if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
+  const n = clip.midi.notes.length;
+  const idx = [...new Set(indexes)].filter((i) => Number.isInteger(i) && i >= 0 && i < n).sort((a, b) => a - b);
+  return { ...s, selection: { trackId: track.id, clipId, ...(idx.length ? { notes: idx } : {}) } };
+}
+
+/** The selected clip's selected notes (indexes, start order); [] when none or out of date. */
+export function selectedNotes(s: Session): number[] {
+  const { clipId, notes } = s.selection;
+  if (!clipId || !notes?.length) return [];
+  const clip = s.tracks.flatMap((t) => t.clips).find((c) => c.id === clipId);
+  const n = clip?.midi?.notes.length ?? 0;
+  return notes.filter((i) => i < n);
 }
 // ─── end [S3 midi] ───
 
@@ -535,7 +571,8 @@ export function setMetronome(s: Session, on?: boolean, countIn?: boolean): Sessi
 export function select(s: Session, trackId: string | null, clipId: string | null, clipIds?: string[]): Session {
   const ids = [...new Set([...(clipIds ?? []), ...(clipId ? [clipId] : [])])];
   const primary = clipId ?? ids[ids.length - 1] ?? null;
-  return { ...s, selection: ids.length > 1 ? { trackId, clipId: primary, clipIds: ids } : { trackId, clipId: primary } };
+  const notes = ids.length <= 1 && primary && primary === s.selection.clipId ? s.selection.notes : undefined; // same region: notes stay selected
+  return { ...s, selection: ids.length > 1 ? { trackId, clipId: primary, clipIds: ids } : { trackId, clipId: primary, ...(notes ? { notes } : {}) } };
 }
 
 /** Every selected clip id (one or none unless several are selected). */
@@ -620,11 +657,23 @@ function summarizeSession(s: Session): string {
     return f ? `${id} ("${f.c.name}" on ${f.t.id} "${f.t.name}")` : id;
   };
   const selTrack = s.tracks.find((t) => t.id === s.selection.trackId);
-  const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${clipRef(s.selection.clipId)}` : selTrack ? `selected track ${selTrack.id} "${selTrack.name}"` : 'nothing selected';
+  const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${clipRef(s.selection.clipId)}${describeSelectedNotes(s)}` : selTrack ? `selected track ${selTrack.id} "${selTrack.name}"` : 'nothing selected';
   const punch = s.punchIn ? `; punch-in armed on ${s.punchIn.trackId} ${s.punchIn.start}-${s.punchIn.end}s` : '';
   const cyc = s.cycle?.on ? `; cycle on, bars ${barOf(s, s.cycle.start)}-${round(barOf(s, s.cycle.end) - 1)} (play starts at bar ${barOf(s, s.cycle.start)})` : '';
   const bars = `Bars are 1-based: bar n starts at ${round(barLength(s))} * (n-1) s; "bar 5.5" is halfway through bar 5, and a clip "bar 1 to 5" fills bars 1-4.`;
   return `${header}\n${bars}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s, bar ${barOf(s, s.transport.position)}${cyc}${punch})`;
+}
+
+/** The Piano Roll's note selection for Muse: which notes (name, bar) and their indexes, so
+ *  "these notes" become a tool's `notes` argument. */
+function describeSelectedNotes(s: Session): string {
+  const idx = selectedNotes(s);
+  if (!idx.length) return '';
+  const clip = s.tracks.flatMap((t) => t.clips).find((c) => c.id === s.selection.clipId)!;
+  const ns = clip.midi!.notes;
+  const show = idx.slice(0, 8).map((i) => `${noteName(ns[i].pitch)} bar ${barOf(s, clip.start - clip.offset + ns[i].start)}`);
+  const more = idx.length > show.length ? `, +${idx.length - show.length} more` : '';
+  return `, with ${idx.length} of its ${ns.length} notes selected in the Piano Roll (${show.join(', ')}${more}; "these notes" = notes [${idx.join(',')}])`;
 }
 
 /** B16: timeline seconds -> 1-based bar position (decimals inside a bar), for Muse. */
