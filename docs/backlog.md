@@ -26,6 +26,7 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
     MIDI notes landed ~100 ms late; mic takes had no latency compensation; the count-in couldn't be cancelled.
     All fixed and measured (`e2e/record-timing.spec.ts`, `src/core/recordTiming.ts`). Still open: a user-set
     recording delay (browsers rarely report mic latency), and punching in while playing without a restart.
+    **Try these by ear with the user** (agreed Oct 29: do them together when the user is home).
   - 2026-10-28, done: playback across region edits. A trim/move/duplicate/delete rebuilds waveform-playlist's
     engine; Play during the rebuild (Muse's "trim it and play") was silent and could stay broken, and an edit
     while playing stopped the audio while the UI still showed playing. Patched the provider (play/stop wait for
@@ -35,10 +36,11 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
     latest pass, as in GarageBand (`foldMidiTake` / `cycleMicTake` in `src/core/recordTiming.ts`). Not yet: take folders.
   - 2026-10-28, done: tempo changes keep regions on their bars (`changeTempo`): MIDI notes stretch, audio
     regions move but aren't time-stretched, and the cycle area, punch range and playhead follow
-    (`e2e/tempo-change.spec.ts`). `extract_midi` adopting a detected tempo still only relabels the grid.
+    (`e2e/tempo-change.spec.ts`). Oct 29: `extract_midi` adopting a detected
+    tempo is the same tempo change (the recording and its new stems stay where they were heard).
   - 2026-10-28, done: Stop leaves the playhead where it was heard; it jumped ~0.13 s on (lookahead + output
-    latency), so the next Play skipped that much. Muse's `stop` (no position) still leaves the session's
-    position stale, though the engine stops in the right place.
+    latency), so the next Play skipped that much. Oct 29: Muse's `stop` (no position) now updates
+    the session's position too (the renderer writes back where it stopped).
   - 2026-10-28, done: , and . go to the previous / next bar line (they moved a bar from wherever the
     playhead was, keeping the offset).
   - 2026-10-28, done (batch of 10, `e2e/ideas-flow.spec.ts`): L toggles the library (O still works);
@@ -50,8 +52,8 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
     marquee from empty lane space) and drag them together (`move_clips`, one undo step; Delete runs
     `delete_clips`); reorder tracks by dragging a header (`move_track`, Muse can call it too); the cycle area
     snaps to the grid in the ruler; C turns Cycle on around the selected regions, widened to the Snap grid
-    (Beat: 1.4 to 2.4; Bar: whole bars; Off: the regions' edges; none selected: the last area); with Cycle on, Play starts at the cycle start. Not yet: track colours follow
-    the position, so a moved track changes colour; a group drag can't make a new track.
+    (Beat: 1.4 to 2.4; Bar: whole bars; Off: the regions' edges; none selected: the last area); with Cycle on, Play starts at the cycle start. Oct 29: a moved track keeps its
+    colour (`Track.color`), and a group dragged below the last track goes on new tracks (`move_clips`).
   - 2026-10-28, done: try a sound before it has a track. Library rows get a + (tool `add_sound`, user only):
     the sound goes to Ideas on no track and Musical Typing opens with it; clicking an Ideas card on no
     track does the same; R then records onto a new track named after it. Ideas cards drag onto the
@@ -64,12 +66,13 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
     instrument now shows as on that track (label, colour, wire); deleting it sends those takes back to
     the piano. The Piano Roll / Audio Editor resizes from its bottom edge (persisted). The Versions menu
     reads like a commit log: each version lists what changed after it (+ / − / ~, `core/versionDiff.ts`;
-    `list_versions` with `changes: true`). Not yet: hand edits after a Muse turn show under that request;
-    `Versions.css` uses a local green (no green token; lane S).
+    `list_versions` with `changes: true`). Oct 29: an "After Muse" auto version at the end of each
+    turn gives hand edits their own row. Not yet: `Versions.css` uses a local green (no green token; lane S).
   - 2026-10-28, partly: "can't trim clips" did not reproduce (arrangement and Audio Editor trims pass in
     web and Electron). The arrangement's trim edges were invisible 8 px zones: now 10 px and lit on hover.
-    Open: a second trim started within ~1 s of the previous one sometimes never starts a drag (playlist
-    re-render); the Electron test waits 1.5 s. Ask the user what they grabbed if it still fails.
+    Oct 29: a second trim 50 ms after the first starts every time (`e2e/trim-twice.spec.ts`; only a press
+    within a few ms of the release is dropped); the Electron test's wait is gone. Ask the user what they
+    grabbed if it still fails.
 
 ### B1. Words to knob moves: wire `vocab.json` into Muse (S2)
 - **Why:** the pitch is "you don't need to know which knob".
@@ -302,17 +305,21 @@ S = B15. Paused (Python lane): B7, B8. Priority: a UI that is easy for musicians
     the B1 step 7 phrases in the app exercise it too. Look for Muse quoting the measured change, and fixing a move
     that measured the wrong way.
 
-### B12b. Drum pad, part 2
-Part 1 (the playable kit) is in Done. Left, roughly in order of demo value:
+### B12b. Sample pad, part 2 (was "Drum pad")
+Part 1 (the playable kit) is in Done. Oct 29 (lane A): it is a sample pad now: any sound on a pad
+(Ideas, library, Finder files), pads take the sound's name, pads and kits rename in the UI
+(`rename_pad`), a kit card drags onto the arrangement (`place_kit`, an empty 2-bar region) and wires
+to its tracks, and a kit region's Piano Roll rows are its pads (a click plays the real pad). Left,
+roughly in order of demo value:
 - **Muse fills a kit:** "make me a dusty lo-fi kit". Muse can call `set_pad` today, but only with
   sounds already in the session; it needs a way to pull library or Freesound sounds into the
   session (the renderer decodes audio, so this is a renderer round trip like `measure_track`).
   Picks go by names, tags and categories, plus B9 features.
-- **Piano Roll:** pad names as row labels on kit clips, and a note click plays the pad (today
-  `auditionNote` plays the built-in drums for kit clips; it has no session).
 - **Export kit:** the pad WAVs plus a credits file for the CC-BY sounds.
-- Per-pad trim, gain and choke groups (closed hat cuts the open hat); rename a pad or kit in the UI
-  (tools exist); drag a kit card onto the arrangement; wires from a kit card to its tracks.
+- Per-pad trim, gain and choke groups (closed hat cuts the open hat); a held note sustaining a long
+  sample (pads are one-shots).
+- A kit region isn't drawn until all its pad sounds have loaded; a pad whose audio never reloads would
+  hide it (needs a fallback render). Its Piano Roll also lists GM names between pads (Logic shows only the pads).
 - Velocity per pad or by key modifier (fixed at 100 for now, decided Oct 28).
 
 ### B6. Demo script and public repo
