@@ -329,6 +329,52 @@ export const MIDI_TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'set_note_length',
+    description:
+      'Change how long MIDI notes are held (Oct 30: "make each note a full bar"). Give one of: beats (each note this many beats long, e.g. 4 = a bar in 4/4, 0.5 = an eighth), ' +
+      'scale (multiply each length, e.g. 2 = twice as long), or legato (each note held until the next one starts). ' +
+      'clip_id, or track_id for all its MIDI clips; default the selected region, else the selected track. notes: indexes (default all). ' +
+      'A note held past its region\'s end is cut off there; the result counts them (extend the region to hear them).',
+    parameters: obj(
+      {
+        clip_id: str('MIDI clip id'),
+        track_id: str('Or: a track id (all its MIDI clips)'),
+        beats: num('New length in beats (quarter notes in 4/4)', { exclusiveMinimum: 0 }),
+        scale: num('Or: multiply each length by this', { exclusiveMinimum: 0 }),
+        legato: bool('Or: hold each note until the next note starts (the last keeps its length)'),
+        notes: { type: 'array', items: num('note index'), description: 'Only these notes (indexes in start order); default all' },
+      },
+    ),
+    logText: (_a, r) => `changed the length of ${r.changed} note(s) on ${r.clips.join(', ')}`,
+    run: (ctx: ToolContext, a) => {
+      let s = ctx.store.get();
+      if ([a.beats, a.scale, a.legato || undefined].filter((x) => x != null).length !== 1) throw new S.SessionError('give one of beats, scale or legato');
+      const clipId = a.clip_id ?? (a.track_id ? undefined : s.selection.clipId ?? undefined);
+      const clips = clipId
+        ? [S.findClip(s, clipId).clip]
+        : S.getTrack(s, a.track_id ?? s.selection.trackId ?? '').clips.filter((c) => c.midi);
+      if (!clips.length || clips.some((c) => !c.midi)) throw new S.SessionError('no MIDI clip to change');
+      const which = a.notes && clips.length === 1 ? new Set<number>(a.notes) : null;
+      const beat = (60 / s.tempo) * (4 / s.timeSignature[1]);
+      let changed = 0;
+      let pastEnd = 0;
+      for (const c of clips) {
+        const all = c.midi!.notes;
+        const next = (i: number) => all.slice(i + 1).find((m) => m.start > all[i].start + 1e-6)?.start; // notes are in start order
+        const notes = all.map((n, i) => {
+          if (which && !which.has(i)) return n;
+          const duration = a.beats != null ? a.beats * beat : a.scale != null ? n.duration * a.scale : (next(i) ?? n.start + n.duration) - n.start;
+          changed++;
+          if (n.start + duration > c.offset + c.duration + 1e-6) pastEnd++;
+          return { ...n, duration: Math.max(0.01, Math.round(duration * 1e4) / 1e4) };
+        });
+        s = S.setClipNotes(s, c.id, notes);
+      }
+      ctx.store.set(s);
+      return { clips: clips.map((c) => c.id), changed, ...(a.beats != null ? { seconds: Math.round(a.beats * beat * 1e4) / 1e4 } : {}), ...(pastEnd ? { cut_off_by_region_end: pastEnd } : {}) };
+    },
+  },
+  {
     name: 'set_note_velocity',
     description: 'Set or change the velocity (loudness, 1-127) of MIDI notes: velocity sets it, change adds to it (e.g. -20 = softer). notes: indexes (default all).',
     parameters: obj(
