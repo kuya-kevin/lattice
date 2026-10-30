@@ -83,6 +83,9 @@ export interface Session {
   key: string | null; // e.g. "G minor"
   metronome: { on: boolean; countIn: boolean }; // click during play/record; 1-bar count-in before recording
   punchIn: { trackId: string; start: number; end: number } | null;
+  /** Cycle (loop) area in seconds, Logic's Cycle: playback and recording loop start..end while
+   *  `on`. A transport setting: undo keeps it. Absent (older sessions) = off. */
+  cycle?: Cycle;
   /** B12: drum pads (kits), by id. Optional for older sessions. */
   kits?: Record<string, Kit>;
   /** B18: listening dry (every effect bypassed) or wet. A view setting: undo keeps it. Absent = wet. */
@@ -90,6 +93,12 @@ export interface Session {
   /** B14: read Muse's replies aloud (core/voiceTools.ts). Absent = off. A preference: undo keeps it. */
   voiceReply?: boolean;
   seq: number; // id counter, keeps ids short and deterministic (t1, c2, ...)
+}
+
+export interface Cycle {
+  on: boolean;
+  start: number;
+  end: number;
 }
 
 export class SessionError extends Error {}
@@ -305,11 +314,13 @@ export function trimClip(s: Session, clipId: string, start: number, end: number)
   const sourceStart = clip.start - clip.offset; // where source time 0 sits on the timeline
   const sourceEnd = sourceStart + (src?.duration ?? clip.offset + clip.duration);
   const a = Math.max(start, sourceStart, 0);
-  const b = Math.min(end, sourceEnd);
+  // a MIDI region's end can go past its notes (Logic): the source grows, the render pads with silence
+  const b = clip.midi ? end : Math.min(end, sourceEnd);
   if (!(b - a > 0.01)) {
     throw new SessionError(`trim [${start}, ${end}] leaves nothing of clip ${clipId} (audio spans ${round(sourceStart)}-${round(sourceEnd)} s)`);
   }
-  return mapClip(s, clipId, (c) => ({ ...c, start: round(a), offset: round(a - sourceStart), duration: round(b - a) }));
+  const s1 = clip.midi && src && b > sourceEnd + 1e-6 ? { ...s, sources: { ...s.sources, [clip.sourceId]: { ...src, duration: round(b - sourceStart) } } } : s;
+  return mapClip(s1, clipId, (c) => ({ ...c, start: round(a), offset: round(a - sourceStart), duration: round(b - a) }));
 }
 
 /** Move a clip in time and, with `trackId`, onto another track (it keeps its id). */
@@ -436,6 +447,18 @@ export function setTransport(s: Session, command: 'play' | 'stop' | 'locate', po
   return { ...s, transport: { playing, position: pos, command, rev: t.rev + 1 } };
 }
 
+/** Turn the cycle on or off and/or move it. A new area must have end > start; turning it on with
+ *  no area yet uses bars 1-4 (the UI's default). */
+export function setCycle(s: Session, c: { on?: boolean; start?: number; end?: number }): Session {
+  const cur = s.cycle ?? { on: false, start: 0, end: 0 };
+  let start = c.start ?? cur.start;
+  let end = c.end ?? cur.end;
+  if (c.start != null || c.end != null) {
+    if (!(start >= 0) || !(end > start)) throw new SessionError('a cycle needs 0 <= start < end');
+  } else if (c.on && !(end > start)) [start, end] = [0, 4 * barLength(s)];
+  return { ...s, cycle: { on: c.on ?? cur.on, start: round(start), end: round(end) } };
+}
+
 export const TEMPO_RANGE = [40, 240] as const;
 export const TIME_SIGNATURES: [number, number][] = [[2, 4], [3, 4], [4, 4], [5, 4], [6, 8], [7, 8], [12, 8]];
 
@@ -469,6 +492,7 @@ export function changeTempo(s: Session, bpm: number): Session {
       ),
     })),
     punchIn: s1.punchIn && { ...s1.punchIn, start: r6(s1.punchIn.start), end: r6(s1.punchIn.end) },
+    ...(s1.cycle ? { cycle: { ...s1.cycle, start: r6(s1.cycle.start), end: r6(s1.cycle.end) } } : {}),
     // while playing, the session's position is stale; the renderer moves the live playhead
     transport: s.transport.playing ? s1.transport : setTransport(s1, 'locate', s.transport.position * k).transport,
   };
@@ -598,8 +622,9 @@ function summarizeSession(s: Session): string {
   const selTrack = s.tracks.find((t) => t.id === s.selection.trackId);
   const sel = multi ? `selected clips ${multi.join(', ')}` : s.selection.clipId ? `selected clip ${clipRef(s.selection.clipId)}` : selTrack ? `selected track ${selTrack.id} "${selTrack.name}"` : 'nothing selected';
   const punch = s.punchIn ? `; punch-in armed on ${s.punchIn.trackId} ${s.punchIn.start}-${s.punchIn.end}s` : '';
+  const cyc = s.cycle?.on ? `; cycle on, bars ${barOf(s, s.cycle.start)}-${round(barOf(s, s.cycle.end) - 1)} (play starts at bar ${barOf(s, s.cycle.start)})` : '';
   const bars = `Bars are 1-based: bar n starts at ${round(barLength(s))} * (n-1) s; "bar 5.5" is halfway through bar 5, and a clip "bar 1 to 5" fills bars 1-4.`;
-  return `${header}\n${bars}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s, bar ${barOf(s, s.transport.position)}${punch})`;
+  return `${header}\n${bars}\n${lines.join('\n')}\n(${sel}; ${s.transport.playing ? 'playing' : 'stopped'} at ${round(s.transport.position)}s, bar ${barOf(s, s.transport.position)}${cyc}${punch})`;
 }
 
 /** B16: timeline seconds -> 1-based bar position (decimals inside a bar), for Muse. */

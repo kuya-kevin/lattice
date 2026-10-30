@@ -349,6 +349,7 @@ export function App({ bridge }: { bridge: Bridge }) {
         }}
       >
         <TransportSync session={session} run={run} playheadRef={playheadRef} />
+        <CycleSync session={session} run={run} />
         <MixSync session={session} />
         <SelectionSync session={session} run={run} getSession={bridge.getSession} />
         <style>{trackColorCss(session)}</style>
@@ -601,6 +602,10 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
       // Muse's stop has no position (it can't know one): tell the session where it stopped
       if (Math.abs(heard - position) > 0.01) run('stop', { at: heard });
     }
+    else if (command === 'stop') {
+      pause(); // a play still starting its audio (after an engine rebuild) must not start late
+      setCurrentTime(position);
+    }
     else if (playingRef.current) play(position); // locate while playing: continue from there
     else setCurrentTime(position);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -645,6 +650,32 @@ function TransportSync({ session, run, playheadRef }: { session: Session; run: R
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPlaying, on, session.tempo, beats, unit, rev]);
+  return null;
+}
+
+/** The cycle lives in the session (Muse's set_cycle, the Cycle button, C); the library draws
+ *  it and lets the ruler drag it. Session -> engine on every change; a ruler drag -> session
+ *  once it settles (the drag changes it every frame). */
+function CycleSync({ session, run }: { session: Session; run: Run }) {
+  const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
+  const { setLoopEnabled, setLoopRegion } = usePlaylistControls();
+  const c = session.cycle;
+  const want = useRef(c);
+  want.current = c;
+  useEffect(() => {
+    if (!c) return;
+    // always: the playlist's own state may not have caught up with a change a moment ago (the
+    // engine ignores a repeat)
+    setLoopRegion(c.start, c.end);
+    setLoopEnabled(c.on);
+  }, [c?.on, c?.start, c?.end, setLoopRegion, setLoopEnabled]);
+  useEffect(() => {
+    const cur = want.current;
+    if (!(loopEnd > loopStart) || !cur?.on || !isLoopEnabled) return;
+    if (Math.abs(cur.start - loopStart) <= 1e-3 && Math.abs(cur.end - loopEnd) <= 1e-3) return;
+    const id = setTimeout(() => run('set_cycle', { start: loopStart, end: loopEnd }), 120);
+    return () => clearTimeout(id);
+  }, [loopStart, loopEnd, isLoopEnabled, run]);
   return null;
 }
 

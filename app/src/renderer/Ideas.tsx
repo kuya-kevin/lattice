@@ -175,6 +175,19 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
                 )}
               </div>
             )}
+            <select
+              className={`idea-place${uses.length ? '' : ' unplaced'}`} aria-label={`Put ${src.name} on a track`} value=""
+              title="Put it on a track at the playhead"
+              onChange={(e) => {
+                const v = e.target.value;
+                e.target.blur();
+                if (v) run('place_sound', { source_id: src.id, start: session.transport.position, ...(v === 'new' ? {} : { track_id: v }) });
+              }}
+            >
+              <option value="">Add to track…</option>
+              {session.tracks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              <option value="new">New track</option>
+            </select>
             {src.origin !== 'generated' && <StarButton run={run} args={{ source_id: src.id }} name={src.name} />}
             <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
             {confirm === src.id && (

@@ -1,0 +1,6 @@
+/* Piano Roll note edges: drag the left edge to trim a note's start, the right edge to change its
+   length (Logic's resize pointers). Wide enough to hit on short drum notes; shown on hover. */
+.piano-roll .pr-note-start, .piano-roll .pr-note-end { position: absolute; top: 0; bottom: 0; width: min(8px, 35%); cursor: ew-resize; z-index: 1; }
+.piano-roll .pr-note-start { left: 0; border-radius: 3px 0 0 3px; }
+.piano-roll .pr-note-end { right: 0; border-radius: 0 3px 3px 0; }
+.piano-roll .pr-note:hover .pr-note-start, .piano-roll .pr-note:hover .pr-note-end { background: rgba(255, 255, 255, 0.35); }

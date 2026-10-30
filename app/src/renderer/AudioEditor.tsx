@@ -274,6 +274,11 @@ export function AudioEditor({ session, run, bridge }: { session: Session; run: R
       <div className="pr-toolbar" role="toolbar" aria-label="Audio editor">
         <span className="pr-title" style={{ color }}>{track.name}</span>
         <span className="pr-sub">{clip.name !== track.name ? `${clip.name} · ` : ''}{box.duration.toFixed(2)} s{buffer ? '' : ' · no audio loaded'}</span>
+        <span className="tb-label" aria-hidden>Zoom</span>
+        <div className="seg tb-zoom" role="group" aria-label="Audio editor zoom">
+          <button aria-label="Zoom out audio" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>−</button>
+          <button aria-label="Zoom in audio" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>+</button>
+        </div>
         <label className="tb-label">
           Grid{' '}
           <select aria-label="Audio editor grid" value={grid} onChange={(e) => setGrid(e.target.value)}>
@@ -284,11 +289,6 @@ export function AudioEditor({ session, run, bridge }: { session: Session; run: R
         </label>
         <button disabled={!step} onClick={snapStart} title="Move the region so its start sits on the nearest grid line">Snap start to grid</button>
         <ExtractMidiControl session={session} bridge={bridge} run={run} />
-        <div className="spacer" />
-        <div className="seg" role="group" aria-label="Audio editor zoom">
-          <button aria-label="Zoom out audio" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>−</button>
-          <button aria-label="Zoom in audio" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>+</button>
-        </div>
       </div>
 
       <div className="ae-scroll" ref={scrollRef} onScroll={(e) => setScrollX(e.currentTarget.scrollLeft)}>

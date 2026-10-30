@@ -25,6 +25,7 @@ import { selectedClipIds, type Session } from '../core/session';
 import { pxToSeconds, secondsToPx, snapCycle, snapMove, snapTime, type SnapMode } from '../core/snap';
 import { IDEA_MIME, KIT_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
 import { barLength } from '../core/metronome';
+import './Arrange.css'; // the ruler stays in view
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -381,6 +382,49 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
       });
     }
   });
+
+  // ---- the ruler stays in view (Logic): pinned to the top of what is visible of the board ----
+  useEffect(() => {
+    const root = wrapRef.current;
+    if (!root) return;
+    let frame = 0;
+    const pin = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const sc = root.querySelector<HTMLElement>('[data-scroll-container]');
+        const ruler = root.querySelector<HTMLElement>('[data-lt-ruler]');
+        const corner = root.querySelector<HTMLElement>('[data-playlist-state] > div:first-child > div:first-child');
+        if (!sc || !ruler) return;
+        corner?.setAttribute('data-lt-ruler-corner', '');
+        const box = sc.getBoundingClientRect();
+        const k = box.height / (sc.offsetHeight || 1); // the canvas may be zoomed
+        const arrange = root.closest('.arrange')?.getBoundingClientRect();
+        const canvas = root.closest('.canvas')?.getBoundingClientRect();
+        const bar = document.querySelector('.controlbar')?.getBoundingClientRect();
+        // the highest point that is on screen: below the arrangement's own top, the canvas top and
+        // the floating control bar
+        const visibleTop = Math.max(arrange?.top ?? -Infinity, canvas?.top ?? -Infinity, bar && canvas && bar.bottom < canvas.top + 120 ? bar.bottom : -Infinity);
+        const max = Math.max(0, sc.offsetHeight - ruler.offsetHeight - 24);
+        const y = Math.min(max, Math.max(0, (visibleTop - box.top) / k));
+        for (const el of [ruler, corner]) {
+          if (!el) continue;
+          el.style.transform = y ? `translateY(${Math.round(y)}px)` : '';
+          el.toggleAttribute('data-lt-pinned', y > 0);
+        }
+      });
+    };
+    pin();
+    window.addEventListener('scroll', pin, true); // the board's own scroll and the canvas pan
+    window.addEventListener('resize', pin);
+    const ro = new ResizeObserver(pin);
+    ro.observe(root);
+    return () => {
+      cancelAnimationFrame(frame);
+      window.removeEventListener('scroll', pin, true);
+      window.removeEventListener('resize', pin);
+      ro.disconnect();
+    };
+  }, []);
 
   // ---- library and Ideas drops ----
   const onDragOver = (e: React.DragEvent) => {

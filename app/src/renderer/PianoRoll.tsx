@@ -22,6 +22,7 @@ import { buffers } from './audio';
 import { auditionNote, kitSamples } from './midiSynth';
 import { padKeyLabel, type Kit } from '../core/kit';
 import { trackColor } from './TrackHeader';
+import './PianoRoll.css'; // note edge handles
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -75,7 +76,9 @@ interface Marquee {
 }
 
 interface Drag {
-  kind: 'move' | 'resize';
+  /** resize = the end, trim = the start (Logic's region-edge pointers); copy = an Option/Alt drag */
+  kind: 'move' | 'resize' | 'trim';
+  copy?: boolean;
   x0: number;
   y0: number;
   anchor: number; // index of the grabbed note
@@ -214,7 +217,8 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   const onNoteDown = (e: React.PointerEvent, i: number) => {
     if (e.button !== 0) return;
     e.stopPropagation();
-    const resize = (e.target as HTMLElement).classList.contains('pr-note-end');
+    const edge = (e.target as HTMLElement).classList;
+    const kind = edge.contains('pr-note-end') ? 'resize' : edge.contains('pr-note-start') ? 'trim' : 'move';
     let next = sel;
     if (e.shiftKey) {
       next = new Set(sel);
@@ -225,7 +229,8 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     play(notes[i].pitch, notes[i].velocity);
     if (!next.has(i)) return;
     (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    drag.current = { kind: resize ? 'resize' : 'move', x0: e.clientX, y0: e.clientY, anchor: i, orig: notes, moved: false };
+    // Option/Alt-drag copies the notes (Logic); the originals stay where they are
+    drag.current = { kind, copy: kind === 'move' && e.altKey, x0: e.clientX, y0: e.clientY, anchor: i, orig: notes, moved: false };
   };
 
   const onNoteMove = (e: React.PointerEvent) => {
@@ -240,7 +245,17 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
       const dt = Math.max(-Math.min(...[...sel].map((i) => d.orig[i].start)), snapTl(tl + dx) - tl);
       const dp = -Math.round((e.clientY - d.y0) / ROW);
       const dpOk = [...sel].every((i) => d.orig[i].pitch + dp >= 0 && d.orig[i].pitch + dp <= 127) ? dp : 0;
-      setDraft(d.orig.map((n, i) => (sel.has(i) ? { ...n, start: n.start + dt, pitch: n.pitch + dpOk } : n)));
+      const moved = (n: MidiNote) => ({ ...n, start: n.start + dt, pitch: n.pitch + dpOk });
+      if (d.copy) setDraft([...d.orig, ...[...sel].sort((x, y) => x - y).map((i) => moved(d.orig[i]))]);
+      else setDraft(d.orig.map((n, i) => (sel.has(i) ? moved(n) : n)));
+    } else if (d.kind === 'trim') {
+      // the start moves, the end stays: every selected note by the same snapped amount
+      const tl = sourceStart + a.start;
+      const min = step || 0.02;
+      const lo = -Math.min(...[...sel].map((i) => d.orig[i].start));
+      const hiD = Math.min(...[...sel].map((i) => d.orig[i].duration - min));
+      const dt = Math.min(hiD, Math.max(lo, snapTl(tl + dx) - tl));
+      setDraft(d.orig.map((n, i) => (sel.has(i) ? { ...n, start: n.start + dt, duration: n.duration - dt } : n)));
     } else {
       const end = sourceStart + a.start + a.duration;
       const dd = snapTl(end + dx) - end;
@@ -254,6 +269,13 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
     drag.current = null;
     if (!d?.moved || !draft) return setDraft(null);
     const a = d.orig[d.anchor];
+    if (d.copy) {
+      // the copies are selected afterwards, as in Logic
+      const order = [...sel].sort((x, y) => x - y);
+      const b = draft[d.orig.length + order.indexOf(d.anchor)];
+      if (b && b.pitch !== a.pitch) play(b.pitch, b.velocity);
+      return commit(draft, new Set(order.map((_, k) => d.orig.length + k)));
+    }
     const b = draft[d.anchor];
     if (b.pitch !== a.pitch) play(b.pitch, b.velocity);
     commit(draft, sel);
@@ -292,6 +314,11 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
       <div className="pr-toolbar" role="toolbar" aria-label="Piano Roll">
         <span className="pr-title" style={{ color }}>{track.name}</span>
         <span className="pr-sub">{clip.name !== track.name ? `${clip.name} · ` : ''}{midi.notes.length} notes{midi.drum ? ' · drums' : ''}</span>
+        <span className="tb-label" aria-hidden>Zoom</span>
+        <div className="seg tb-zoom" role="group" aria-label="Piano Roll zoom">
+          <button aria-label="Zoom out notes" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>−</button>
+          <button aria-label="Zoom in notes" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>+</button>
+        </div>
         <div className="seg" role="radiogroup" aria-label="Piano Roll tool">
           <button role="radio" aria-checked={tool === 'pointer'} className={tool === 'pointer' ? 'on' : ''} onClick={() => setTool('pointer')} title="Pointer: select, move, resize">Pointer</button>
           <button role="radio" aria-checked={tool === 'pencil'} className={tool === 'pencil' ? 'on' : ''} onClick={() => setTool('pencil')} title="Pencil: click to add notes">Pencil</button>
@@ -304,7 +331,11 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
             ))}
           </select>
         </label>
-        <button disabled={grid === 'off' || !midi.notes.length} onClick={() => run('quantize_midi', { clip_id: clip.id, grid })} title="Quantize every note in the region to the grid">
+        <button
+          disabled={grid === 'off' || !midi.notes.length}
+          onClick={() => run('quantize_midi', { clip_id: clip.id, grid, ...(sel.size ? { notes: [...sel] } : {}) })}
+          title={sel.size ? `Quantize the ${sel.size} selected note${sel.size > 1 ? 's' : ''} to the grid` : 'Quantize every note in the region to the grid'}
+        >
           Quantize
         </button>
         <div className="seg" role="group" aria-label="Transpose">
@@ -324,11 +355,6 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
           />
           <span className="pr-vel-n">{selVel ?? '–'}</span>
         </label>
-        <div className="spacer" />
-        <div className="seg" role="group" aria-label="Piano Roll zoom">
-          <button aria-label="Zoom out notes" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>−</button>
-          <button aria-label="Zoom in notes" disabled={zoom === ZOOMS.length - 1} onClick={() => setZoom((z) => Math.min(ZOOMS.length - 1, z + 1))}>+</button>
-        </div>
       </div>
 
       <div className="pr-scroll" ref={scrollRef}>
@@ -430,6 +456,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
                 onDoubleClick={(e) => e.stopPropagation()}
               >
                 <span className="pr-vel-line" style={{ width: `${Math.round((n.velocity / 127) * 85)}%` }} />
+                <span className="pr-note-start" />
                 <span className="pr-note-end" />
               </div>
             ))}

@@ -2,9 +2,9 @@
 // time signature, key) and the click / count-in toggles. Also owns recording and the key
 // commands, since both drive the transport.
 import { useEffect, useRef, useState } from 'react';
-import { usePlaybackAnimation, usePlaylistControls, usePlaylistState } from '@waveform-playlist/browser';
+import { usePlaybackAnimation, usePlaylistControls } from '@waveform-playlist/browser';
 import { useMicrophoneAccess, useRecording } from '@waveform-playlist/recording';
-import { barLength, beatLength, formatBarsBeats, formatTime, nextBarLine, prevBarLine, type Meter } from '../core/metronome';
+import { beatLength, formatBarsBeats, formatTime, nextBarLine, prevBarLine, type Meter } from '../core/metronome';
 import { TAP_RESET_MS, tapTempo, type TapState } from '../core/tapTempo';
 import { KEYS, TEMPO_RANGE, TIME_SIGNATURES, parseKey, selectedClipIds, type Session } from '../core/session';
 import { cycleAround, type SnapMode } from '../core/snap';
@@ -35,8 +35,11 @@ interface Props {
 export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props) {
   const fileRef = useRef<HTMLInputElement>(null);
   const { isPlaying, currentTimeRef, visualTimeRef } = usePlaybackAnimation();
-  const { setLoopEnabled, setLoopRegion } = usePlaylistControls();
-  const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
+  const cyc = session.cycle;
+  const cycleOn = !!cyc?.on && cyc.end > cyc.start;
+  // C pressed twice before the session answers must toggle twice: flip a ref at once
+  const cycleToggled = useRef(!!cyc?.on);
+  useEffect(() => void (cycleToggled.current = !!cyc?.on), [cyc?.on]);
   const meter: Meter = { tempo: session.tempo, timeSignature: session.timeSignature };
   const rec = useRecorder(session, run, addBuffer, meter);
   const recBusy = rec.isRecording || rec.countingIn;
@@ -50,18 +53,10 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
   const [tapBpm, setTapBpm] = useState<number | null>(null); // shown while tapping
   useEffect(() => () => clearTimeout(tapTimer.current), []);
 
-  // the cycle area is in seconds: keep it on its bars when the tempo changes
-  const prevTempo = useRef(session.tempo);
-  useEffect(() => {
-    const k = prevTempo.current / session.tempo;
-    prevTempo.current = session.tempo;
-    if (k !== 1 && loopEnd > loopStart) setLoopRegion(loopStart * k, loopEnd * k);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session.tempo]);
-
   const actions: Record<ShortcutAction, () => void> = {
-    // with Cycle on, play always starts at the cycle's left edge
-    playStop: () => rec.cancelCountIn() || (isPlaying ? run('stop', { at: heard() }) : run('play', { from: isLoopEnabled && loopEnd > loopStart ? loopStart : now() })),
+    // with Cycle on, play always starts at the cycle's left edge. "Rolling" is the engine or the
+    // session: a play still starting the audio (or a stop the engine missed) is stopped, not restarted
+    playStop: () => rec.cancelCountIn() || (isPlaying || session.transport.playing ? run('stop', { at: heard() }) : run('play', { from: cycleOn ? cyc!.start : now() })),
     goToStart: () => run('go_to', { position: 0 }),
     record: () => rec.toggle(),
     metronome: () => run('set_metronome', { on: !session.metronome.on }),
@@ -69,14 +64,15 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
     // turning Cycle on fits it around the selected clips, on the Snap grid (Logic's "Set Locators
     // by Regions"); with none selected it keeps the last area, else bars 1-4
     cycle: () => {
-      if (isLoopEnabled) return setLoopEnabled(false);
+      cycleToggled.current = !cycleToggled.current;
+      if (!cycleToggled.current) return run('set_cycle', { on: false });
       const ids = new Set(selectedClipIds(session));
       const clips = session.tracks.flatMap((t) => t.clips).filter((c) => ids.has(c.id));
       if (clips.length) {
         const r = cycleAround(Math.min(...clips.map((c) => c.start)), Math.max(...clips.map((c) => c.start + c.duration)), snap, meter);
-        setLoopRegion(r.start, r.end);
-      } else if (!(loopEnd > loopStart)) setLoopRegion(0, 4 * barLength(meter)); // default: bars 1-4
-      setLoopEnabled(true);
+        return run('set_cycle', { on: true, start: r.start, end: r.end });
+      }
+      run('set_cycle', { on: true }); // the last area, else bars 1-4
     },
     barBack: () => run('go_to', { position: prevBarLine(heard(), meter) }),
     barForward: () => run('go_to', { position: nextBarLine(heard(), meter) }),
@@ -132,7 +128,7 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
         <Lcd session={session} run={run} meter={meter} tapBpm={tapBpm} onTap={() => actionsRef.current.tapTempo()} recordingFor={rec.isRecording ? rec.duration : null} recordingMidi={rec.midi} countingIn={rec.countingIn} />
 
         <div className="group">
-          <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={`ibtn cycle${isLoopEnabled ? ' on' : ''}`}><Icon name="cycle" /></button>
+          <button onClick={actions.cycle} title={tip('cycle', 'Cycle')} aria-label="Cycle" className={`ibtn cycle${cyc?.on ? ' on' : ''}`}><Icon name="cycle" /></button>
           <button onClick={actions.metronome} title={tip('metronome', 'Click')} aria-label="Click" aria-pressed={session.metronome.on} className={`ibtn${session.metronome.on ? ' on' : ''}`}>
             <Icon name="metro" />
           </button>
@@ -337,9 +333,9 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
   const take = useRef<Take | null>(null);
   const busy = useRef(false); // between pressing record and the take starting
   const cancelCountIn = useRef<(() => void) | null>(null);
-  const { isLoopEnabled, loopStart, loopEnd } = usePlaylistState();
-  const latest = useRef({ session, meter, cycle: null as Cycle | null });
-  latest.current = { session, meter, cycle: isLoopEnabled && loopEnd > loopStart ? { start: loopStart, end: loopEnd } : null };
+  const latest = useRef({ session, meter, cycle: null as Cycle | null, isPlaying });
+  const c = session.cycle;
+  latest.current = { session, meter, cycle: c?.on && c.end > c.start ? { start: c.start, end: c.end } : null, isPlaying };
 
   /** Start the engine at `at` and return where it is on the audio clock: exactly at audio time
    *  `downbeat` if given, else as soon as it can. play() starts the engine `lookAhead` after the
@@ -418,17 +414,21 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
 
   const start = async () => {
     const midi = musicalTyping.get().on;
-    if (!midi && !mic.stream) {
-      await mic.requestAccess();
-      return; // the stream arrives on the next render; press record again
+    if (!midi && !mic.stream?.active) {
+      // first take (or the mic went away): ask, then start once the stream arrives (below)
+      startWhenMicReady.current = true;
+      void mic.requestAccess(); // not awaited: `busy` must be clear when the stream arrives
+      return;
     }
-    const { session: s, meter: m, cycle: loop } = latest.current;
+    const { session: s, meter: m, cycle: loop, isPlaying: rolling } = latest.current;
     let trackId = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
     const added = !trackId;
     // a new track for a MIDI take is named after the sound played (e.g. one tried out from Ideas)
     if (!trackId) trackId = (await run('add_track', { name: midi ? musicalTyping.instrument()?.name ?? 'Keys' : 'Recording' })).result?.track_id ?? null;
     if (!trackId) return;
-    const at = s.punchIn?.start ?? currentTimeRef.current ?? 0;
+    // with Cycle on, a take from a stop starts at the cycle's left edge (Logic); while playing it
+    // starts where the playhead is
+    const at = s.punchIn?.start ?? (loop && !rolling ? loop.start : currentTimeRef.current ?? 0);
     const ctx = audioContext();
     if (ctx.state !== 'running') await ctx.resume();
 
@@ -491,6 +491,16 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     take.current = t;
   };
 
+  const startWhenMicReady = useRef(false);
+  useEffect(() => {
+    if (!mic.stream || !startWhenMicReady.current) return;
+    startWhenMicReady.current = false;
+    toggleRef.current();
+  }, [mic.stream]);
+  useEffect(() => {
+    if (mic.error) startWhenMicReady.current = false; // denied: the Enable mic button shows why
+  }, [mic.error]);
+
   const toggle = async () => {
     if (cancelCountIn.current) return cancelCountIn.current();
     if (take.current) return finish();
@@ -502,6 +512,9 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
       busy.current = false;
     }
   };
+
+  const toggleRef = useRef(toggle);
+  toggleRef.current = toggle;
 
   return {
     isRecording: rec.isRecording || midiFor !== null,

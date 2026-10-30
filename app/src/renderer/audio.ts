@@ -68,7 +68,8 @@ export function toClipTracks(s: Session, waveHeight = 84): ClipTrack[] {
         name: c.name,
         audioBuffer: b,
         sampleRate: sr,
-        sourceDurationSamples: b.length,
+        // a MIDI region's end drags past its render (trim_clip grows it); audio stops at its end
+        sourceDurationSamples: c.midi ? b.length + Math.round(3600 * sr) : b.length,
         startSample: Math.round(c.start * sr),
         offsetSamples: Math.round(c.offset * sr),
         durationSamples: Math.round(c.duration * sr),

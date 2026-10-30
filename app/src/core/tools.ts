@@ -289,6 +289,35 @@ export const TOOLS: ToolDef[] = [
     },
   },
   {
+    name: 'set_cycle',
+    description:
+      'Cycle (loop) playback over a bar range, e.g. "loop bars 5-8" = from_bar 5, to_bar 8 (inclusive); "a two-bar loop" with no bars named = from_bar 1, to_bar 2. ' +
+      'While the cycle is on, play and record start at its first bar and wrap at its end. on: false turns it off and keeps the area.',
+    parameters: obj({
+      on: { type: 'boolean', description: 'Cycle on or off (default on when bars are given)' },
+      from_bar: num('First bar of the cycle (1-based)'),
+      to_bar: num('Last bar of the cycle (inclusive)'),
+      start: num('Cycle start (s); set by the UI, use bars as the assistant'),
+      end: num('Cycle end (s); set by the UI'),
+    }),
+    quiet: true,
+    run: (ctx, a) => {
+      let { start, end } = a as { start?: number; end?: number };
+      if (a.from_bar != null || a.to_bar != null) {
+        const s = ctx.store.get();
+        const from = a.from_bar ?? 1;
+        const to = a.to_bar ?? from;
+        if (!(from >= 1) || !(to >= from)) throw new S.SessionError('give from_bar >= 1 and to_bar >= from_bar');
+        [start, end] = [S.barToSeconds(s, from), S.barToSeconds(s, to + 1)];
+      }
+      const on = a.on ?? (start != null ? true : undefined);
+      edit(ctx, (s) => S.setCycle(s, { on, start, end }));
+      const c = ctx.store.get().cycle!;
+      const s = ctx.store.get();
+      return { on: c.on, start: c.start, end: c.end, from_bar: S.barOf(s, c.start), to_bar: Math.round((S.barOf(s, c.end) - 1) * 100) / 100 };
+    },
+  },
+  {
     name: 'go_to',
     description: 'Move the playhead to a position in seconds (0 = beginning). Keeps playing if playing.',
     parameters: obj({ position: num('Position (s)') }, ['position']),

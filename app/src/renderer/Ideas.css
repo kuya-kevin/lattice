@@ -5,3 +5,13 @@
   font: inherit; font-size: 12px; font-weight: 600; color: var(--text, #e6e6e8);
   background: var(--island, #26272b); border: 1px solid var(--accent, #4a9df0); border-radius: 4px;
 }
+
+/* "Add to track…" on a sound card: puts it on a track at the playhead. Always shown while the
+   sound is on no track (a library sound just added), else on hover. */
+.idea-place {
+  position: absolute; right: 10px; top: 82px; max-width: 46%; padding: 1px 4px; border-radius: 6px; /* on the meta line */
+  border: 1px solid var(--line-strong); background: var(--island-2); color: var(--muted); font-size: 11px;
+  opacity: 0; pointer-events: none;
+}
+.idea-place.unplaced, .idea:hover .idea-place, .idea-place:focus-visible { opacity: 1; pointer-events: auto; }
+.idea-place:hover { color: var(--text); }

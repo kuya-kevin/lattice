@@ -119,14 +119,16 @@ test('a mic take with count-in starts where recording started, without the count
   expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.05);
 });
 
-/** Cycle on over bars 1-4 at 240 BPM (0-4 s), recording from 3 s: the transport wraps at 4 s. */
+/** Cycle on over bar 4 at 240 BPM (3-4 s), the playhead elsewhere: a take from a stop starts at
+ *  the cycle's left edge (3 s), and the transport wraps at 4 s back to 3 s. */
 async function cycleFrom3(page: Page) {
   await load(page);
   await page.evaluate(() => window.lattice!.runTool('set_tempo', { bpm: 240 }));
   await expect(page.getByLabel('Tempo')).toHaveValue('240');
-  await page.keyboard.press('c');
-  await page.evaluate(() => window.lattice!.runTool('go_to', { position: 3 }));
-  await expect(page.getByTestId('lcd-bars')).toHaveText('4 1 1'); // 3 s at 240 BPM
+  await page.evaluate(() => window.lattice!.runTool('set_cycle', { from_bar: 4, to_bar: 4 }));
+  await expect(page.getByRole('button', { name: 'Cycle' })).toHaveClass(/on/);
+  await page.evaluate(() => window.lattice!.runTool('go_to', { position: 0.5 }));
+  await expect(page.getByTestId('lcd-bars')).toHaveText('1 3 1'); // 0.5 s at 240 BPM
 }
 
 test('cycle recording MIDI: notes after the wrap land inside the cycle, in one region over it', async ({ page }) => {
@@ -143,10 +145,10 @@ test('cycle recording MIDI: notes after the wrap land inside the cycle, in one r
   await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
   const s = await session(page);
   const clip = s.tracks[0].clips[0];
-  expect([clip.start, clip.duration]).toEqual([0, 4]);
-  const note = clip.midi!.notes[0];
+  expect([clip.start, clip.duration]).toEqual([3, 1]);
+  const note = clip.midi!.notes[0]; // source-relative: 0 is the region start, 3 s
   expect(note.start).toBeGreaterThan(0);
-  expect(note.start).toBeLessThan(1.5); // was ~4.5: past the cycle end
+  expect(note.start).toBeLessThan(1); // not past the cycle end
   expect(s.transport.position).toBeLessThan(4);
 });
 
@@ -162,7 +164,7 @@ test('cycle recording audio keeps the latest pass, from the cycle start', async 
   await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
   const s = await session(page);
   const clip = s.tracks[0].clips[0];
-  expect(clip.start).toBe(0);
-  expect(Math.abs(clip.duration - s.transport.position)).toBeLessThan(0.05); // runs to where it stopped
+  expect(clip.start).toBe(3);
+  expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.05); // runs to where it stopped
   expect(s.transport.position).toBeLessThan(4);
 });

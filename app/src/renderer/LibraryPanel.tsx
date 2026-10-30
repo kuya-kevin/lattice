@@ -155,7 +155,13 @@ export function LibraryPanel({ bridge, open, onAddIdea, run }: { bridge: Bridge;
                   }}
                   onDragEnd={() => (libraryDrag.item = null)}
                   onClick={() => play(i.id)}
-                  title="Click to preview, drag onto a track (or below the tracks for a new one)"
+                  onDoubleClick={() => {
+                    // into Ideas, like its +; from there "Add to track…" puts it on a track
+                    stopPreview();
+                    setPlaying(null);
+                    onAddIdea(i.id);
+                  }}
+                  title="Click to preview, double-click to add to Ideas, drag onto a track (or below the tracks for a new one)"
                 >
                   <span className="play" aria-hidden>{playing === i.id ? '■' : '▶'}</span>
                   <span className="nm">{i.name}</span>

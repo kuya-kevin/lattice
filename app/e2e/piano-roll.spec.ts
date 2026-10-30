@@ -56,9 +56,10 @@ test('double-click a MIDI region opens the Piano Roll; drag, add, delete, transp
   await n1.scrollIntoViewIfNeeded();
   const box = (await n1.boundingBox())!;
   const row = Number(await roll.getByTestId('pr-grid').getAttribute('data-row'));
-  await page.mouse.move(box.x + 4, box.y + box.height / 2);
+  const mid = box.x + box.width / 2; // the edges trim (Oct 30), the body moves
+  await page.mouse.move(mid, box.y + box.height / 2);
   await page.mouse.down();
-  await page.mouse.move(box.x + 4, box.y + box.height / 2 - row * 2, { steps: 4 });
+  await page.mouse.move(mid, box.y + box.height / 2 - row * 2, { steps: 4 });
   await page.mouse.up();
   await expect.poll(async () => (await melody(page))[1]).toMatchObject({ pitch: 62, start: 0.5 });
 

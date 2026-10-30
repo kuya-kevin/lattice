@@ -343,6 +343,23 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
   default; it toggles Cycle). Whole bars only was the first version; the user expected the grid. With Cycle on, Play starts at the cycle start (the user's request; Logic plays from the
   playhead). The cycle area snaps to the Snap grid while it is drawn or dragged.
 
+## Oct 30 bug list (cycle, regions, notes)
+
+- **Cycle lives in the session** (`set_cycle`), so Muse can loop bars ("set up a two-bar loop") and sees
+  the cycle in its summary. Undo keeps it, like the playhead. A take started from a stop begins at the
+  cycle's left edge (Logic records from the left locator in Cycle mode); while playing, at the playhead.
+- **Space while a play is still starting** stops it (the engine and the session both count as rolling).
+- **Region ends:** dragging a region's edge may run over its neighbour (Logic; the later region plays on
+  top). A MIDI region's end extends past its notes (Logic); an audio region stops at the end of its audio.
+- **Ruler:** the arrangement's bar ruler stays at the top of what is visible when the board scrolls or
+  the canvas pans past it (Logic's ruler never scrolls away).
+- **Piano Roll notes:** the left edge trims a note's start, the right edge its length (Logic's resize
+  pointers, shown on hover); Option-drag copies the notes and selects the copies (Logic). Quantize acts
+  on the selected notes, or on all when none are (Logic quantizes the selection).
+- **Editor zoom** sits on the left of the editor toolbars, so a full toolbar never wraps it out of view.
+- **Library:** double-click a sound to add it to Ideas (as its +); an Ideas card's "Add to track…" puts
+  the sound on a track (or a new one) at the playhead.
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html

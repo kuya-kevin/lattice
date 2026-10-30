@@ -251,13 +251,14 @@ export const MIDI_TOOLS: ToolDef[] = [
   },
   {
     name: 'quantize_midi',
-    description: 'Quantize a MIDI clip (or every MIDI clip on a track) to the session tempo and bars. strength 0-1 (1 = hard snap).',
+    description: 'Quantize a MIDI clip (or every MIDI clip on a track) to the session tempo and bars. strength 0-1 (1 = hard snap). notes: indexes of the notes to quantize (default all; clip_id only).',
     parameters: obj(
       {
         clip_id: str('MIDI clip id'),
         track_id: str('Or: a track id (all its MIDI clips)'),
         grid: str('Grid', { enum: Object.keys(GRIDS) }),
         strength: num('0-1, default 1', { minimum: 0, maximum: 1 }),
+        notes: { type: 'array', items: num('note index'), description: 'Only these notes (indexes in start order); default all' },
       },
       ['grid'],
     ),
@@ -267,13 +268,16 @@ export const MIDI_TOOLS: ToolDef[] = [
         ? [S.findClip(s, a.clip_id).clip]
         : S.getTrack(s, a.track_id ?? s.selection.trackId ?? '').clips.filter((c) => c.midi);
       if (!clips.length || clips.some((c) => !c.midi)) throw new S.SessionError('no MIDI clip to quantize');
+      const which = a.notes && a.clip_id ? new Set<number>(a.notes) : null;
       for (const c of clips) {
         // notes are source-relative; put beat 1 of the grid at timeline 0
-        const notes = quantizeNotes(c.midi!.notes, s.tempo, a.grid, a.strength ?? 1, c.offset - c.start);
+        const q = (ns: MidiNote[]) => quantizeNotes(ns, s.tempo, a.grid, a.strength ?? 1, c.offset - c.start);
+        const all = c.midi!.notes;
+        const notes = which ? [...all.filter((_, i) => !which.has(i)), ...q(all.filter((_, i) => which.has(i)))].sort((x, y) => x.start - y.start || x.pitch - y.pitch) : q(all);
         s = S.setClipMidi(s, c.id, { ...c.midi!, notes });
       }
       ctx.store.set(s);
-      return { clips: clips.map((c) => c.id), grid: a.grid, bpm: s.tempo, strength: a.strength ?? 1 };
+      return { clips: clips.map((c) => c.id), grid: a.grid, bpm: s.tempo, strength: a.strength ?? 1, ...(which ? { quantized: which.size } : {}) };
     },
   },
   {

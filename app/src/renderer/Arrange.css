@@ -1,0 +1,4 @@
+/* The arrangement's ruler stays in view when the board scrolls or the canvas pans past its
+   top (Arrange.tsx pins it with a transform; sticky can't, it sits in a horizontal scroller). */
+[data-lt-ruler], [data-lt-ruler-corner] { position: relative; z-index: 6; background: var(--island); }
+[data-lt-ruler][data-lt-pinned], [data-lt-ruler-corner][data-lt-pinned] { box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.6); }

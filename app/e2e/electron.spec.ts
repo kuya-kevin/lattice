@@ -237,3 +237,18 @@ test('electron: push-to-talk clips reach the transcriber over IPC (B2, $LATTICE_
   await expect(page.getByRole('button', { name: 'Hold to talk to Muse' })).toBeVisible();
   await app.close();
 });
+
+test('electron: R records a vocal on the first press (the mic opens, then the take starts)', async () => {
+  const app = await electron.launch({ args: ['--use-fake-device-for-media-stream', '--use-fake-ui-for-media-stream', '.'] });
+  const page = await app.firstWindow();
+  await expect(page.locator('.chat header')).toHaveText('Muse');
+  await page.evaluate(() => window.lattice!.runTool('add_track', { name: 'Vox' }));
+  await page.getByTestId('track-t1').locator('.track-num').click();
+  await page.locator('body').click({ position: { x: 5, y: 600 } });
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('lcd')).toContainText('REC', { timeout: 5000 });
+  await page.waitForTimeout(1200);
+  await page.keyboard.press('r');
+  await expect.poll(async () => (await page.evaluate(() => window.lattice!.getSession())).tracks[0].clips.length).toBe(1);
+  await app.close();
+});
