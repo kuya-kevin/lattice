@@ -2,11 +2,11 @@
 // these from the Ideas column and the pad view; Muse can too. B12b: Muse also searches the sound
 // library and fills a kit from it (fill_kit), bringing each sound into the session first.
 import * as K from './kit';
-import { attribution, categoryLabel, filterLibrary, needsAttribution, type LibraryEntry } from './library';
+import { categoryLabel, filterLibrary } from './library';
 import { barLength } from './metronome';
 import { recordMidiTake } from './midiTools';
 import * as S from './session';
-import { adopt } from './shelfTools';
+import { library, librarySources } from './shelfTools';
 import type { ToolContext, ToolDef } from './tools';
 
 const str = (description: string, extra: object = {}) => ({ type: 'string', description, ...extra });
@@ -21,34 +21,6 @@ function edit(ctx: ToolContext, fn: (s: S.Session) => S.Session) {
 }
 
 const r2 = (x: number) => Math.round(x * 100) / 100;
-
-async function library(ctx: ToolContext): Promise<LibraryEntry[]> {
-  if (!ctx.listLibrary) throw new S.SessionError('the sound library is not available here');
-  return ctx.listLibrary();
-}
-
-/** B12b: bring library items into the session as sources (Ideas), the way the user's + does:
- *  the renderer loads each one's audio (adoptAudio), CC-BY items keep their credit. Returns a
- *  session with the sources added (not yet stored) and the new source id per library id. */
-async function librarySources(ctx: ToolContext, s: S.Session, ids: string[]): Promise<{ session: S.Session; sourceOf: Map<string, string> }> {
-  const items = await library(ctx);
-  const sourceOf = new Map<string, string>();
-  let next = s;
-  for (const id of new Set(ids)) {
-    const item = items.find((i) => i.id === id);
-    if (!item) throw new S.SessionError(`no library sound "${id}" (find_library_sounds lists them)`);
-    const sourceId = await adopt(ctx, { library: item.id });
-    next = S.addSource(next, {
-      id: sourceId,
-      name: item.name,
-      duration: item.duration,
-      origin: item.set === 'voice_notes' ? 'record' : 'freesound',
-      ...(needsAttribution(item) ? { credit: attribution(item) } : {}),
-    });
-    sourceOf.set(id, sourceId);
-  }
-  return { session: next, sourceOf };
-}
 
 type PadFill = { pad: number; library_id?: string; source_id?: string; label?: string };
 

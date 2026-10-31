@@ -4,7 +4,9 @@
 import { GRIDS, quantizeNotes, stemToMidi, type MidiData, type MidiNote, type PrepManifest, type SampleRef } from './midi';
 import { getKit } from './kit';
 import { detectKey, type KeyGuess } from './key';
+import { SAMPLE_ROOT } from './musicalTyping';
 import * as S from './session';
+import { librarySources } from './shelfTools';
 import type { ExtractMode } from './sidecar';
 import type { ToolContext, ToolDef } from './tools';
 
@@ -372,6 +374,59 @@ export const MIDI_TOOLS: ToolDef[] = [
       }
       ctx.store.set(s);
       return { clips: clips.map((c) => c.id), changed, ...(a.beats != null ? { seconds: Math.round(a.beats * beat * 1e4) / 1e4 } : {}), ...(pastEnd ? { cut_off_by_region_end: pastEnd } : {}) };
+    },
+  },
+  {
+    name: 'set_region_instrument',
+    description:
+      'Play a MIDI region on another sound (Oct 30): its notes stay, only the instrument changes. Give one of: instrument "piano" or "drums" (the built-in ones), ' +
+      'source_id (a session sound, e.g. an Ideas sound, played as a sampler: C4 plays it at its own pitch), library_id (a library sound, loaded into the session first; ' +
+      'find_library_sounds), or kit_id (a sample pad: each note plays the pad on that note). Default: the selected region. Undoable.',
+    parameters: obj({
+      clip_id: str('MIDI clip id; omit for the selected region'),
+      instrument: str('A built-in instrument', { enum: ['piano', 'drums'] }),
+      source_id: str('Or: a session sound to play as a sampler'),
+      library_id: str('Or: a library sound id, e.g. "fs:858950"'),
+      kit_id: str('Or: a sample pad (kit) id'),
+    }),
+    logText: (_a, r) => `${r.clip_id} now plays on ${r.instrument} (was ${r.was})`,
+    run: async (ctx: ToolContext, a) => {
+      if ([a.instrument, a.source_id, a.library_id, a.kit_id].filter((x) => x != null).length !== 1) {
+        throw new S.SessionError('give one of instrument, source_id, library_id or kit_id');
+      }
+      let s = ctx.store.get();
+      const clipId = a.clip_id ?? s.selection.clipId;
+      if (!clipId) throw new S.SessionError('no clip_id given and no region selected');
+      const { clip } = S.findClip(s, clipId);
+      if (!clip.midi) throw new S.SessionError(`clip ${clip.id} is audio; only a MIDI region changes instrument`);
+      const was = clip.midi.instrument;
+      let voice: Omit<MidiData, 'notes'>;
+      if (a.instrument) voice = a.instrument === 'drums' ? { instrument: 'drums', drum: true } : { instrument: 'piano' };
+      else if (a.kit_id) {
+        const kit = getKit(s, a.kit_id);
+        voice = { instrument: kit.name, drum: true, kit: kit.id };
+      } else {
+        let sourceId: string = a.source_id;
+        if (a.library_id) {
+          const r = await librarySources(ctx, s, [a.library_id]);
+          s = r.session;
+          sourceId = r.sourceOf.get(a.library_id)!;
+        }
+        const src = s.sources[sourceId];
+        if (!src) throw new S.SessionError(`no source "${sourceId}"`);
+        voice = { instrument: src.name, sample: checkSample(s, { sourceId, offset: 0, duration: src.duration, root: SAMPLE_ROOT }) };
+      }
+      ctx.store.set(S.setClipVoice(s, clip.id, voice));
+      const kit = voice.kit ? getKit(s, voice.kit) : undefined;
+      const offPads = kit ? clip.midi.notes.filter((n) => !kit.pads.some((p) => p.note === n.pitch)).length : 0;
+      return {
+        clip_id: clip.id,
+        instrument: voice.instrument,
+        was,
+        ...(voice.sample ? { source_id: voice.sample.sourceId } : {}),
+        ...(offPads ? { notes_not_on_a_pad: offPads } : {}),
+        ...(clip.midi.drum && !voice.drum ? { note: 'drum notes now play as pitches (C2-C#3)' } : {}),
+      };
     },
   },
   {

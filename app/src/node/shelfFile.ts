@@ -2,11 +2,12 @@
 //   index.json          the items (Starred and My Sounds)
 //   <id>.wav            the sound (exports, starred session sounds; library items have none)
 //   <id>.source.wav     an export's audio before the effects (its recipe; the chain is in index.json)
+//   <id>.pad<n>.wav     a saved sample pad's sound on pad n
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { MemorySoundShelf, type ShelfItem } from '../core/shelf';
+import { MemorySoundShelf, type AudioPart, type ShelfItem } from '../core/shelf';
 
-const fileOf = (id: string, part: 'sound' | 'source') => `${id.replace(/[^\w-]/g, '_')}${part === 'source' ? '.source' : ''}.wav`;
+const fileOf = (id: string, part: AudioPart) => `${id.replace(/[^\w-]/g, '_')}${part === 'sound' ? '' : `.${part}`}.wav`;
 
 export class FileSoundShelf extends MemorySoundShelf {
   constructor(private dir: string) {
@@ -22,12 +23,12 @@ export class FileSoundShelf extends MemorySoundShelf {
   }
 
   // removed items keep their files: a sound taken off a shelf by mistake can still be found
-  protected override storeAudio(id: string, part: 'sound' | 'source', bytes: Uint8Array) {
+  protected override storeAudio(id: string, part: AudioPart, bytes: Uint8Array) {
     mkdirSync(this.dir, { recursive: true });
     writeFileSync(join(this.dir, fileOf(id, part)), bytes);
   }
 
-  protected override readAudio(id: string, part: 'sound' | 'source'): Uint8Array | null {
+  protected override readAudio(id: string, part: AudioPart): Uint8Array | null {
     const p = join(this.dir, fileOf(id, part));
     return existsSync(p) ? new Uint8Array(readFileSync(p)) : null;
   }

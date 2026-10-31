@@ -22,6 +22,7 @@ import { buffers } from './audio';
 import { auditionNote, kitSamples } from './midiSynth';
 import { padKeyLabel, type Kit } from '../core/kit';
 import { trackColor } from './TrackHeader';
+import { InstrumentPicker } from './InstrumentPicker'; // Oct 30: re-voice the region
 import './PianoRoll.css'; // note edge handles
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -331,6 +332,9 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
       <div className="pr-toolbar" role="toolbar" aria-label="Piano Roll">
         <span className="pr-title" style={{ color }}>{track.name}</span>
         <span className="pr-sub">{clip.name !== track.name ? `${clip.name} · ` : ''}{midi.notes.length} notes{midi.drum ? ' · drums' : ''}</span>
+        <label className="tb-label">
+          Instrument <InstrumentPicker session={session} clip={clip} run={run} />
+        </label>
         <span className="tb-label" aria-hidden>Zoom</span>
         <div className="seg tb-zoom" role="group" aria-label="Piano Roll zoom">
           <button aria-label="Zoom out notes" disabled={zoom === 0} onClick={() => setZoom((z) => Math.max(0, z - 1))}>−</button>

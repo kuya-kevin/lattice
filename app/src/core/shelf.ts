@@ -13,8 +13,9 @@ export interface ShelfItem {
   name: string;
   duration: number; // seconds
   addedAt: string; // ISO time
-  /** where it came from: a library item, an Ideas sound, a pad, an export or a recording */
-  from: 'library' | 'idea' | 'pad' | 'export' | 'recording';
+  /** where it came from: a library item, an Ideas sound, a pad, an export, a recording, or a
+   *  whole sample pad (kit) */
+  from: 'library' | 'idea' | 'pad' | 'export' | 'recording' | 'kit';
   /** a library item's id: its audio comes from the library, nothing is copied */
   library?: string;
   /** the session source it was starred from (that project only; marks its star in Ideas) */
@@ -23,7 +24,13 @@ export interface ShelfItem {
   /** an exported sound remembers how it was made: the audio before the effects (kept beside
    *  the WAV) and the track's device chain, so it can be reopened and changed */
   recipe?: { trackName: string; devices: { kind: string; on: boolean; params: ParamValues }[]; sourceDuration: number };
+  /** Oct 30: a saved sample pad: its pads (in PAD_KEYS order); each sound's audio is kept beside
+   *  it (padAudio), so it comes back in any project */
+  kit?: { pads: { label: string; note: number; sound?: { name: string; duration: number; credit?: string } }[] };
 }
+
+/** The audio kept for an item: the sound, an export's source, or a saved kit's pad `n`. */
+export type AudioPart = 'sound' | 'source' | `pad${number}`;
 
 export type NewShelfItem = Omit<ShelfItem, 'id' | 'addedAt'>;
 
@@ -31,13 +38,15 @@ export interface SoundShelf {
   /** newest first */
   list(shelf?: ShelfName): ShelfItem[];
   get(id: string): ShelfItem | undefined;
-  /** `audio`: the sound's WAV (none for library items); `recipeAudio`: the audio before the effects */
-  add(item: NewShelfItem, audio?: Uint8Array, recipeAudio?: Uint8Array): ShelfItem;
+  /** `audio`: the sound's WAV (none for library items); `recipeAudio`: the audio before the
+   *  effects; `padAudio`: a saved kit's pad sounds, by pad */
+  add(item: NewShelfItem, audio?: Uint8Array, recipeAudio?: Uint8Array, padAudio?: (Uint8Array | undefined)[]): ShelfItem;
   remove(id: string): ShelfItem | undefined;
   /** Give a shelf sound a new name (its audio stays where it is). */
   rename(id: string, name: string): ShelfItem | undefined;
   audio(id: string): Uint8Array | null;
   recipeAudio(id: string): Uint8Array | null;
+  padAudio(id: string, pad: number): Uint8Array | null;
   subscribe(fn: () => void): () => void;
 }
 
@@ -60,10 +69,11 @@ export class MemorySoundShelf implements SoundShelf {
     return this.items.find((i) => i.id === id);
   }
 
-  add(item: NewShelfItem, audio?: Uint8Array, recipeAudio?: Uint8Array): ShelfItem {
+  add(item: NewShelfItem, audio?: Uint8Array, recipeAudio?: Uint8Array, padAudio: (Uint8Array | undefined)[] = []): ShelfItem {
     const full: ShelfItem = { ...item, id: newId(), addedAt: new Date().toISOString() };
     if (audio) this.storeAudio(full.id, 'sound', audio);
     if (recipeAudio) this.storeAudio(full.id, 'source', recipeAudio);
+    padAudio.forEach((b, i) => b && this.storeAudio(full.id, `pad${i}`, b));
     this.items = [...this.items, full];
     this.changed();
     return full;
@@ -94,6 +104,10 @@ export class MemorySoundShelf implements SoundShelf {
     return this.readAudio(id, 'source');
   }
 
+  padAudio(id: string, pad: number): Uint8Array | null {
+    return this.readAudio(id, `pad${pad}`);
+  }
+
   subscribe(fn: () => void): () => void {
     this.listeners.add(fn);
     return () => this.listeners.delete(fn);
@@ -103,11 +117,11 @@ export class MemorySoundShelf implements SoundShelf {
     for (const l of this.listeners) l();
   }
 
-  protected storeAudio(id: string, part: 'sound' | 'source', bytes: Uint8Array) {
+  protected storeAudio(id: string, part: AudioPart, bytes: Uint8Array) {
     this.bytes.set(`${id}:${part}`, bytes);
   }
 
-  protected readAudio(id: string, part: 'sound' | 'source'): Uint8Array | null {
+  protected readAudio(id: string, part: AudioPart): Uint8Array | null {
     return this.bytes.get(`${id}:${part}`) ?? null;
   }
 }
@@ -121,7 +135,7 @@ export function soundShelf(ctx: { shelf?: SoundShelf }): SoundShelf {
 export function findOnShelf(items: ShelfItem[], query = ''): ShelfItem[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items.filter((i) => {
-    const hay = [i.name, i.from, SHELF_LABELS[i.shelf], i.shelf, i.credit ?? '', i.recipe?.trackName ?? ''].join(' ').toLowerCase();
+    const hay = [i.name, i.from, i.kit ? 'sample pad kit drums' : '', SHELF_LABELS[i.shelf], i.shelf, i.credit ?? '', i.recipe?.trackName ?? ''].join(' ').toLowerCase();
     return words.every((w) => hay.includes(w));
   });
 }
@@ -131,7 +145,7 @@ export function shelvesLine(shelf: SoundShelf): string {
   const part = (s: ShelfName) => {
     const items = shelf.list(s);
     if (!items.length) return null;
-    const names = items.slice(0, 8).map((i) => `${i.id} "${i.name}"`).join(', ');
+    const names = items.slice(0, 8).map((i) => `${i.id} "${i.name}"${i.kit ? ' (sample pad)' : ''}`).join(', ');
     return `${SHELF_LABELS[s]}: ${names}${items.length > 8 ? ` (+${items.length - 8} more, find_sound_in_shelf)` : ''}`;
   };
   const parts = [part('starred'), part('mine')].filter(Boolean);

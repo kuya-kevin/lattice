@@ -111,13 +111,21 @@ describe('takeTrack (which track a take records on)', () => {
 
   it('reuses an empty track named for the take instead of adding another (Oct 30, Cmd-K pluck)', () => {
     expect(takeTrack(two(), 'Pluck FX 2890 - 03')).toBe('t1');
-    expect(takeTrack(two(), 'Keys')).toBeNull(); // no such track: a new one
+  });
+
+  it('else the top empty track, whatever its name (Oct 30: an empty "pad" track made for the take)', () => {
+    const s = two();
+    s.tracks[0].name = 'pad';
+    expect(takeTrack(s, 'Electronic bouncy synth')).toBe('t1');
+    s.tracks[0].clips.push({ id: 'c1' } as never);
+    s.tracks[1].clips.push({ id: 'c2' } as never);
+    expect(takeTrack(s, 'Keys')).toBeNull(); // no empty track: a new one
   });
 
   it('a track with regions on it is not reused by name', () => {
     const s = two();
     s.tracks[0].clips.push({ id: 'c1' } as never);
-    expect(takeTrack(s, 'Pluck FX 2890 - 03')).toBeNull();
+    expect(takeTrack(s, 'Pluck FX 2890 - 03')).toBe('t2'); // the empty Vocal track instead
   });
 
   it('the selected or armed track still wins', () => {

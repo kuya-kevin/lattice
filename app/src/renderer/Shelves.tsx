@@ -7,6 +7,7 @@ import { SHELF_LABELS, type ShelfItem, type ShelfName } from '../core/shelf';
 import type { Session } from '../core/session';
 import { decodeBytes } from './audio';
 import { previewBuffer, stopPreview } from './libraryAudio';
+import { InstrumentPicker } from './InstrumentPicker'; // Oct 30
 import './Shelves.css';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
@@ -78,7 +79,7 @@ export function StarButton({ run, args, name, sourceId = args.source_id, classNa
 }
 
 const fmtDur = (s: number) => (s < 10 ? `${s.toFixed(1)}s` : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`);
-const FROM: Record<ShelfItem['from'], string> = { library: 'Library', idea: 'Ideas', pad: 'Pad', export: 'Export', recording: 'Recording' };
+const FROM: Record<ShelfItem['from'], string> = { library: 'Library', idea: 'Ideas', pad: 'Pad', export: 'Export', recording: 'Recording', kit: 'Sample pad' };
 
 /** One shelf in the library panel: click to preview, + to bring it into Ideas, reopen an export. */
 export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: Run; shelf: ShelfName; text: string }) {
@@ -100,6 +101,7 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
     if (name.trim() && name.trim() !== i.name) act('rename_shelf_sound', { shelf_id: i.id, name });
   };
   const play = async (id: string) => {
+    if (all.find((i) => i.id === id)?.kit) return; // a whole sample pad: bring it in to play it
     if (playing === id) {
       stopPreview();
       return setPlaying(null);
@@ -126,8 +128,8 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
       </div>
       <ul className="lib-list">
         {list.map((i) => (
-          <li key={i.id} className={`lib-row shelf-row${playing === i.id ? ' playing' : ''}`} data-testid={`shelf-item-${i.id}`} onClick={() => play(i.id)} title="Click to preview">
-            <span className="play" aria-hidden>{playing === i.id ? '■' : '▶'}</span>
+          <li key={i.id} className={`lib-row shelf-row${playing === i.id ? ' playing' : ''}`} data-testid={`shelf-item-${i.id}`} onClick={() => play(i.id)} title={i.kit ? 'A sample pad: + brings it into this project' : 'Click to preview'}>
+            <span className="play" aria-hidden>{i.kit ? '▦' : playing === i.id ? '■' : '▶'}</span>
             {renaming === i.id ? (
               <input
                 className="nm shelf-rename"
@@ -147,7 +149,7 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
             ) : (
               <span className="nm" title="Double-click to rename" onDoubleClick={(e) => (e.stopPropagation(), stopPreview(), setPlaying(null), setRenaming(i.id))}>{i.name}</span>
             )}
-            <span className="meta">{FROM[i.from]} · {fmtDur(i.duration)}{i.recipe ? ` · ${i.recipe.devices.length} device${i.recipe.devices.length === 1 ? '' : 's'}` : ''}</span>
+            <span className="meta">{FROM[i.from]} · {i.kit ? `${i.kit.pads.filter((p) => p.sound).length} sounds` : fmtDur(i.duration)}{i.recipe ? ` · ${i.recipe.devices.length} device${i.recipe.devices.length === 1 ? '' : 's'}` : ''}</span>
             {i.recipe ? (
               <button className="shelf-reopen" aria-label={`Reopen ${i.name}`} title="Reopen: the sound before its effects on a new track, with its device chain" onClick={(e) => (e.stopPropagation(), act('reopen_sound', { shelf_id: i.id }))}>
                 ↺
@@ -156,7 +158,7 @@ export function ShelfList({ bridge, run, shelf, text }: { bridge: Bridge; run: R
             <button className="shelf-remove" aria-label={`Remove ${i.name} from ${SHELF_LABELS[shelf]}`} title={`Take it off ${SHELF_LABELS[shelf]}`} onClick={(e) => (e.stopPropagation(), act('unstar_sound', { shelf_id: i.id }))}>
               {shelf === 'starred' ? '★' : '×'}
             </button>
-            <button className="add-idea" aria-label={`Add ${i.name} to Ideas`} title="Bring it into this project (Ideas column)" onClick={(e) => (e.stopPropagation(), stopPreview(), act('use_shelf_sound', { shelf_id: i.id }))}>
+            <button className="add-idea" aria-label={`Add ${i.name} to Ideas`} title={i.kit ? 'Bring it into this project as a sample pad (Ideas column)' : 'Bring it into this project (Ideas column)'} onClick={(e) => (e.stopPropagation(), stopPreview(), act('use_shelf_sound', { shelf_id: i.id }))}>
               +
             </button>
           </li>
@@ -244,6 +246,11 @@ export function SoundMenu({ session, run }: { session: Session; run: Run }) {
           Use as Session Key <small>{clip.key ? (clip.key === session.key ? `already ${clip.key}` : clip.key) : 'detects it first'}</small>
         </button>
       )}
+      {clip?.midi && (
+        <label className="sound-menu-row">
+          Instrument <InstrumentPicker session={session} clip={clip} run={run} onPicked={() => setMenu(null)} />
+        </label>
+      )}
       {src && (
         <button role="menuitem" onClick={() => pick('star_sound', { source_id: src.id })}>
           Star the Region's Sound <small>{src.name}</small>
@@ -270,6 +277,13 @@ function renameOnShelf(id: string) {
 export async function exportSound(run: Run, args: Record<string, unknown>) {
   const r = await run('export_sound', args);
   const msg: NoticeMsg = r.ok ? { text: `Saved "${r.result?.name}" to My Sounds`, showShelf: 'mine', rename: r.result?.shelf_id } : { text: `Export failed: ${r.error}` };
+  window.dispatchEvent(new CustomEvent(NOTICE, { detail: msg }));
+}
+
+/** Oct 30: run save_kit and say where the sample pad went. */
+export async function saveKit(run: Run, kitId: string) {
+  const r = await run('save_kit', { kit_id: kitId });
+  const msg: NoticeMsg = r.ok ? { text: `Saved sample pad "${r.result?.name}" to My Sounds`, showShelf: 'mine', rename: r.result?.shelf_id } : { text: `Not saved: ${r.error}` };
   window.dispatchEvent(new CustomEvent(NOTICE, { detail: msg }));
 }
 

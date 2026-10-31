@@ -180,6 +180,35 @@ describe('sound shelves (B17)', () => {
     expect((await runTool(c, 'rename_shelf_sound', { shelf_id: exp.shelf_id, name: ' ' }, 'user')).error).toMatch(/empty/);
     expect((await runTool(c, 'rename_shelf_sound', { shelf_id: 'sh-nope', name: 'x' }, 'user')).ok).toBe(false);
   });
+
+  it('save a whole sample pad to My Sounds (Oct 30), on disk, and bring it back in another project', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'lattice-shelf-'));
+    const { c, jobs } = ctx(new FileSoundShelf(dir));
+    await runTool(c, 'add_sound', { source_id: 's-kick', name: 'Kick', duration: 0.5, origin: 'record' }, 'user');
+    await runTool(c, 'add_sound', { source_id: 's-vox', name: 'Vox', duration: 0.5, origin: 'record' }, 'user');
+    const kit = (await runTool(c, 'create_kit', { name: 'Lo-fi' }, 'user')).result as { kit_id: string };
+    expect((await runTool(c, 'save_kit', { kit_id: kit.kit_id }, 'user')).error).toMatch(/no sounds/);
+    await runTool(c, 'set_pad', { kit_id: kit.kit_id, pad: 6, source_id: 's-kick' }, 'user');
+    await runTool(c, 'set_pad', { kit_id: kit.kit_id, pad: 3, source_id: 's-vox', label: 'Vox chop' }, 'user');
+    await runTool(c, 'rename_pad', { kit_id: kit.kit_id, pad: 0, label: 'Big crash' }, 'user'); // an empty pad, renamed
+    const r = await runTool(c, 'save_kit', { kit_id: kit.kit_id }, 'muse');
+    expect(r).toMatchObject({ ok: true, result: { name: 'Lo-fi', shelf: 'My Sounds', from: 'kit', sample_pad: true, pads: 2 } });
+    expect(jobs).toEqual([{ kind: 'source', sourceId: 's-vox' }, { kind: 'source', sourceId: 's-kick' }]);
+    const id = (r.result as { shelf_id: string }).shelf_id;
+    expect(museSummary(c)).toContain('"Lo-fi" (sample pad)');
+
+    // next launch, a new project
+    const shelf = new FileSoundShelf(dir);
+    expect(shelf.padAudio(id, 6)).toEqual(wav(1));
+    const next = ctx(shelf);
+    const back = await runTool(next.c, 'use_shelf_sound', { shelf_id: id }, 'muse');
+    expect(back).toMatchObject({ ok: true, result: { name: 'Lo-fi', pads: ['3 A Vox chop', '6 Z Kick'] } });
+    const k = next.c.store.get().kits![(back.result as { kit_id: string }).kit_id];
+    expect(k.pads.map((p) => p.label)).toEqual(['Big crash', 'Open hat', 'Hat', 'Vox chop', 'Tom', 'Perc', 'Kick', 'Snare', 'Rim']);
+    expect(next.c.store.get().sources[k.pads[6].sample!.sourceId]).toMatchObject({ name: 'Kick', duration: 0.5 });
+    expect(next.adopted.size).toBe(2);
+    expect((await runTool(next.c, 'use_shelf_sound', { shelf_id: id, place: true }, 'user')).error).toMatch(/whole sample pad/);
+  });
 });
 
 describe('dry / wet (B18)', () => {

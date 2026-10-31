@@ -7,12 +7,14 @@ import type { Session } from './session';
 
 /** The track a take records on: the punch-in track, else the record-armed one, else the selected
  *  one, else an empty track already named for the take (e.g. one left by an undone take, or made
- *  for the sound tried out from Ideas), else null for a new track called `name`. (Oct 30: Cmd-K on
- *  a tried-out pluck made a second "Pluck" track beside the empty one.) */
+ *  for the sound tried out from Ideas), else the top empty track, else null for a new track called
+ *  `name`. (Oct 30: Cmd-K on a tried-out pluck made a second "Pluck" track beside the empty one;
+ *  later a take made a new track beside an empty "pad" track made for it.) */
 export function takeTrack(s: Session, name: string): string | null {
   const chosen = s.punchIn?.trackId ?? s.tracks.find((x) => x.armed)?.id ?? s.selection.trackId;
   if (chosen) return chosen;
-  return s.tracks.find((t) => !t.clips.length && t.name === name)?.id ?? null;
+  const empty = s.tracks.filter((t) => !t.clips.length);
+  return (empty.find((t) => t.name === name) ?? empty[0])?.id ?? null;
 }
 
 /** Timeline `pos` leaves Web Audio at ctx time `ctxTime` (the transport, or a count-in's downbeat). */

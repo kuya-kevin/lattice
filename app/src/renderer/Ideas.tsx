@@ -18,7 +18,7 @@ import { IDEA_MIME, KIT_MIME, previewBuffer, soundDrag, stopPreview } from './li
 import './Ideas.css';
 import { musicalTyping, openDrumPad } from './MusicalTyping';
 import { trackColor } from './TrackHeader';
-import { StarButton } from './Shelves'; // B17
+import { saveKit, StarButton } from './Shelves'; // B17
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -84,7 +84,10 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   const tryOut = (id: string) => {
     musicalTyping.audition(id);
     musicalTyping.toggle(true);
-    if (session.selection.trackId || session.selection.clipId) run('select', {}); // a take then goes on a new track
+    // a take then goes on an empty track (the selected one if it is empty) or a new one, not
+    // onto a track that has other regions
+    const sel = session.tracks.find((t) => t.id === session.selection.trackId);
+    if (session.selection.clipId || (sel && sel.clips.length)) run('select', {});
   };
   const remove = (id: string) => {
     setConfirm(null);
@@ -203,7 +206,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
         );
       })}
       {kits.map((k) => (
-        <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onRename={(name) => run('rename_kit', { kit_id: k.id, name })} onDelete={() => run('delete_kit', { kit_id: k.id })} />
+        <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onRename={(name) => run('rename_kit', { kit_id: k.id, name })} onDelete={() => run('delete_kit', { kit_id: k.id })} onSave={() => saveKit(run, k.id)} />
       ))}
       <button className="idea-new-kit" data-testid="new-drum-pad" title="Make a sample pad: put any sounds on 9 pads and play them from Q W E / A S D / Z X C" onClick={async () => {
         const r = await run('create_kit', {});
@@ -219,7 +222,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
 const kitUsage = (s: Session, kitId: string) => s.tracks.flatMap((t, i) => (t.clips.some((c) => c.midi?.kit === kitId) ? [{ t, i }] : []));
 
 /** B12: a sample pad's card: its name, a mini 3x3 of filled pads, and the credits its sounds need. */
-function KitCard({ kit, session, playing, onPlay, onRename, onDelete }: { kit: Kit; session: Session; playing: boolean; onPlay: () => void; onRename: (name: string) => void; onDelete: () => void }) {
+function KitCard({ kit, session, playing, onPlay, onRename, onDelete, onSave }: { kit: Kit; session: Session; playing: boolean; onPlay: () => void; onRename: (name: string) => void; onDelete: () => void; onSave: () => void }) {
   const [renaming, setRenaming] = useState(false);
   const filled = kit.pads.filter((p) => p.sample).length;
   const credits = [...kitSources(kit)].filter((id) => session.sources[id]?.credit).length;
@@ -281,6 +284,11 @@ function KitCard({ kit, session, playing, onPlay, onRename, onDelete }: { kit: K
         </span>
         {credits > 0 && <span className="idea-credit">{credits} CC-BY credit{credits > 1 ? 's' : ''}</span>}
       </button>
+      {filled > 0 && (
+        <button className="star-btn kit-save" aria-label={`Save ${kit.name} to My Sounds`} title="Save this sample pad to My Sounds, for any project" onPointerDown={(e) => e.stopPropagation()} onClick={(e) => (e.stopPropagation(), onSave())}>
+          ⤓
+        </button>
+      )}
       <button className="idea-del" aria-label="Delete sample pad" title="Delete this sample pad (⌫); takes on it keep playing built-in drums" onClick={onDelete}>×</button>
     </div>
   );

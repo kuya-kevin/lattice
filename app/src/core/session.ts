@@ -306,6 +306,13 @@ export function setClipMidi(s: Session, clipId: string, midi: MidiData): Session
   return mapClip(s, clipId, ({ key: _stale, ...c }) => ({ ...c, midi })); // B20: new notes, key unknown
 }
 
+/** Play a MIDI clip's notes on another instrument: its notes (and key) stay, the sound changes. */
+export function setClipVoice(s: Session, clipId: string, voice: Omit<MidiData, 'notes'>): Session {
+  const { clip } = findClip(s, clipId);
+  if (!clip.midi) throw new SessionError(`clip ${clipId} is audio, not MIDI`);
+  return mapClip(s, clipId, (c) => ({ ...c, midi: { ...voice, notes: clip.midi!.notes } }));
+}
+
 /** A MIDI clip's new notes, sorted by start (then pitch), with the Piano Roll's note selection
  *  following its notes through the sort. `selected` indexes `notes`; absent, a selection on this
  *  clip is kept when `notes` lines up with the old notes (same count), else cleared. */

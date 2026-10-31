@@ -72,5 +72,23 @@ Follow-up (Oct 30, evening list):
   track. 3. Export a sound, press Rename on the notice. 4. Ask Muse "make these notes a bar long".
 - Tests: vitest 392, tsc clean; e2e click-drift (new), ideas-flow, shelves, musical-typing,
   record-timing, oct30-bugs, playback, shortcuts, tempo-change, drum-pad pass. Spend $0.
-- Open question (not built): moving a MIDI region to another track keeps its own instrument
-  (the instrument lives on the clip, not the track). See the reply in the session for options.
+- Open question (answered below): moving a MIDI region to another track keeps its own instrument
+  (the instrument lives on the clip, not the track).
+
+Follow-up (Oct 30, late):
+- Re-voice a MIDI region (option 1 of the open question): an Instrument picker in the Piano Roll
+  toolbar and the region's right-click menu (Piano, built-in Drums, any Ideas sound as a sampler,
+  any sample pad). Muse has `set_region_instrument` (also takes a library_id, loading it first).
+  Notes and key stay; undoable. Option 2 (tracks own an instrument, Logic-style) is not built.
+- A take with no selected/armed track now goes on the top empty track before making a new one
+  (an empty "pad" track made for it); trying an Ideas sound keeps an empty selected track selected.
+- Save a sample pad: the save button (⤓) on a kit card in Ideas, or Muse's `save_kit`, puts the
+  whole kit in My Sounds (pad names + each pad's sound, kept as `<id>.pad<n>.wav` beside
+  index.json). + on its row (or `use_shelf_sound`) brings it back as a new sample pad.
+- Check it: 1. Double-click a MIDI region, pick an Ideas sound in Instrument; right-click it and
+  pick Piano. 2. Add a track "pad", try an Ideas sound, Cmd-K, R: the take lands on "pad".
+  3. Hover a kit card, press ⤓, Show, then + on the row.
+- Tests: vitest 398 (new: region-instrument.test.ts, a save_kit test in shelf.test.ts, takeTrack),
+  tsc clean; e2e region-instrument.spec.ts (3, new) plus ideas-flow, shelves, drum-pad, fill-kit,
+  musical-typing, piano-roll, note-selection, record-timing, oct30-bugs, key (42 pass);
+  electron-shelves (2) after a build. Spend $0.
