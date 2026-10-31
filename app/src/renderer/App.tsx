@@ -22,6 +22,7 @@ import { Mixer } from './Mixer'; // X: every track's channel strip
 import { audioContext, outputDelay, transportHandoff } from './audioClock';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
+import { usePillDrag } from './Chrome'; // drag the floating pills (transport, rail, zoom bar ...)
 import { Icon } from './icons';
 import { IdeaWires, Ideas, ideaSources } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
@@ -43,10 +44,12 @@ import { MusicalTypingButton, MusicalTypingKeyboard, musicalTyping } from './Mus
 import { useServeRender } from './renderServe'; // B17/B18: export_sound, export_stems, dry/wet loudness
 import { Notice, SoundMenu, useShelfSync, useShowShelf } from './Shelves'; // B17 sound shelves
 import { heardSession } from '../core/mixView'; // B18 dry / wet listening
+import { type ThemeMode, useTheme } from './theme'; // light / dark mode
 
 // Canvas theme on top of the library's dark theme: blue-black islands, regions tinted by track
-// colour (see trackColorCss), white bar waveforms that styles.css tints to the track colour.
-const theme = {
+// colour (see trackColorCss), white bar waveforms that styles.css tints to the track colour
+// (light.css turns them dark on solid regions instead).
+const darkCanvas = {
   ...darkTheme,
   waveformDrawMode: 'normal' as const,
   // (in 'normal' mode the outline colour paints the lane and the fill colour draws the waveform)
@@ -67,12 +70,27 @@ const theme = {
   loopRegionColor: 'rgba(95, 208, 224, 0.16)',
   loopMarkerColor: '#5fd0e0',
 };
+/** The same for light mode (values from light.css). */
+const lightCanvas = {
+  ...darkCanvas,
+  selectedTrackBackground: '#eceef1',
+  selectedTrackControlsBackground: '#eaecef',
+  timescaleBackgroundColor: '#f4f5f7',
+  timeColor: '#5c616c',
+  playheadColor: '#0b8597',
+  clipHeaderBackgroundColor: '#dfe2e7',
+  clipHeaderTextColor: '#191b20',
+  selectedClipHeaderBackgroundColor: '#d5d9df',
+  playlistBackgroundColor: '#f4f5f7',
+  loopRegionColor: 'rgba(11, 133, 151, 0.14)',
+  loopMarkerColor: '#0b8597',
+};
 
 /** Region colour per track, by track id (the library themes all clips alike). Regions on
  *  muted tracks turn grey, as in Logic. */
 function trackColorCss(session: Session): string {
   return session.tracks
-    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? '#5b616d' : trackColor(session, i)}; }`)
+    .map((t, i) => `[data-track-row][data-track-id="${t.id}"] [data-clip-container] { --region-color: ${t.muted ? 'var(--faint)' : trackColor(session, i)}; }`)
     .join('\n');
 }
 
@@ -101,6 +119,7 @@ function usePan() {
 }
 
 export function App({ bridge }: { bridge: Bridge }) {
+  const [themeMode, toggleTheme] = useTheme();
   const [session, setSession] = useState<Session | null>(null);
   const [tracks, setTracks] = useState<ClipTrack[]>([]);
   const [audioVersion, setAudioVersion] = useState(0); // bumps when a buffer is added
@@ -123,6 +142,7 @@ export function App({ bridge }: { bridge: Bridge }) {
   const [snap, setSnap] = useState<SnapMode>('beat');
   const lastSnap = useRef<SnapMode>('beat');
   if (snap !== 'off') lastSnap.current = snap;
+  usePillDrag();
   // ─── end region ───
 
   useEffect(() => {
@@ -348,7 +368,7 @@ export function App({ bridge }: { bridge: Bridge }) {
   const museContext = selTrack ? (selClip && selClip.name !== selTrack.name ? `${selTrack.name} · ${selClip.name}` : selTrack.name) : null;
 
   return (
-    <WaveformPlaylistProvider theme={theme} tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} zoomLevels={ZOOM_LEVELS} waveHeight={layout.sizes.waveHeight} barWidth={2} barGap={1} controls={{ show: true, width: 210 }} fillViewport indefinitePlayback>
+    <WaveformPlaylistProvider theme={themeMode === 'light' ? lightCanvas : darkCanvas}tracks={tracks} onTracksChange={onTracksChange} timescale samplesPerPixel={1024} zoomLevels={ZOOM_LEVELS} waveHeight={layout.sizes.waveHeight} barWidth={2} barGap={1} controls={{ show: true, width: 210 }} fillViewport indefinitePlayback>
       <div
         className={`app${museOpen ? ' muse-open' : ''}${libraryOpen ? ' library-open' : ''}`}
         onDragOver={(e) => e.preventDefault()}
@@ -484,7 +504,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
         </nav>
-        <ZoomBar run={run} bridge={bridge} layoutMenu={<LayoutMenu frames={frames} setFrames={setFrames} />} />
+        <ZoomBar run={run} bridge={bridge} theme={[themeMode, toggleTheme]} layoutMenu={<LayoutMenu frames={frames} setFrames={setFrames} />} />
         <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} onFilesToPad={filesToPad} />
         <SoundMenu session={session} run={run} /> {/* B17: right-click a region or track to export it as a sound */}
         <Notice /> {/* B17: where an exported sound went */}
@@ -496,14 +516,16 @@ export function App({ bridge }: { bridge: Bridge }) {
 
 /** Bottom-right island: undo / redo and the window zoom (Electron page zoom: everything on the
  *  canvas and the floating chrome scales together, like ⌘+ / ⌘− in the View menu). */
-function ZoomBar({ run, bridge, layoutMenu }: { run: Run; bridge: Bridge; layoutMenu: ReactNode }) {
+function ZoomBar({ run, bridge, theme: [mode, toggleTheme], layoutMenu }: { run: Run; bridge: Bridge; theme: [ThemeMode, () => void]; layoutMenu: ReactNode }) {
   const zoom = useWindowZoom(bridge);
+  const other = mode === 'dark' ? 'Light mode' : 'Dark mode';
   return (
     <div className="zoombar island" role="toolbar" aria-label="Edit and zoom">
       <button className="ibtn" title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}><Icon name="undo" /></button>
       <button className="ibtn" title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}><Icon name="redo" /></button>
       <span className="sep" />
       {layoutMenu}
+      <button className="ibtn" title={other} aria-label={other} data-testid="theme-toggle" onClick={toggleTheme}><Icon name={mode === 'dark' ? 'sun' : 'moon'} /></button>
       {zoom && (
         <>
           <span className="sep" />

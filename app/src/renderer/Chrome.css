@@ -1,0 +1,6 @@
+/* Draggable chrome pills (Chrome.tsx): the empty background grabs, buttons keep their own cursor.
+   Lane S: fold into styles.css with the B15 restyle. */
+.controlbar .transport, .controlbar .actions, nav.rail, .zoombar { cursor: grab; }
+.pill-dragging, .pill-dragging * { cursor: grabbing !important; user-select: none; }
+.pill-dragging { transition: none; }
+.layout-pop .layout-reset { justify-content: center; color: var(--muted); }

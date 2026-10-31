@@ -18,6 +18,17 @@
   --rec: #ff5a4e;
   --mute: #6aa8ff;
   --solo: #f2c14e;
+  --on-rec: #fff;         /* text on the coloured M / S / R buttons */
+  --on-mute: #071326;
+  --on-solo: #2a1f00;
+  --danger: #c4473a;
+  --soft: #c4c9d3;        /* secondary text a step brighter than --muted */
+  --lane: #1a1c21;        /* Piano Roll / Audio Editor grid */
+  --region-body: #3b3e47; /* what a region's waveform sits on */
+  --wash: rgba(255, 255, 255, 0.14); /* hover highlight over a coloured region */
+  /* track colours, one per palette slot (TrackHeader.tsx TRACK_COLORS, core/trackColors.ts names) */
+  --track-0: #f08a6c; --track-1: #e9b85a; --track-2: #7fd39a; --track-3: #8fb3ff;
+  --track-4: #c79cf0; --track-5: #6fcfc0; --track-6: #f08aa8; --track-7: #b9d36a;
 
   /* legacy names still read by DevicePanel.css */
   --bg: var(--ground);
@@ -53,12 +64,12 @@ button {
 button:hover:not(:disabled) { background: var(--island-3); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 button:disabled { opacity: 0.4; cursor: default; }
-button.recording { background: var(--rec); color: #fff; }
+button.recording { background: var(--rec); color: var(--on-rec); }
 select, input, textarea { font: inherit; color: var(--text); }
 select {
   background: var(--island-2); border: 1px solid var(--line-strong); border-radius: var(--r-ctl); padding: 4px 8px;
 }
-code { font: 11px var(--font-data); color: #c9cbd1; }
+code { font: 11px var(--font-data); color: var(--soft); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--line-strong); border-radius: 999px; border: 3px solid transparent; background-clip: padding-box; }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
@@ -76,7 +87,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 .btn { display: inline-flex; align-items: center; gap: 7px; height: 38px; padding: 0 14px; border-radius: 999px; }
 .chip {
   display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px;
-  background: transparent; border: 1px solid var(--line-strong); color: #c4c9d3;
+  background: transparent; border: 1px solid var(--line-strong); color: var(--soft);
 }
 .chip.on { background: var(--text); border-color: transparent; color: var(--ground); }
 .chip.reset { color: var(--muted); }
@@ -166,7 +177,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 }
 .idea-confirm-actions { display: flex; gap: 8px; justify-content: flex-end; }
 .idea-confirm button { padding: 4px 12px; border-radius: 6px; border: 1px solid var(--line-strong); background: var(--island-2); color: var(--text); }
-.idea-confirm button.danger { background: #c4473a; border-color: #c4473a; color: #fff; }
+.idea-confirm button.danger { background: var(--danger); border-color: var(--danger); color: var(--on-rec); }
 [data-lt-ruler] { cursor: pointer; }
 
 /* the arrangement board */
@@ -197,7 +208,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 
 /* lanes and regions (waveform-playlist DOM) */
 [data-track-row] { box-shadow: inset 0 -1px 0 var(--line); }
-[data-clip-container] { --region-color: #8fb3ff; }
+[data-clip-container] { --region-color: var(--track-3); }
 [data-clip-container] > :first-child {
   background: color-mix(in srgb, var(--region-color) 30%, var(--island)) !important; color: var(--text) !important;
   font-weight: 600; border-radius: 9px 9px 0 0;
@@ -205,7 +216,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 }
 [data-clip-container] > :nth-child(2) {
   position: relative;
-  background: color-mix(in srgb, var(--region-color) 10%, #3b3e47);
+  background: color-mix(in srgb, var(--region-color) 10%, var(--region-body));
   border: 1px solid color-mix(in srgb, var(--region-color) 55%, transparent); border-top: 0; border-radius: 0 0 9px 9px;
 }
 /* tint the white waveform with the track colour (white × colour = colour; the dark body only darkens) */
@@ -225,7 +236,7 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
 /* trim handles (waveform-playlist's clip edges): wider and visible on hover, so the region's
    start and end read as grabbable (Logic shows a trim cursor at a region's edges) */
 [data-clip-container] [data-boundary-edge] { width: 10px !important; border-radius: 3px; transition: background 0.1s; }
-[data-clip-container]:hover [data-boundary-edge] { background: rgba(255, 255, 255, 0.14); }
+[data-clip-container]:hover [data-boundary-edge] { background: var(--wash); }
 [data-clip-container] [data-boundary-edge]:hover, [data-clip-container] [data-boundary-edge]:active { background: color-mix(in srgb, var(--accent) 55%, transparent); }
 [data-clip-container][data-lt-drag-source] { opacity: 0.45; }
 /* [S3 midi] MIDI regions show their notes (Arrange.tsx drawRegionNotes) instead of the waveform
@@ -277,9 +288,9 @@ code { font: 11px var(--font-data); color: #c9cbd1; }
   width: 24px; height: 20px; padding: 0; font-size: 10px; font-weight: 700; border-radius: 6px;
   background: var(--island-2); border-color: var(--line); color: var(--muted);
 }
-.track-row button.ms.on.mute { background: var(--mute); border-color: transparent; color: #071326; }
-.track-row button.ms.on.solo { background: var(--solo); border-color: transparent; color: #2a1f00; }
-.track-row button.ms.on.arm { background: var(--rec); border-color: transparent; color: #fff; }
+.track-row button.ms.on.mute { background: var(--mute); border-color: transparent; color: var(--on-mute); }
+.track-row button.ms.on.solo { background: var(--solo); border-color: transparent; color: var(--on-solo); }
+.track-row button.ms.on.arm { background: var(--rec); border-color: transparent; color: var(--on-rec); }
 .track-row.vol { gap: 8px; }
 .db { color: var(--muted); font: 10.5px var(--font-data); width: 34px; text-align: right; flex: none; }
 
@@ -309,7 +320,7 @@ input[type='range']:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px 
 .transport .ibtn.play { background: var(--text); color: var(--ground); }
 .transport .ibtn.play.on { background: var(--accent); color: var(--accent-ink); }
 .transport .ibtn.rec { color: var(--rec); }
-.transport .ibtn.rec.on { background: var(--rec); color: #fff; }
+.transport .ibtn.rec.on { background: var(--rec); color: var(--on-rec); }
 .transport .ibtn.cycle.on { background: color-mix(in srgb, var(--accent) 22%, transparent); color: var(--accent); }
 .transport .count-in { height: 28px; padding: 0 9px; border-radius: 999px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 11px var(--font-data); }
 .transport .count-in.on { background: var(--text); color: var(--ground); border-color: transparent; }
@@ -369,7 +380,7 @@ select.lcd-field option { background: var(--island); }
 .hint { color: var(--muted); margin: 0; }
 .hint p { margin: 0 0 8px; }
 .hint ul { margin: 0 0 10px; padding: 0; list-style: none; display: grid; gap: 6px; }
-.hint li { padding: 7px 10px; border-radius: 10px; background: var(--island-2); color: #c4c9d3; }
+.hint li { padding: 7px 10px; border-radius: 10px; background: var(--island-2); color: var(--soft); }
 .msg { white-space: pre-wrap; display: grid; gap: 8px; }
 .msg.user { align-self: flex-end; max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--island-3); }
 .msg.error { color: var(--rec); }
@@ -377,7 +388,7 @@ select.lcd-field option { background: var(--island); }
 .msg audio { display: block; width: 100%; height: 30px; margin: 4px 0; }
 .steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; align-items: flex-start; }
 .steps li {
-  font: 11px var(--font-data); color: #b9c0cc; padding: 3px 8px; border-radius: 6px;
+  font: 11px var(--font-data); color: var(--soft); padding: 3px 8px; border-radius: 6px;
   background: var(--island-2); border: 1px solid var(--line); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .steps li b { color: var(--accent); font-weight: 500; }
@@ -489,7 +500,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .lib-info { border-top: 1px solid var(--line); padding: 10px 14px; background: var(--island-2); font-size: 11.5px; min-height: 64px; }
 .info-name { font-weight: 600; font-size: 12.5px; }
 .info-meta, .info-tags { color: var(--muted); }
-.info-credit { margin-top: 4px; color: #c9cbd1; word-break: break-word; }
+.info-credit { margin-top: 4px; color: var(--soft); word-break: break-word; }
 .info-credit.by strong { color: var(--solo); }
 .lib-error { color: var(--rec); cursor: pointer; }
 .pad { padding: 12px; }
@@ -527,7 +538,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .pr-keys { position: sticky; left: 0; z-index: 2; background: #d9dbe0; }
 .pr-key { box-sizing: border-box; background: #d9dbe0; border-bottom: 1px solid #b9bcc4; color: #3a3d45; font-size: 9px; line-height: 11px; text-align: right; padding-right: 4px; cursor: pointer; white-space: nowrap; overflow: hidden; }
 .pr-key.black { background: #1b1d22; color: #8a909c; border-bottom-color: #1b1d22; margin-right: 16px; }
-.pr-grid { position: relative; background-color: #1a1c21; cursor: default; overflow: hidden; }
+.pr-grid { position: relative; background-color: var(--lane); cursor: default; overflow: hidden; }
 .pr-grid.pencil { cursor: crosshair; }
 .pr-row-black { position: absolute; left: 0; right: 0; background: rgba(0, 0, 0, 0.22); pointer-events: none; }
 .pr-outside { position: absolute; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.35); pointer-events: none; }
@@ -546,7 +557,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .ae-scroll { flex: 1; overflow-x: auto; overflow-y: hidden; position: relative; }
 .ae-canvas { position: relative; display: flex; flex-direction: column; height: 100%; min-width: 100%; user-select: none; } /* a text selection left by a trim would turn the next drag into a native drag (pointercancel) */
 .ae-ruler { flex: none; position: relative; }
-.ae-lane { position: relative; flex: 1; background-color: #1a1c21; cursor: text; overflow: hidden; }
+.ae-lane { position: relative; flex: 1; background-color: var(--lane); cursor: text; overflow: hidden; }
 .ae-rec { position: absolute; top: 16px; bottom: 0; background: color-mix(in srgb, var(--note) 14%, transparent); border-radius: 3px; pointer-events: none; }
 .ae-region { position: absolute; top: 0; bottom: 0; box-sizing: border-box; background: color-mix(in srgb, var(--note) 34%, transparent); border: 1px solid var(--note); border-radius: 3px; cursor: grab; touch-action: none; }
 .ae-region:active { cursor: grabbing; }

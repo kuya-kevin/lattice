@@ -12,6 +12,7 @@ import {
   type FrameId, type FrameLayout, type Guide, type PresetId, type Rect, type Side, type Size,
 } from '../core/frames';
 import type { Session } from '../core/session';
+import { resetPills } from './Chrome';
 import { Icon } from './icons';
 import type { LayoutSizes } from './Resizable';
 import './Frames.css';
@@ -381,6 +382,9 @@ export function LayoutMenu({ frames, setFrames }: { frames: FrameLayout; setFram
               <span>{PRESETS[id].label}</span>
             </button>
           ))}
+          <button role="menuitem" className="layout-reset" title="Put the transport, rail and other pills back where they started" onClick={() => (resetPills(), setOpen(false))}>
+            Reset pills
+          </button>
           <p className="layout-tip">Drag a frame by its title to move it. Drop it on another frame's edge to dock it there.</p>
         </div>
       )}

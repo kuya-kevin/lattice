@@ -8,6 +8,8 @@ import '@fontsource-variable/instrument-sans';
 import '@fontsource/jetbrains-mono/400.css';
 import '@fontsource/jetbrains-mono/500.css';
 import './styles.css';
+import './light.css';
+import { applySavedTheme } from './theme';
 
 // [S1 fx] effects are native Web Audio / AudioWorklet nodes: use a native AudioContext
 // (must run before any audio is touched; waveform-playlist supports this mode)
@@ -18,4 +20,5 @@ const bridge = window.lattice ?? (window.lattice = createMockBridge());
 voiceReplyFor(bridge.mode); // B14: Muse's spoken replies (installs window.latticeVoice before the page loads)
 // read-only peek for tests: which sources have audio in this window (B11 restore checks)
 (window as unknown as { latticeDebug: object }).latticeDebug = { audioIds: () => [...buffers.keys()] };
+applySavedTheme();
 createRoot(document.getElementById('root')!).render(<App bridge={bridge} />);

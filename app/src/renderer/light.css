@@ -1,0 +1,63 @@
+/* Light mode (data-theme="light" on <html>, renderer/theme.ts): soft gray ground, off-white
+   islands, pastel track colours drawn as solid regions with dark waveforms. Picked Oct 31 from
+   three palettes (Paper, Cool studio, Soft gray) and five track colour sets. Dark stays the default;
+   these only swap tokens, plus the few places that draw for a dark ground (regions, notes). */
+:root[data-theme='light'] {
+  --ground: #dcdee3;
+  --dot: #c6c9d0;
+  --island: #f4f5f7;
+  --island-2: #eaecef;
+  --island-3: #dfe2e7;
+  --line: #cfd3da;
+  --line-soft: #e3e5e9;
+  --line-strong: #b9bec7;
+  --text: #191b20;
+  --muted: #5c616c;
+  --faint: #8d929c;
+  --soft: #3a3e47;
+  --accent: #0b8597;
+  --accent-ink: #ffffff;
+  --rec: #d93c32;
+  --mute: #2a68d4;
+  --solo: #b98400;
+  --on-mute: #ffffff;
+  --danger: #c93a2e;
+  --lane: #e9ebee;
+  --region-body: #ffffff;
+  --wash: rgba(0, 0, 0, 0.12);
+  --shadow: 0 8px 28px rgba(30, 34, 44, 0.12), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  /* Pastel ink */
+  --track-0: #e8896d; --track-1: #e3b45a; --track-2: #74c08a; --track-3: #7c9ff0;
+  --track-4: #b890e8; --track-5: #62c4b8; --track-6: #ea8cae; --track-7: #b6cc62;
+  color-scheme: light;
+}
+
+/* regions: solid track colour, a dark label in the same hue, a dark waveform. The library draws
+   the waveform white; brightness(0) turns it black and the opacity softens it. */
+:root[data-theme='light'] [data-clip-container] > :first-child {
+  background: var(--region-color) !important;
+  color: color-mix(in srgb, var(--region-color) 38%, #000) !important;
+  border-color: color-mix(in srgb, var(--region-color) 80%, #000);
+  box-shadow: inset 0 -1px 0 color-mix(in srgb, var(--region-color) 80%, #000);
+}
+:root[data-theme='light'] [data-clip-container] > :nth-child(2) {
+  background: var(--region-color);
+  border-color: color-mix(in srgb, var(--region-color) 80%, #000);
+}
+:root[data-theme='light'] [data-clip-container] > :nth-child(2)::after { content: none; }
+:root[data-theme='light'] [data-clip-container] > :nth-child(2) canvas { filter: brightness(0); opacity: 0.35; }
+:root[data-theme='light'] [data-clip-container][data-lt-selected] > :is(:first-child, :nth-child(2)) { border-color: var(--accent); }
+:root[data-theme='light'] .lt-notes { fill: rgba(0, 0, 0, 0.4); }
+:root[data-theme='light'] .live-take-body { background: var(--region-color); }
+:root[data-theme='light'] .live-take-body .lt-notes { fill: rgba(0, 0, 0, 0.4); }
+
+/* Piano Roll and Audio Editor on a light grid */
+:root[data-theme='light'] .pr-row-black { background: rgba(0, 0, 0, 0.06); }
+:root[data-theme='light'] .pr-outside { background: rgba(0, 0, 0, 0.12); }
+:root[data-theme='light'] .pr-note.sel { border-color: var(--text); box-shadow: 0 0 0 1px var(--text); }
+:root[data-theme='light'] .ae-trim:hover { background: rgba(0, 0, 0, 0.12); }
+
+/* small bits from component stylesheets that assume a dark ground */
+:root[data-theme='light'] .versions-menu.versions-log { --add: #2f9a5a; }
+:root[data-theme='light'] [data-lt-ruler][data-lt-pinned], :root[data-theme='light'] [data-lt-ruler-corner][data-lt-pinned] { box-shadow: 0 6px 10px -6px rgba(30, 34, 44, 0.25); }
+:root[data-theme='light'] .mt-key.black { background: #2b2e35; border-color: #191b20; }

@@ -432,9 +432,9 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
   return (
     <svg className="wires" aria-hidden>
       {paths.map((p, i) => (
-        <g key={i} stroke={p.color} fill="none">
+        <g key={i} style={{ stroke: p.color }} fill="none">
           <path d={p.d} strokeWidth={2} opacity={0.8} />
-          <circle cx={p.x0} cy={p.y0} r={4} fill={p.color} stroke="none" />
+          <circle cx={p.x0} cy={p.y0} r={4} style={{ fill: p.color, stroke: 'none' }} />
           <circle cx={p.x1} cy={p.y1} r={4} fill="var(--ground)" strokeWidth={2} />
         </g>
       ))}

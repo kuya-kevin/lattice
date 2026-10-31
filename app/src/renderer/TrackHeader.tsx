@@ -11,8 +11,9 @@ type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boole
 
 /** Region colours, one per track in turn: equal lightness, so no lane shouts. */
 export const TRACK_COLORS = ['#f08a6c', '#e9b85a', '#7fd39a', '#8fb3ff', '#c79cf0', '#6fcfc0', '#f08aa8', '#b9d36a'];
-/** The colour of the track at `index`: its own palette slot (kept when it moves), else its position. */
-export const trackColor = (s: Session, index: number) => TRACK_COLORS[(s.tracks[index]?.color ?? index) % TRACK_COLORS.length];
+/** The colour of the track at `index`: its own palette slot (kept when it moves), else its position.
+ *  A CSS var (`--track-N` in styles.css / light.css), so it follows light and dark mode. */
+export const trackColor = (s: Session, index: number) => `var(--track-${(s.tracks[index]?.color ?? index) % TRACK_COLORS.length})`;
 
 export function TrackHeader({ session, index, run }: { session: Session; index: number; run: Run }) {
   const t = session.tracks[index];
