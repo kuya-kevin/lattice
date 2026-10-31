@@ -21,6 +21,7 @@ const P: Record<string, ReactElement> = {
   import: <><path d="M12 3v12M7 10l5 5 5-5" /><path d="M5 15v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4" /></>,
   magnet: <><path d="M6 4v8a6 6 0 0 0 12 0V4" /><path d="M6 8h4M14 8h4" /></>,
   fit: <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" />,
+  layout: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M9 4v16M9 12h12" /></>,
   close: <path d="M6 6l12 12M18 6L6 18" />,
   chev: <path d="M6 9l6 6 6-6" />,
   roll: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h4M10 13h5M13 17h4" /></>,

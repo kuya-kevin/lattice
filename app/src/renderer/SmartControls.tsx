@@ -22,7 +22,7 @@ export function SmartControls({ session, tab, onTab, onClose, regionKind = 'midi
   const track = session.tracks.find((t) => t.id === session.selection.trackId) ?? null;
   return (
     <section className="smart-controls" aria-label="Smart Controls" data-testid="smart-controls">
-      <header>
+      <header data-frame-handle title="Drag to move the editor">
         <div className="sc-tabs" role="tablist" aria-label="Editor">
           <button role="tab" aria-selected={tab === 'fx'} className={tab === 'fx' ? 'on' : ''} onClick={() => onTab('fx')} title="Device chain (B)">Device chain</button>
           <button role="tab" aria-selected={tab === 'notes'} className={tab === 'notes' ? 'on' : ''} onClick={() => onTab('notes')} title={`${regionKind === 'audio' ? 'Audio Editor' : 'Piano Roll'} (P, or double-click a region)`}>{regionKind === 'audio' ? 'Audio Editor' : 'Piano Roll'}</button>

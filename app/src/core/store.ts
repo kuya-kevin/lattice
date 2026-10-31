@@ -107,6 +107,7 @@ export class SessionStore {
       mixView: undefined, // B18: a listening setting, not part of the mix (kept below)
       ...(cur.mixView ? { mixView: cur.mixView } : {}),
       voiceReply: cur.voiceReply, // B14: a preference, not part of the arrangement
+      frames: cur.frames, // the screen layout: a view setting
       selection: {
         ...select(cur, keep(cur.selection.trackId), keep(cur.selection.clipId), cur.selection.clipIds?.filter((c) => ids.has(c))).selection,
         ...(keep(cur.selection.clipId) && cur.selection.notes ? { notes: cur.selection.notes } : {}), // checked by selectedNotes()

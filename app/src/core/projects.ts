@@ -168,6 +168,7 @@ function switchTo(ctx: ToolContext, next: S.Session | null, versions: VersionLib
     ...s,
     transport: { ...s.transport, playing: false, command: 'stop', rev: cur.transport.rev + 1 },
     voiceReply: cur.voiceReply, // a preference, not part of a project
+    frames: cur.frames, // the screen layout is app-wide
     seq: Math.max(cur.seq, s.seq),
   });
   ctx.projectOpened?.();

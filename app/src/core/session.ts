@@ -8,6 +8,7 @@ import { describeKits, emptyPad, type Kit } from './kit'; // B12 sample pads
 import { barLength } from './metronome';
 import { colorName } from './trackColors'; // B16
 import { mixViewLine, type MixView } from './mixView'; // B18 dry / wet listening
+import { framesLine, type FrameLayout } from './frames'; // movable frames (set_layout)
 import { voiceLine } from './voiceTools'; // B14 spoken replies
 
 export type SourceOrigin = 'import' | 'record' | 'freesound' | 'generated' | 'processed';
@@ -93,6 +94,9 @@ export interface Session {
   mixView?: MixView;
   /** B14: read Muse's replies aloud (core/voiceTools.ts). Absent = off. A preference: undo keeps it. */
   voiceReply?: boolean;
+  /** Where the Ideas, Arrangement and editor frames sit on screen (core/frames.ts). App-wide: the
+   *  renderer keeps it and mirrors it here so Muse sees it. A view setting: undo keeps it. */
+  frames?: FrameLayout;
   seq: number; // id counter, keeps ids short and deterministic (t1, c2, ...)
 }
 
@@ -631,7 +635,7 @@ export function sessionEnd(s: Session): number {
 
 /** Compact text view of the session for Muse (it can't see the screen or hear audio). */
 export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string; shelves?: string; project?: string; setups?: string } = {}): string {
-  const extra = [mixViewLine(s), opts.shelves ?? '', opts.setups ?? ''].filter(Boolean).map((l) => `\n${l}`).join(''); // B18, B17
+  const extra = [mixViewLine(s), opts.shelves ?? '', opts.setups ?? '', framesLine(s.frames)].filter(Boolean).map((l) => `\n${l}`).join(''); // B18, B17
   const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
   const versions = opts.versions ? `\nVersions: ${opts.versions}` : '';
   const kits = describeKits(s);

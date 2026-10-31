@@ -1,0 +1,57 @@
+/* Movable frames (Frames.tsx): the world holds the Ideas, board and editor frames absolutely;
+   Frames.tsx sets each frame's left / top / width and the world's size. */
+.world.frames { display: block; padding-right: var(--gutter-r); }
+.world.frames::after { display: none; }
+.world.frames > [data-frame] { position: absolute; left: 0; top: 0; }
+.world.frames > .board-col { min-width: 0; max-width: none; }
+.world.frames .smart-controls { margin-top: 0; }
+
+/* grab a frame by its title */
+[data-frame-handle] { cursor: grab; user-select: none; }
+[data-frame-handle]:hover b, .smart-controls > header[data-frame-handle]:hover .sc-tabs button:not(.on) { color: var(--text); }
+html.frame-drag, html.frame-drag * { cursor: grabbing !important; user-select: none; }
+.world.frames > .frame-dragging { z-index: 6; opacity: 0.94; }
+.world.frames > .frame-dragging > :is(.ideas, .board, .smart-controls) { filter: drop-shadow(0 12px 28px rgba(0, 0, 0, 0.45)); }
+
+/* the drop preview (docking) and alignment guides */
+.frame-dock-preview {
+  position: absolute; z-index: 5; pointer-events: none; border-radius: var(--r-card);
+  border: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.frame-guide { position: absolute; z-index: 5; pointer-events: none; background: var(--accent); }
+.frame-guide.x { width: 1px; margin-left: -0.5px; }
+.frame-guide.y { height: 1px; margin-top: -0.5px; }
+
+/* resize handles on a frame's right edge and under it, centred in the gap to the next frame */
+.rz-frame-w { right: -40px; }
+.world.frames .rz-frame-h { position: absolute; left: 0; right: 0; bottom: -28px; }
+
+/* Ideas as a strip (docked above or below a frame): cards side by side, scrolling sideways */
+.frame-ideas.ideas-strip .ideas {
+  width: 100%; display: grid; grid-template-rows: auto auto; grid-auto-flow: column; grid-auto-columns: 232px;
+  column-gap: 12px; row-gap: 14px; overflow-x: auto; padding-bottom: 6px; align-items: start;
+}
+.frame-ideas.ideas-strip .ideas > * { grid-row: 2; }
+.frame-ideas.ideas-strip .ideas > .frame-title { grid-row: 1; grid-column: 1 / span 3; position: sticky; left: 0; margin-bottom: 0; }
+
+/* the editor beside the board: as tall as the board (Frames.tsx sets the height) */
+.frame-editor.tall { display: flex; flex-direction: column; }
+.frame-editor.tall > .smart-controls { flex: 1; }
+
+/* the Layout menu in the zoom bar */
+.layout-menu { position: relative; display: inline-flex; }
+.layout-pop {
+  position: absolute; right: -4px; bottom: calc(100% + 10px); width: 236px; padding: 6px;
+  display: flex; flex-direction: column; gap: 2px; z-index: 30;
+}
+.layout-pop button {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px; border-radius: 8px;
+  background: transparent; border: 0; color: var(--muted); font-size: 12.5px; text-align: left;
+}
+.layout-pop button:hover { background: var(--island-2); color: var(--text); }
+.layout-pop button.on { background: var(--island-3); color: var(--text); }
+.preset-thumb { width: 32px; height: 20px; flex: none; }
+.preset-thumb rect { fill: var(--island-3); stroke: var(--line-strong); stroke-width: 0.6; }
+.preset-thumb rect.i { fill: color-mix(in srgb, var(--accent) 35%, var(--island-2)); stroke: var(--accent); }
+.preset-thumb rect.e { fill: var(--island-2); }
+.layout-tip { margin: 4px 8px 4px; font-size: 11px; line-height: 1.4; color: var(--faint); }

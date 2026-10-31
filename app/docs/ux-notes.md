@@ -367,6 +367,14 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
 - **Live take (Oct 31):** while recording, the take draws as a red region on its track that grows with
   the playhead: the live waveform for a mic take, notes as they are played for a MIDI take (Logic and
   GarageBand both show the region growing).
+- **Movable frames (Oct 31):** Ideas, the Arrangement board and the editor area are frames on the
+  canvas, moved Miro-style by dragging their title (the editor by the empty part of its tab row).
+  While dragging, edges snap to the other frames with guide lines; dropping on a band along another
+  frame's side docks it there (a dashed preview shows where), and it then follows that frame. Escape
+  cancels. The Layout button in the zoom bar has five presets; Muse uses `set_layout`. One layout
+  for the whole app (not per project). Ideas docked above or below a frame turn into a sideways
+  strip; the editor docked beside the board grows to the board's height. Not a Logic/GarageBand
+  convention (their windows are fixed); closest is Logic's resizable main-window areas.
 
 ## Sources (layout, library, regions)
 

@@ -96,7 +96,7 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   const askRemove = (id: string) => (usage(session, id).uses.length ? setConfirm(id) : remove(id));
   return (
     <section className="ideas" aria-label="Ideas">
-      <div className="frame-title">
+      <div className="frame-title" data-frame-handle title="Drag to move Ideas">
         <b>Ideas</b> {groups.length} sound{groups.length === 1 ? '' : 's'}
         {kits.length > 0 && ` · ${kits.length} sample pad${kits.length > 1 ? 's' : ''}`}
       </div>
@@ -332,8 +332,22 @@ function MiniWave({ sourceId, version, color }: { sourceId: string; version: num
   return <canvas ref={ref} className="idea-wave" data-color={color} aria-hidden />;
 }
 
-/** Bezier wires from each idea card to the track headers of the tracks that use it. Positions
- *  are measured in the world's coordinates, so the wires scroll with the canvas. */
+/** A polyline through `pts` with its corners rounded (radius `r`, less where a leg is short). */
+function roundedPath(pts: [number, number][], r: number): string {
+  let d = `M${pts[0][0]} ${pts[0][1]}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const [px, py] = pts[i - 1], [x, y] = pts[i], [nx, ny] = pts[i + 1];
+    const a = Math.min(r, Math.hypot(x - px, y - py) / 2), b = Math.min(r, Math.hypot(nx - x, ny - y) / 2);
+    const ux = Math.sign(x - px), uy = Math.sign(y - py), vx = Math.sign(nx - x), vy = Math.sign(ny - y);
+    d += ` L${x - ux * a} ${y - uy * a} Q${x} ${y} ${x + vx * b} ${y + vy * b}`;
+  }
+  const [lx, ly] = pts[pts.length - 1];
+  return `${d} L${lx} ${ly}`;
+}
+
+/** Wires from each idea card to the track headers of the tracks that use it: a curve when Ideas
+ *  sit left of the board, else a path round the board's corner. Positions are measured in the
+ *  world's coordinates, so the wires scroll with the canvas. */
 export function IdeaWires({ session, worldRef }: { session: Session; worldRef: RefObject<HTMLDivElement | null> }) {
   const [paths, setPaths] = useState<{ d: string; color: string; x0: number; y0: number; x1: number; y1: number }[]>([]);
   useLayoutEffect(() => {
@@ -352,10 +366,33 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
         const ar = head.closest('.arrange')?.getBoundingClientRect();
         const hy = hr.top + hr.height / 2;
         const y = ar ? Math.min(ar.bottom - 6, Math.max(ar.top + 6, hy)) : hy;
-        const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
         const x1 = hr.left - wr.left, y1 = y - wr.top;
-        const dx = Math.max(30, (x1 - x0) / 2);
-        out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color: trackColor(session, i), x0, y0, x1, y1 });
+        const bc = (head.closest('[data-frame]') ?? head).getBoundingClientRect(); // the board frame
+        const color = trackColor(session, i);
+        if (cr.right <= bc.left) {
+          // Ideas left of the board: a curve from the card's right edge
+          const x0 = cr.right - wr.left, y0 = cr.top + cr.height / 2 - wr.top;
+          const dx = Math.max(30, (x1 - x0) / 2);
+          out.push({ d: `M${x0} ${y0} C${x0 + dx} ${y0} ${x1 - dx} ${y1} ${x1} ${y1}`, color, x0, y0, x1, y1 });
+          return;
+        }
+        // elsewhere (Frames.tsx): round the board's corner through the gaps, never across the lanes
+        const k = out.length % 6;
+        const gx = bc.left - wr.left - 18 - k * 4; // the gap left of the board
+        const above = cr.bottom <= bc.top, below = cr.top >= bc.bottom;
+        const cx = Math.min(cr.right - 16, Math.max(cr.left + 16, cr.left + 28 + k * 6)) - wr.left;
+        let pts: [number, number][];
+        if (above || below) {
+          const chan = (above ? bc.top - wr.top - 10 - k * 3 : bc.bottom - wr.top + 10 + k * 3);
+          pts = [[cx, (above ? cr.bottom : cr.top) - wr.top], [cx, chan], [gx, chan], [gx, y1], [x1, y1]];
+        } else {
+          // beside the board on the right: out of the card's left edge, up the gap, over the top
+          const lane = cr.left - wr.left - 28 + k * 3;
+          const y0 = cr.top + cr.height / 2 - wr.top;
+          const chan = bc.top - wr.top - 10 - k * 3;
+          pts = [[cr.left - wr.left, y0], [lane, y0], [lane, chan], [gx, chan], [gx, y1], [x1, y1]];
+        }
+        out.push({ d: roundedPath(pts, 10), color, x0: pts[0][0], y0: pts[0][1], x1, y1 });
       };
       for (const { root, versions } of ideaGroups(session)) {
         const card = world.querySelector(`[data-idea="${root}"]`);
@@ -382,10 +419,12 @@ export function IdeaWires({ session, worldRef }: { session: Session; worldRef: R
       raf = requestAnimationFrame(measure);
     };
     world.addEventListener('scroll', onScroll, true);
+    world.addEventListener('framesmoved', measure); // a frame was dragged or docked (Frames.tsx)
     const t = setTimeout(measure, 300); // the playlist lays its rows out a moment after the session changes
     return () => {
       ro.disconnect();
       world.removeEventListener('scroll', onScroll, true);
+      world.removeEventListener('framesmoved', measure);
       cancelAnimationFrame(raf);
       clearTimeout(t);
     };

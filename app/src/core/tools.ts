@@ -19,6 +19,7 @@ import { barLength } from './metronome';
 import type { Features } from './ears';
 import { SHELF_TOOLS } from './shelfTools'; // B17 sound shelves
 import { MIX_TOOLS } from './mixTools'; // B18 dry / wet
+import { FRAME_TOOLS } from './frameTools'; // movable frames
 import { shelvesLine, soundShelf, type SoundShelf } from './shelf';
 import type { Render } from './mixView';
 import type { LibraryEntry } from './library';
@@ -745,6 +746,7 @@ export const TOOLS: ToolDef[] = [
   ...EDIT_TOOLS, // B16
   ...SHELF_TOOLS, // B17
   ...MIX_TOOLS, // B18
+  ...FRAME_TOOLS, // movable frames
   ...VOICE_TOOLS, // B14
 
   // ---- user-only (UI) tools ----

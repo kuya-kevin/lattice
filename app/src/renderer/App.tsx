@@ -26,7 +26,8 @@ import { Icon } from './icons';
 import { IdeaWires, Ideas, ideaSources } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
 import { libraryBuffer } from './libraryAudio';
-import { ColumnHandles, EditorHandle, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
+import { BoardWidthHandle, EditorHandle, EditorWidthHandle, IdeasHandle, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
+import { FrameOverlay, LayoutMenu, useFrameDrag, useFrameGeometry, useFrameLayout } from './Frames'; // movable frames
 import { editShortcutFor, type EditAction } from './shortcuts';
 import { SmartControls, type EditorTab } from './SmartControls';
 import { PianoRoll } from './PianoRoll'; // [S3 midi] note editor in the editor area
@@ -146,6 +147,11 @@ export function App({ bridge }: { bridge: Bridge }) {
     },
     [bridge],
   );
+
+  // movable frames: where Ideas, the board and the editor sit (Frames.tsx)
+  const { frames, setFrames } = useFrameLayout(session, run);
+  const geo = useFrameGeometry(worldRef, pan.ref, frames, layout.sizes, !!session);
+  const frameDrag = useFrameDrag(worldRef, geo, frames, setFrames, layout.sizes);
 
   /** `keep`: how the main process finds this audio again after a restart (B11); recordings
    *  are encoded by default. */
@@ -359,14 +365,22 @@ export function App({ bridge }: { bridge: Bridge }) {
 
         {/* ─── region: the canvas (dot grid; ideas, arrangement board and device chain float on it) ─── */}
         <div className="canvas" ref={pan.ref} onPointerDown={pan.onPointerDown}>
-          <div className="world" ref={worldRef} style={layout.worldStyle}>
+          <div className="world frames" ref={worldRef} style={layout.worldStyle} onPointerDown={frameDrag.onPointerDown}>
             <IdeaWires session={session} worldRef={worldRef} />
-            <Ideas session={session} run={run} audioVersion={audioVersion} />
+            <FrameOverlay overlay={frameDrag.overlay} />
+            {/* frames: placed by Frames.tsx (drag a frame by its title; the Layout menu has presets) */}
+            <div className={`frame frame-ideas${frames.ideasShape === 'strip' ? ' ideas-strip' : ''}`} data-frame="ideas">
+              {(ideaSources(session).length > 0 || Object.keys(session.kits ?? {}).length > 0) && (
+                <>
+                  <Ideas session={session} run={run} audioVersion={audioVersion} />
+                  <IdeasHandle layout={layout} strip={frames.ideasShape === 'strip'} />
+                </>
+              )}
+            </div>
 
-            {/* split: the board and device chain share the window height (see Resizable.tsx) */}
-            <div className={`board-col${layout.sizes.boardW !== null ? ' fixed-w' : ''}${smartOpen && session.tracks.length > 0 ? ' split' : ''}`}>
-              <ColumnHandles layout={layout} ideas={ideaSources(session).length > 0} />
-              <div className="frame-title">
+            <div className={`board-col frame${layout.sizes.boardW !== null ? ' fixed-w' : ''}${session.tracks.length > 0 ? ' split' : ''}`} data-frame="board">
+              <BoardWidthHandle layout={layout} />
+              <div className="frame-title" data-frame-handle title="Drag to move the arrangement">
                 <b>Arrangement</b>
                 {session.tempo} BPM · {session.timeSignature.join('/')}{session.key ? ` · ${session.key}` : ''}
               </div>
@@ -418,16 +432,20 @@ export function App({ bridge }: { bridge: Bridge }) {
                 {/* ─── end region: tracks area ─── */}
               </section>
 
-              {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
-              {smartOpen && session.tracks.length > 0 && <SplitHandle layout={layout} />}
-              {smartOpen && session.tracks.length > 0 && (
+              {session.tracks.length > 0 && <SplitHandle layout={layout} />}
+            </div>
+
+            {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
+            {smartOpen && session.tracks.length > 0 && (
+              <div className="frame frame-editor" data-frame="editor">
+                <EditorWidthHandle layout={layout} />
                 <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} regionKind={selClip && !selClip.midi ? 'audio' : 'midi'} pianoRoll={selClip && !selClip.midi ? <AudioEditor session={session} run={run} bridge={bridge} /> : <PianoRoll session={session} run={run} bridge={bridge} />} mixer={<Mixer session={session} run={run} />}>
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
                 </SmartControls>
-              )}
-              {smartOpen && session.tracks.length > 0 && editorTab !== 'fx' && <EditorHandle layout={layout} />}
-              {/* ─── end region: Smart Controls ─── */}
-            </div>
+                {editorTab !== 'fx' && <EditorHandle layout={layout} />}
+              </div>
+            )}
+            {/* ─── end region: Smart Controls ─── */}
           </div>
         </div>
         {/* ─── end region: canvas ─── */}
@@ -466,7 +484,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
         </nav>
-        <ZoomBar run={run} bridge={bridge} />
+        <ZoomBar run={run} bridge={bridge} layoutMenu={<LayoutMenu frames={frames} setFrames={setFrames} />} />
         <MusicalTypingKeyboard session={session} run={run} onLibraryToPad={libraryToPad} onFilesToPad={filesToPad} />
         <SoundMenu session={session} run={run} /> {/* B17: right-click a region or track to export it as a sound */}
         <Notice /> {/* B17: where an exported sound went */}
@@ -478,12 +496,14 @@ export function App({ bridge }: { bridge: Bridge }) {
 
 /** Bottom-right island: undo / redo and the window zoom (Electron page zoom: everything on the
  *  canvas and the floating chrome scales together, like ⌘+ / ⌘− in the View menu). */
-function ZoomBar({ run, bridge }: { run: Run; bridge: Bridge }) {
+function ZoomBar({ run, bridge, layoutMenu }: { run: Run; bridge: Bridge; layoutMenu: ReactNode }) {
   const zoom = useWindowZoom(bridge);
   return (
     <div className="zoombar island" role="toolbar" aria-label="Edit and zoom">
       <button className="ibtn" title="Undo (⌘Z)" aria-label="Undo" onClick={() => run('undo')}><Icon name="undo" /></button>
       <button className="ibtn" title="Redo (⇧⌘Z)" aria-label="Redo" onClick={() => run('redo')}><Icon name="redo" /></button>
+      <span className="sep" />
+      {layoutMenu}
       {zoom && (
         <>
           <span className="sep" />

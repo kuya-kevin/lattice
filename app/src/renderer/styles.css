@@ -574,8 +574,7 @@ button.link { background: none; border: 0; padding: 0; color: var(--accent); }
 .rz.active::after { opacity: 0.7; }
 .rz-x { top: 0; bottom: 0; width: 24px; cursor: col-resize; }
 .rz-x::after { left: 11px; width: 2px; top: 36px; bottom: 12px; }
-.rz-ideas { left: -40px; }      /* centred in the 56px gap between the Ideas column and the board */
-.rz-board-w { right: -18px; }
+/* (frame width handles sit on each frame's right edge: Frames.css .rz-frame-w) */
 .rz-y { position: relative; flex: none; height: 28px; cursor: row-resize; }
 .rz-y::after { left: 30%; right: 30%; height: 2px; top: 13px; }
 html.rz-drag-x, html.rz-drag-x * { cursor: col-resize !important; user-select: none; }
