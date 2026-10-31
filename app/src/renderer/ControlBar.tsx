@@ -16,6 +16,7 @@ import { Icon } from './icons';
 import { SHORTCUTS, shortcutFor, type ShortcutAction } from './shortcuts';
 import { musicalTyping } from './MusicalTyping';
 import { VersionsMenu } from './Versions'; // B11
+import { ProjectMenu } from './ProjectMenu'; // Oct 30
 import { DryWetToggle, StemsButton } from './MixControls'; // B18 dry / wet, stems
 import './ControlBar.css'; // Oct 29: the bar fits again with Versions, Dry and Stems
 import { setRecordingActive } from './pushToTalk'; // B2
@@ -110,11 +111,7 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
   // Floating islands over the canvas: session pill (left), transport + LCD (centre), file actions (right).
   return (
     <div className="controlbar" role="toolbar" aria-label="Transport">
-      <div className="island pill session-pill">
-        <span className="logo" aria-hidden><Icon name="spark" size={14} /></span>
-        <b>Lattice</b>
-        <small>{session.tracks.length ? `${session.tracks.length} track${session.tracks.length > 1 ? 's' : ''}` : 'new session'}</small>
-      </div>
+      <ProjectMenu session={session} run={run} /> {/* Oct 30: the Lattice pill opens the project menu */}
 
       <div className="island transport">
         <div className="group">

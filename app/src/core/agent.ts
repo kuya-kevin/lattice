@@ -71,6 +71,11 @@ export class MuseAgent {
     private maxSteps = MAX_STEPS,
   ) {}
 
+  /** Oct 30: forget the conversation (another project was opened). */
+  reset(): void {
+    this.history.length = 1;
+  }
+
   async send(text: string): Promise<TurnResult> {
     autoVersion(this.ctx, `Before Muse: "${shorten(text)}"`); // B11: so "go back to before X" works
     try {

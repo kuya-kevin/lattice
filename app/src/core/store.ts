@@ -38,6 +38,14 @@ export class SessionStore {
     return () => this.listeners.delete(fn);
   }
 
+  /** Oct 30: another project's session: no undo back into the one left, no edits carried over. */
+  replace(next: Session): void {
+    this.past = [];
+    this.future = [];
+    this.userEdits = [];
+    this.set(next);
+  }
+
   logUserEdit(text: string): void {
     this.userEdits.push(text);
   }

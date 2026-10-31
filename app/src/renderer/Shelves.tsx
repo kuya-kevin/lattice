@@ -261,7 +261,7 @@ export function SoundMenu({ session, run }: { session: Session; run: Run }) {
 }
 
 // ---- what an export did, said where the user looks (the Export Sound button, the region menu) ----
-type NoticeMsg = { text: string; showShelf?: ShelfName; rename?: string };
+type NoticeMsg = { text: string; showShelf?: ShelfName; rename?: string; actions?: { label: string; onClick: () => void }[] };
 const NOTICE = 'lattice-notice';
 const SHOW_SHELF = 'lattice-show-shelf';
 const RENAME = 'lattice-rename-shelf-sound';
@@ -272,6 +272,9 @@ function renameOnShelf(id: string) {
   pendingRename = id;
   window.dispatchEvent(new CustomEvent(RENAME, { detail: id }));
 }
+
+/** Oct 30: say something in the notice; with `actions` (buttons) it stays up longer. */
+export const notify = (msg: NoticeMsg) => window.dispatchEvent(new CustomEvent(NOTICE, { detail: msg }));
 
 /** Run export_sound and say where the sound went (or why it didn't). */
 export async function exportSound(run: Run, args: Record<string, unknown>) {
@@ -313,9 +316,10 @@ export function Notice() {
   useEffect(() => {
     let timer: ReturnType<typeof setTimeout> | undefined;
     const h = (e: Event) => {
-      setMsg((e as CustomEvent<NoticeMsg>).detail);
+      const m = (e as CustomEvent<NoticeMsg>).detail;
+      setMsg(m);
       clearTimeout(timer);
-      timer = setTimeout(() => setMsg(null), 4000);
+      timer = setTimeout(() => setMsg(null), m.actions?.length ? 15000 : 4000);
     };
     window.addEventListener(NOTICE, h);
     return () => {
@@ -333,6 +337,9 @@ export function Notice() {
       {msg.rename && (
         <button onClick={() => { renameOnShelf(msg.rename!); showShelf(msg.showShelf ?? 'mine'); setMsg(null); }}>Rename</button>
       )}
+      {msg.actions?.map((a) => (
+        <button key={a.label} onClick={() => { setMsg(null); a.onClick(); }}>{a.label}</button>
+      ))}
     </div>
   );
 }

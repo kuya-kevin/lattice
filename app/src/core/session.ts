@@ -630,13 +630,14 @@ export function sessionEnd(s: Session): number {
 }
 
 /** Compact text view of the session for Muse (it can't see the screen or hear audio). */
-export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string; shelves?: string } = {}): string {
-  const extra = [mixViewLine(s), opts.shelves ?? ''].filter(Boolean).map((l) => `\n${l}`).join(''); // B18, B17
+export function summarize(s: Session, opts: { savedChains?: string[]; versions?: string; shelves?: string; project?: string; setups?: string } = {}): string {
+  const extra = [mixViewLine(s), opts.shelves ?? '', opts.setups ?? ''].filter(Boolean).map((l) => `\n${l}`).join(''); // B18, B17
   const saved = opts.savedChains?.length ? `\nSaved chains: ${opts.savedChains.map((n) => JSON.stringify(n)).join(', ')} (load_chain puts one on a track).` : '';
   const versions = opts.versions ? `\nVersions: ${opts.versions}` : '';
   const kits = describeKits(s);
   const voice = voiceLine(s) ? `\n${voiceLine(s)}` : ''; // B14
-  return summarizeSession(s) + (kits ? `\n${kits}` : '') + saved + versions + extra + voice;
+  const project = opts.project ? `\n${opts.project}` : ''; // Oct 30
+  return summarizeSession(s) + (kits ? `\n${kits}` : '') + project + saved + versions + extra + voice;
 }
 
 function summarizeSession(s: Session): string {

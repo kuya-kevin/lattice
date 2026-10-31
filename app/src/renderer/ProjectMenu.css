@@ -1,0 +1,38 @@
+/* Oct 30: the project menu under the Lattice pill (ProjectMenu.tsx). Tokens from styles.css. */
+.project-menu-wrap { position: relative; }
+button.session-pill { font: inherit; color: var(--text); cursor: pointer; }
+button.session-pill:hover:not(:disabled) { background: var(--island-2); }
+.session-pill small { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.session-pill .caret { color: var(--faint); font-size: 10px; margin-right: -4px; }
+.project-menu {
+  position: absolute; left: 0; top: calc(100% + 8px); width: 340px; padding: 12px; z-index: 30;
+  display: flex; flex-direction: column; gap: 8px; max-height: calc(100vh - 100px); overflow-y: auto;
+}
+.project-menu h4 { margin: 6px 0 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--faint); }
+.pm-current { display: flex; align-items: baseline; gap: 10px; min-height: 30px; }
+.pm-current b { flex: 1; min-width: 0; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-current form { display: flex; gap: 6px; flex: 1; }
+.pm-current input { flex: 1; min-width: 0; height: 30px; padding: 0 12px; border-radius: 999px; }
+.pm-current form button { height: 30px; padding: 0 12px; border-radius: 999px; }
+.pm-actions { display: flex; gap: 6px; }
+.pm-actions button { flex: 1; height: 32px; border-radius: 999px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.pm-actions kbd { font: 11px var(--font-data); color: var(--faint); }
+.pm-error { color: var(--rec); font-size: 11px; }
+.pm-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+.pm-empty { color: var(--muted); font-size: 12px; padding: 4px 6px; line-height: 1.4; }
+.pm-row { display: flex; align-items: center; gap: 4px; border-radius: var(--r-ctl); }
+.pm-row:hover { background: var(--island-3); }
+.pm-open { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; padding: 5px 8px; background: none; border: 0; text-align: left; }
+.pm-open:hover:not(:disabled) { background: none; }
+.pm-open span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pm-open small, .pm-setup small { color: var(--faint); font: 11px var(--font-data); }
+.pm-del { height: 24px; min-width: 24px; padding: 0 6px; border-radius: 999px; background: none; border: 0; color: var(--faint); opacity: 0; }
+.pm-row:hover .pm-del, .pm-del:focus-visible, .pm-del.sure { opacity: 1; }
+.pm-del.sure { color: var(--rec); border: 1px solid var(--rec); font-size: 11px; }
+.pm-setup { display: flex; flex-direction: column; gap: 4px; padding: 6px 8px; border-radius: var(--r-ctl); background: var(--island-2); }
+.pm-setup .pm-setup-tracks { font-family: inherit; font-size: 12px; color: var(--muted); line-height: 1.4; }
+.pm-setup-actions { display: flex; align-items: center; gap: 10px; }
+.pm-setup-actions button:not(.link) { height: 26px; padding: 0 12px; border-radius: 999px; font-size: 12px; }
+.pm-setup-actions .link { font-size: 12px; }
+/* a notice that asks something (the vocal setup) wraps instead of running off screen */
+.notice { max-width: min(760px, calc(100vw - 32px)); }

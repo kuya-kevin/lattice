@@ -38,10 +38,10 @@ test('library: browse, search, filter, preview, credit and drag onto the timelin
 
   // search + chips
   await lib.getByPlaceholder('Search sounds').fill('fixture');
-  await expect(page.getByTestId('lib-list').locator('.lib-row')).toHaveCount(6);
+  await expect(page.getByTestId('lib-list').locator('.lib-row')).toHaveCount(4); // Oct 30: the Material set is hidden (b231c6f)
   await lib.getByRole('button', { name: 'Drums' }).click();
   await lib.getByRole('button', { name: 'CC0 only' }).click();
-  await expect(page.getByTestId('lib-list').locator('.lib-row')).toHaveCount(2);
+  await expect(page.getByTestId('lib-list').locator('.lib-row')).toHaveCount(1); // the hat (the CC0 drum loop was Material)
   await lib.getByRole('button', { name: 'Reset' }).click();
 
   // click to preview; CC-BY sounds show their credit line

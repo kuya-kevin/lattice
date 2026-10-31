@@ -92,3 +92,33 @@ Follow-up (Oct 30, late):
   tsc clean; e2e region-instrument.spec.ts (3, new) plus ideas-flow, shelves, drum-pad, fill-kit,
   musical-typing, piano-roll, note-selection, record-timing, oct30-bugs, key (42 pass);
   electron-shelves (2) after a build. Spend $0.
+
+Projects and the vocal setup (Oct 30, night; covers the B23 demo, with a vocal setup instead of name-pan):
+- Several projects. The Lattice pill (top left) opens a menu: rename, **Save (⌘S)**, **New Project**,
+  the other projects (newest opened first; × then "Delete?" deletes one), and "Your setups".
+  Each project has its own session, versions and audio: `userData/project/` stays the first one,
+  new ones go in `userData/projects/p<n>/`, the list is `userData/projects.json`. Shelves, chains
+  and setups span projects. Opening a project clears undo and Muse's conversation; ids never
+  repeat across projects. Tools: `list_projects` (Muse can read it), `new_project`, `open_project`,
+  `rename_project`, `delete_project`, `save_project` (user only). Web build: in memory.
+- Learning happens on Save. `save_project` saves a named version, and if the project has vocal
+  tracks (by name: Vocal, Vox, BGV, Double...) set up by hand (two or more, or one with effects)
+  that differ from the saved one, the notice asks "Keep this as your vocal setup?". Saving it
+  (`save_setup`) keeps each track's name, level and whole chain (pan is the Utility knob), in
+  `userData/setups.json`, and the first chain as "Vocal chain" for Load chain.
+- In another project, a vocal track with no effects gets "Use your vocal setup here?". Use it
+  (`apply_setup`, one undo step) puts the chain on that track and makes the other tracks (Vocal L,
+  Vocal R). Muse sees the setups in its summary and can `apply_setup` / `save_setup` ("remember
+  this as my vocal setup"); "Add to project" and "Forget" are in the menu too.
+- Not done: the Versions menu's old "New session" button is still there (it empties the project
+  into a version; New Project is the new way). The name-pan and vocab-correction rules from
+  docs/learn-from-edits.md are not built; this replaces the demo there.
+- Check it (Electron, `npm run dev`): 1. Pill → Rename "Demo song". 2. Add tracks Vocal, Vocal L,
+  Vocal R; put an EQ on each and a Utility with Pan −0.40 / +0.40 on L / R. 3. ⌘S → "Save vocal
+  setup". 4. Pill → New Project, import or add a track named "Vox" → "Use it". 5. Pill → Demo song.
+  6. Quit and relaunch: the last project opens; the other is in the pill's list.
+- Also fixed: e2e/arrange.spec.ts still counted the hidden Material set (since b231c6f).
+- Tests: vitest 408 (new: projects.test.ts, 10), tsc clean; web e2e all 37 specs (121 tests) pass,
+  incl. projects.spec.ts (new); Electron: electron-projects.spec.ts (new, relaunch), electron.spec,
+  electron-shelves pass after a build (the trim-drag test failed once in the full run, passed 3/3
+  alone). Spend $0.

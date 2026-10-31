@@ -9,6 +9,8 @@ import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
 import { MemoryVersionLibrary } from '../core/versions';
+import { MemoryProjectLibrary } from '../core/projects'; // Oct 30
+import { MemorySetupLibrary } from '../core/setups'; // Oct 30
 import { MemorySoundShelf } from '../core/shelf'; // B17
 import type { LibraryEntry } from '../core/library';
 
@@ -87,13 +89,17 @@ export function createMockBridge(): Bridge {
     return r.arrayBuffer();
   };
   const copy = (b: Uint8Array) => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+  const versions = new MemoryVersionLibrary(); // B11: kept for the page's lifetime (no autosave in the browser build)
   const ctx: ToolContext = {
     measureTrack: (s, trackId) => (measurer ? measurer(s, trackId) : Promise.reject(new Error('the page has not loaded yet'))),
     store,
     sidecar,
     searchFreesound: async () => ({ count: 0, results: [] }),
     chains: new MemoryChainLibrary(), // B10: kept for the page's lifetime only
-    versions: new MemoryVersionLibrary(), // B11: same (no autosave in the browser build)
+    versions,
+    projects: new MemoryProjectLibrary(versions), // Oct 30: same
+    projectOpened: () => agent.reset(),
+    setups: new MemorySetupLibrary(), // Oct 30: same
     shelf,
     render: (s, job) => (renderer ? renderer(s, job) : Promise.reject(new Error('the page has not loaded yet'))),
     adoptAudio: (id, ref) => void adopted.set(id, ref),

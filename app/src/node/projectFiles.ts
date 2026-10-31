@@ -1,10 +1,14 @@
-// The current project on disk (B11), under the app's userData folder:
+// Projects on disk (B11; several since Oct 30), under the app's userData folder:
+//   projects.json        the project list (names, times) and which one is open
+//   project/             the first project (where B11 kept the only one), then projects/p<n>/
+// and in each project's folder:
 //   session.json         autosave of the open session (debounced after each change)
 //   versions/            index.json (names, times) + one v<n>.json per version
 //   audio/refs.json      where each source's audio is: the imported file's path, a library id,
 //   audio/<id>.audio     or (recordings, files without a path) the encoded audio kept here
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { ProjectIndex, type ProjectMeta } from '../core/projects';
 import type { Session } from '../core/session';
 import type { SessionStore } from '../core/store';
 import type { Version, VersionLibrary, VersionMeta } from '../core/versions';
@@ -62,12 +66,15 @@ export function loadAutosave(file: string): Session | null {
   return { ...s, transport: { ...s.transport, playing: false, command: 'stop' } };
 }
 
-/** Writes the store's session to `file` once edits have settled for `delayMs`. */
+const writeSession = (file: string, session: Session) => writeJson(file, { version: 1, savedAt: new Date().toISOString(), session });
+
+/** Writes the store's session to `file` (or the open project's, a function) once edits have
+ *  settled for `delayMs`. */
 export class SessionAutosave {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private unsubscribe: () => void;
 
-  constructor(private file: string, private store: SessionStore, private delayMs = 500) {
+  constructor(private file: string | (() => string), private store: SessionStore, private delayMs = 500) {
     this.unsubscribe = store.subscribe(() => {
       clearTimeout(this.timer);
       this.timer = setTimeout(() => this.flush(), this.delayMs);
@@ -77,13 +84,59 @@ export class SessionAutosave {
   flush() {
     clearTimeout(this.timer);
     this.timer = undefined;
-    writeJson(this.file, { version: 1, savedAt: new Date().toISOString(), session: this.store.get() });
+    writeSession(typeof this.file === 'string' ? this.file : this.file(), this.store.get());
   }
 
   /** Stop watching; writes a pending change first. */
   dispose() {
     if (this.timer) this.flush();
     this.unsubscribe();
+  }
+}
+
+/** Oct 30: every project, each in its own folder under `root` (userData). The first one is
+ *  `project/`, where the single project lived before, so an existing one opens as "Untitled". */
+export class FileProjectLibrary extends ProjectIndex {
+  private dirs: Record<string, string> = {}; // id -> folder, relative to root
+  private versionLibs = new Map<string, FileVersionLibrary>();
+
+  constructor(private root: string) {
+    super();
+    const saved = readJson<{ current: string; projects: (ProjectMeta & { dir: string })[] }>(join(root, 'projects.json'), 'projects');
+    if (saved?.projects?.length && saved.projects.some((p) => p.id === saved.current)) {
+      this.projects = saved.projects.map(({ dir, ...p }) => ((this.dirs[p.id] = dir), p));
+      this.currentId = saved.current;
+    } else {
+      this.start();
+      this.dirs.p1 = 'project';
+      this.persist();
+    }
+  }
+
+  /** The open project's folder. */
+  dir(id = this.currentId) {
+    return join(this.root, this.dirs[id] ?? `projects/${id}`);
+  }
+
+  protected keepSession(id: string, s: Session) {
+    writeSession(join(this.dir(id), 'session.json'), s);
+  }
+  protected loadSession(id: string) {
+    return loadAutosave(join(this.dir(id), 'session.json'));
+  }
+  protected versionsOf(id: string) {
+    let v = this.versionLibs.get(id);
+    if (!v) this.versionLibs.set(id, (v = new FileVersionLibrary(join(this.dir(id), 'versions'))));
+    return v;
+  }
+  protected dropFiles(id: string) {
+    rmSync(this.dir(id), { recursive: true, force: true });
+    this.versionLibs.delete(id);
+    delete this.dirs[id];
+  }
+  protected persist() {
+    for (const p of this.projects) this.dirs[p.id] ??= `projects/${p.id}`;
+    writeJson(join(this.root, 'projects.json'), { version: 1, current: this.currentId, projects: this.projects.map((p) => ({ ...p, dir: this.dirs[p.id] })) });
   }
 }
 

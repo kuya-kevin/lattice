@@ -11,7 +11,8 @@ import { runTool, type ToolContext } from '../src/core/tools';
 import { FileChainLibrary } from '../src/node/chainFile';
 import { FileSoundShelf } from '../src/node/shelfFile'; // B17
 import type { RenderJob, RenderOut } from '../src/core/mixView'; // B17/B18
-import { FileVersionLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
+import { FileProjectLibrary, loadAutosave, SessionAutosave, SourceAudioFiles } from '../src/node/projectFiles';
+import { FileSetupLibrary } from '../src/node/setupFile'; // Oct 30
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
@@ -25,7 +26,8 @@ const appDir = app.getAppPath(); // .../lattice/app
 loadEnv(resolve(appDir, '..', '.env'));
 // tests point this at a fresh folder so each launch starts clean
 if (process.env.LATTICE_USER_DATA) app.setPath('userData', resolve(process.env.LATTICE_USER_DATA));
-const projectDir = join(app.getPath('userData'), 'project'); // B11: autosave, versions, audio refs
+// B11: autosave, versions, audio refs, per project (Oct 30: several, listed in projects.json)
+const projects = new FileProjectLibrary(app.getPath('userData'));
 
 // [S3 midi] extract_midi, (B3) cleanup_noise / quantize_drums and (B13) slice_drums / find_sound run the Python sidecar as a
 // child process; the synth and MRT2 methods are still stubs. Processed audio is kept under its
@@ -58,10 +60,10 @@ ipcMain.handle('source:put', (_e, id: string, bytes: Uint8Array) => {
 });
 
 // B11: the open session comes back on launch and is written after each change
-const store = new SessionStore(loadAutosave(join(projectDir, 'session.json')) ?? undefined);
-const autosave = new SessionAutosave(join(projectDir, 'session.json'), store);
+const store = new SessionStore(loadAutosave(join(projects.dir(), 'session.json')) ?? undefined);
+const autosave = new SessionAutosave(() => join(projects.dir(), 'session.json'), store);
 app.on('before-quit', () => autosave.dispose());
-const sourceAudio = new SourceAudioFiles(join(projectDir, 'audio'));
+let sourceAudio = new SourceAudioFiles(join(projects.dir(), 'audio')); // the open project's
 
 const ctx: ToolContext = {
   store,
@@ -72,7 +74,13 @@ const ctx: ToolContext = {
     return searchFreesound(token, q, f, n);
   },
   chains: new FileChainLibrary(join(app.getPath('userData'), 'chains.json')), // B10
-  versions: new FileVersionLibrary(join(projectDir, 'versions')), // B11
+  versions: projects.versions(), // B11
+  projects, // Oct 30
+  projectOpened: () => {
+    sourceAudio = new SourceAudioFiles(join(projects.dir(), 'audio'));
+    agent?.reset(); // a new conversation per project
+  },
+  setups: new FileSetupLibrary(join(app.getPath('userData'), 'setups.json')), // Oct 30: span projects
   measureTrack: (session, trackId) => askRenderer(session, trackId), // B9
   // B17: the shelves span projects, so they sit beside chains.json, not in project/
   shelf: new FileSoundShelf(join(app.getPath('userData'), 'shelf')),

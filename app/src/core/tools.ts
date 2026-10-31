@@ -12,6 +12,8 @@ import { KIT_TOOLS } from './kitTools'; // B12 drum pads
 import { VOICE_TOOLS } from './voiceTools'; // B14 spoken replies
 import { chainLibrary, type ChainLibrary } from '../fx/savedChains';
 import { VERSION_TOOLS, versionsLine, type VersionLibrary } from './versions';
+import { PROJECT_TOOLS, projectLine, type ProjectLibrary } from './projects'; // Oct 30 projects
+import { SETUP_TOOLS, setupsLine, type SetupLibrary } from './setups'; // Oct 30 setups
 import { EDIT_TOOLS, timeArg } from './editTools'; // B16 arrange/mix/track/edit tools
 import { barLength } from './metronome';
 import type { Features } from './ears';
@@ -51,11 +53,23 @@ export interface ToolContext {
   listLibrary?: () => Promise<LibraryEntry[]>;
   /** B18: save stems where the user chooses (null = cancelled) */
   saveFiles?: (files: { set: string; name: string; bytes: Uint8Array }[], folderName: string) => Promise<{ savedTo: string; files: string[] } | null>;
+  /** Oct 30: the user's projects; one in memory if omitted */
+  projects?: ProjectLibrary;
+  /** Oct 30: called after another project is opened or made (rebind its audio, start Muse afresh) */
+  projectOpened?: () => void;
+  /** Oct 30: the producer's setups (span projects); in memory if omitted */
+  setups?: SetupLibrary;
 }
 
 /** The session summary Muse sees, with saved chains and versions. */
 export function museSummary(ctx: ToolContext): string {
-  return S.summarize(ctx.store.get(), { savedChains: chainLibrary(ctx).list().map((c) => c.name), versions: versionsLine(ctx), shelves: shelvesLine(soundShelf(ctx)) });
+  return S.summarize(ctx.store.get(), {
+    savedChains: chainLibrary(ctx).list().map((c) => c.name),
+    versions: versionsLine(ctx),
+    shelves: shelvesLine(soundShelf(ctx)),
+    project: projectLine(ctx),
+    setups: setupsLine(ctx),
+  });
 }
 
 export interface ToolDef {
@@ -726,6 +740,8 @@ export const TOOLS: ToolDef[] = [
   ...MIDI_TOOLS,
   ...KIT_TOOLS,
   ...VERSION_TOOLS, // B11
+  ...PROJECT_TOOLS, // Oct 30
+  ...SETUP_TOOLS, // Oct 30
   ...EDIT_TOOLS, // B16
   ...SHELF_TOOLS, // B17
   ...MIX_TOOLS, // B18

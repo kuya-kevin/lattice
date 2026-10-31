@@ -51,6 +51,12 @@ function loadPromptHidden(): boolean {
 
 export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, resumePlayback, voiceOn = false }: Props) {
   const [entries, setEntries] = useState<Entry[]>([]);
+  // Oct 30: each project starts a new conversation with Muse (main forgets it too)
+  useEffect(() => {
+    const clear = () => setEntries([]);
+    window.addEventListener('lattice-project-opened', clear); // ProjectMenu's PROJECT_OPENED
+    return () => window.removeEventListener('lattice-project-opened', clear);
+  }, []);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
   const [promptHidden, setPromptHidden] = useState(loadPromptHidden);
