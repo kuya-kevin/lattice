@@ -2,3 +2,18 @@
    top (Arrange.tsx pins it with a transform; sticky can't, it sits in a horizontal scroller). */
 [data-lt-ruler], [data-lt-ruler-corner] { position: relative; z-index: 6; background: var(--island); }
 [data-lt-ruler][data-lt-pinned], [data-lt-ruler-corner][data-lt-pinned] { box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.6); }
+
+/* The take being recorded (liveTake.ts) shows red, like a recording region in Logic: the
+   playlist's own mic preview, and our MIDI take region drawn in the same shape as a region. */
+[data-track-row] [data-clip-container][data-lt-recording] { --region-color: var(--rec); }
+.live-take { --region-color: var(--rec); position: absolute; top: 0; bottom: 0; display: flex; flex-direction: column; pointer-events: none; z-index: 2; }
+.live-take-head {
+  height: 20px; flex: none; padding-left: 8px; font-size: 11px; font-weight: 600; line-height: 20px; white-space: nowrap; overflow: hidden;
+  color: var(--text); background: color-mix(in srgb, var(--region-color) 30%, var(--island));
+  border: 1px solid color-mix(in srgb, var(--region-color) 55%, transparent); border-bottom: 0; border-radius: 9px 9px 0 0;
+}
+.live-take-body {
+  position: relative; flex: 1; background: color-mix(in srgb, var(--region-color) 10%, #3b3e47);
+  border: 1px solid color-mix(in srgb, var(--region-color) 55%, transparent); border-top: 0; border-radius: 0 0 9px 9px;
+}
+.live-take-body .lt-notes { fill: color-mix(in srgb, var(--region-color) 70%, #fff); }

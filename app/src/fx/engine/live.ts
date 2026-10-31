@@ -76,6 +76,15 @@ export function trackMeters(trackId: string): Record<string, Record<string, numb
   return h ? h.meters() : {};
 }
 
+/** A track's output level as heard (after its fader, pan, mute and effects): peak dBFS per
+ *  channel over the last few ms, or null while the track has no live chain. */
+export function trackLevels(trackId: string): number[] | null {
+  const set = hosts.get(trackId);
+  if (!set?.size) return null;
+  // a track can have more than one live host (the playlist rebuilds it); the one playing is loudest
+  return [...set].map((h) => h.levels()).reduce((a, b) => a.map((v, i) => Math.max(v, b[i])));
+}
+
 export function trackLatency(trackId: string): number {
   const h = hosts.get(trackId)?.values().next().value;
   return h ? h.latency() : 0;

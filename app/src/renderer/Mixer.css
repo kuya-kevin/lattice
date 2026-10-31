@@ -1,0 +1,58 @@
+/* The mixer (Mixer.tsx): channel strips side by side, scrolling sideways when they don't fit. */
+.mixer { display: flex; gap: 6px; overflow-x: auto; padding: 2px 2px 8px; height: var(--editor-h, 320px); min-height: 260px; box-sizing: border-box; }
+.strip {
+  flex: none; width: 84px; display: flex; flex-direction: column; align-items: center; gap: 8px;
+  padding: 10px 6px 6px; border-radius: var(--r-card); background: var(--island-2); border: 1px solid var(--line);
+}
+.strip.selected { background: var(--island-3); border-color: color-mix(in srgb, var(--accent) 60%, transparent); }
+.strip.muted .strip-name { opacity: 0.5; }
+
+.pan { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.pan-knob {
+  position: relative; width: 30px; height: 30px; border-radius: 50%; cursor: ns-resize; touch-action: none;
+  background: radial-gradient(circle at 50% 35%, #3a3e47, #23262c); border: 1px solid var(--line-strong);
+}
+.pan-knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.pan-pointer { position: absolute; inset: 0; }
+.pan-pointer::after { content: ''; position: absolute; left: 50%; top: 3px; width: 2px; height: 9px; margin-left: -1px; border-radius: 1px; background: var(--text); }
+.pan-text { font: 10px var(--font-data); color: var(--muted); }
+
+.strip-readouts { display: flex; gap: 4px; width: 100%; }
+.strip-readouts > * {
+  flex: 1; min-width: 0; padding: 2px 0; border-radius: 5px; text-align: center; font: 10.5px var(--font-data);
+  background: var(--island); border: 1px solid var(--line); color: var(--text);
+}
+.strip-peak { cursor: pointer; color: var(--muted); }
+.strip-peak.over { color: #fff; background: var(--rec); border-color: transparent; }
+
+/* fader | scale | meter share one height and one dB scale */
+.strip-fader-area { flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; gap: 2px; padding: 6px 0; }
+/* a vertical fader (min at the bottom), its cap a short bar like a console fader; beats the
+   global thin-slider rules in styles.css */
+input[type='range'].fader { writing-mode: vertical-lr; direction: rtl; flex: none; width: 24px; min-width: 0; height: 100%; margin: 0; cursor: ns-resize; }
+input[type='range'].fader::-webkit-slider-runnable-track { width: 4px; height: 100%; border-radius: 2px; background: var(--line-strong); }
+input[type='range'].fader::-webkit-slider-thumb {
+  width: 22px; height: 12px; margin: 0 0 0 -9px; border-radius: 3px;
+  background: linear-gradient(#d8dbe2, #9ea3ad); box-shadow: 0 0 0 2px var(--island), inset 0 -1px 0 rgba(0, 0, 0, 0.3);
+  border-bottom: 2px solid var(--track-color);
+}
+.strip-scale { position: relative; width: 18px; font: 8.5px var(--font-data); color: var(--faint); }
+.strip-scale span { position: absolute; right: 0; transform: translateY(50%); line-height: 1; }
+.meter { display: flex; gap: 2px; height: 100%; }
+.meter-ch {
+  position: relative; width: 5px; height: 100%; border-radius: 2px; overflow: hidden;
+  /* green up to -12 dB, yellow to 0, red above (positions on the -60..+12 scale) */
+  background: linear-gradient(to top, #4fd18b 0%, #4fd18b 66.7%, #f2c14e 66.7%, #f2c14e 83.3%, var(--rec) 83.3%);
+}
+/* the unlit part of the meter, covering it from the top down to the level */
+.meter-off { position: absolute; left: 0; right: 0; top: 0; background: var(--island); }
+
+.strip-ms { display: flex; gap: 4px; }
+.strip-ms .ms { width: 26px; height: 20px; padding: 0; font-size: 11px; font-weight: 700; border-radius: 5px; }
+.strip-ms .ms.on.mute { background: var(--mute); border-color: transparent; color: #071326; }
+.strip-ms .ms.on.solo { background: var(--solo); border-color: transparent; color: #2a1f00; }
+.strip-name {
+  width: 100%; padding: 3px 4px; border-radius: 5px; text-align: center; font-size: 11px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  background: color-mix(in srgb, var(--track-color) 70%, #000); color: #fff;
+}

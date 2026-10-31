@@ -24,6 +24,7 @@ const P: Record<string, ReactElement> = {
   close: <path d="M6 6l12 12M18 6L6 18" />,
   chev: <path d="M6 9l6 6 6-6" />,
   roll: <><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M7 9h4M10 13h5M13 17h4" /></>,
+  mixer: <><path d="M6 4v16M12 4v16M18 4v16" /><path d="M4 14h4M10 8h4M16 12h4" /></>,
   keys: <><rect x="3" y="6" width="18" height="12" rx="2" /><path d="M8 6v7M12 6v7M16 6v7" /></>,
 };
 

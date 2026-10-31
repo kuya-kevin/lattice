@@ -360,6 +360,14 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
 - **Library:** double-click a sound to add it to Ideas (as its +); an Ideas card's "Add to track…" puts
   the sound on a track (or a new one) at the playhead.
 
+- **Mixer (X, Oct 31):** a third editor-area tab with a channel strip per track, side by side: pan
+  knob, volume fader with a post-fader peak meter (L/R, held peak readout, click to reset), M/S, name in
+  the track colour. The fader is the track volume (same as the track-header slider, `set_gain`); the pan
+  knob is the track's Utility Pan knob (`set_pan`, the tool Muse pans with). Alt-click resets either.
+- **Live take (Oct 31):** while recording, the take draws as a red region on its track that grows with
+  the playhead: the live waveform for a mic take, notes as they are played for a MIDI take (Logic and
+  GarageBand both show the region growing).
+
 ## Sources (layout, library, regions)
 
 - Logic Pro for Mac, Loop Browser (keyword buttons; click to preview; drag to a track or to an empty part of the Tracks area for a new track): https://support.apple.com/en-ng/guide/logicpro/lgcp4b716bce/mac and https://help.apple.com/logicpro/mac/10.1/en.lproj/lgcp4b716bce.html
@@ -368,4 +376,4 @@ kind (Logic: Audio Track Editor). It is for lining a vocal up to the grid and tr
 - Logic Pro 9 manual, snapping region edits; regions move horizontally and vertically between tracks: https://help.apple.com/logicpro/mac/9.1.6/en/logicpro/usermanual/chapter_13_section_2.html
 - GarageBand for Mac, main-window shortcuts (⌘G Snap to Grid): https://support.apple.com/guide/garageband/gbnd58362a62/mac
 - Creative Commons, recommended practices for attribution (TASL): https://wiki.creativecommons.org/wiki/Recommended_practices_for_attribution
-- Unverified (from memory of Logic's default key commands, check on the Mac): O = Loop Browser, B = Smart Controls, P = Piano Roll, double-click a region opens its editor, Option-click resets a slider, M/S/R button colours.
+- Unverified (from memory of Logic's default key commands, check on the Mac): O = Loop Browser, B = Smart Controls, P = Piano Roll, X = Mixer, double-click a region opens its editor, Option-click resets a slider, M/S/R button colours.

@@ -37,6 +37,7 @@ export class ChainHost {
   private slots: Slot[] = [];
   private queue: Promise<void> = Promise.resolve();
   private disposed = false;
+  private taps: { analysers: AnalyserNode[]; buf: Float32Array<ArrayBuffer> } | null = null;
 
   constructor(readonly ctx: BaseAudioContext, private env: BuildEnv = { tempo: 120 }) {
     this.input = stereoGain(ctx);
@@ -67,6 +68,28 @@ export class ChainHost {
 
   meters(): Record<string, Record<string, number>> {
     return Object.fromEntries(this.slots.filter((s) => s.node.meters).map((s) => [s.id, { ...s.node.meters! }]));
+  }
+
+  /** Peak level of the output per channel (L, R) in dBFS over the last ~20 ms (-Infinity:
+   *  silence). The meter taps are made on the first call, so offline renders never get them. */
+  levels(): number[] {
+    if (!this.taps) {
+      const split = new ChannelSplitterNode(this.ctx, { numberOfOutputs: 2 });
+      this.output.connect(split);
+      const analysers = [0, 1].map((ch) => {
+        const a = new AnalyserNode(this.ctx, { fftSize: 1024 });
+        split.connect(a, ch);
+        return a;
+      });
+      this.taps = { analysers, buf: new Float32Array(1024) };
+    }
+    const { analysers, buf } = this.taps;
+    return analysers.map((a) => {
+      a.getFloatTimeDomainData(buf);
+      let peak = 0;
+      for (let i = 0; i < buf.length; i++) peak = Math.max(peak, Math.abs(buf[i]));
+      return 20 * Math.log10(peak);
+    });
   }
 
   /** Total latency of the enabled devices, in seconds. */

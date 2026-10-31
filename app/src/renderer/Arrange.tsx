@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Modifier } from '@dnd-kit/abstract';
 import { DragDropProvider } from '@dnd-kit/react';
+import { createPortal } from 'react-dom';
 import { useClipDragHandlers, useDragSensors, usePlaybackAnimation, usePlaylistControls, usePlaylistData, usePlaylistState } from '@waveform-playlist/browser';
 import { formatBarsBeats, type Meter } from '../core/metronome';
 import { midiSignature, type MidiData } from '../core/midi';
@@ -26,6 +27,7 @@ import { pxToSeconds, secondsToPx, snapCycle, snapMove, snapTime, type SnapMode 
 import { IDEA_MIME, KIT_MIME, LIBRARY_MIME, libraryDrag, soundDrag } from './libraryAudio';
 import { barLength } from '../core/metronome';
 import './Arrange.css'; // the ruler stays in view
+import { useLiveTake } from './liveTake';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -473,7 +475,32 @@ export function ArrangeInteraction({ session, snap, run, trimmingRef, commitTrac
         </div>
       ))}
       {marquee && <div className="marquee" data-testid="marquee" style={marquee} />}
+      <LiveMidiTake root={wrapRef} pxPerSecond={sampleRate / samplesPerPixel} />
     </div>
+  );
+}
+
+/** A MIDI take while it records: a red region on its track that grows with the playhead, its
+ *  notes appearing as they are played (Logic, GarageBand). A mic take draws through the
+ *  playlist's own recording preview instead (App.tsx LiveWaveform). */
+function LiveMidiTake({ root, pxPerSecond }: { root: React.RefObject<HTMLDivElement | null>; pxPerSecond: number }) {
+  const take = useLiveTake();
+  const regionRef = useRef<HTMLDivElement>(null);
+  const bodyRef = useRef<HTMLDivElement>(null);
+  const midi = take?.kind === 'midi' ? take : null;
+  useLayoutEffect(() => {
+    if (midi && regionRef.current && bodyRef.current) drawRegionNotes(regionRef.current, bodyRef.current, { instrument: '', notes: midi.notes }, 0, Math.max(midi.duration, 0.01));
+  });
+  if (!midi) return null;
+  // the lane: the positioned element the track's regions sit in (left 0 = the timeline start)
+  const lane = root.current?.querySelector(`[data-track-row][data-track-id="${CSS.escape(midi.trackId)}"] > div > [data-track-id]`);
+  if (!lane) return null;
+  return createPortal(
+    <div ref={regionRef} className="live-take" data-testid="live-take" data-kind="midi" data-notes={midi.notes.length} style={{ left: midi.start * pxPerSecond, width: Math.max(2, midi.duration * pxPerSecond) }}>
+      <div className="live-take-head">Recording…</div>
+      <div ref={bodyRef} className="live-take-body" />
+    </div>,
+    lane,
   );
 }
 

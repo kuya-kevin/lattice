@@ -204,10 +204,15 @@ export function setFades(s: S.Session, clipId: string, fadeIn?: number, fadeOut?
 
 /** Pan a track with a Utility device: the existing one (the first, if several), else a new one
  *  at the end of the chain. -1 = hard left, 1 = hard right. */
+/** The Utility a track pans on: the first switched-on one (what is heard, as setups.ts trackPan
+ *  reads it), else the first one. The mixer's pan knob shows and moves this same device. */
+export const panUtility = <D extends { kind: string; on: boolean }>(t: { devices: D[] }): D | undefined =>
+  t.devices.find((d) => d.kind === 'utility' && d.on) ?? t.devices.find((d) => d.kind === 'utility');
+
 export function setPan(s: S.Session, trackId: string, pan: number): { session: S.Session; deviceId: string; inserted: boolean } {
   if (!(pan >= -1 && pan <= 1)) throw new S.SessionError('pan must be -1 (left) to 1 (right)');
   const t = S.getTrack(s, trackId);
-  const have = t.devices.find((d) => d.kind === 'utility');
+  const have = panUtility(t);
   let out = s;
   let id = have?.id;
   if (!id) {

@@ -81,7 +81,7 @@ export function isPushToTalkKey(e: KeyLike): boolean {
 
 // ---- edit and window key commands (handled in App; Logic Pro defaults unless noted) ----
 
-export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'togglePianoRoll' | 'toggleSnap' | 'musicalTyping';
+export type EditAction = 'undo' | 'redo' | 'deleteClip' | 'copyClip' | 'pasteClip' | 'toggleLibrary' | 'toggleSmartControls' | 'togglePianoRoll' | 'toggleMixer' | 'toggleSnap' | 'musicalTyping';
 
 export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }[] = [
   { keys: '⌘Z', action: 'undo', label: 'Undo' },
@@ -92,6 +92,7 @@ export const EDIT_SHORTCUTS: { keys: string; action: EditAction; label: string }
   { keys: 'L / O', action: 'toggleLibrary', label: 'Show/hide the sound library (Loop Browser)' },
   { keys: 'B', action: 'toggleSmartControls', label: 'Show/hide Smart Controls' },
   { keys: 'P', action: 'togglePianoRoll', label: 'Show/hide the Piano Roll (or double-click a region)' },
+  { keys: 'X', action: 'toggleMixer', label: 'Show/hide the Mixer' },
   { keys: '⌘G', action: 'toggleSnap', label: 'Snap to grid on/off (GarageBand)' },
   { keys: '⌘K', action: 'musicalTyping', label: 'Musical Typing on/off (letter keys play notes)' },
 ];
@@ -116,5 +117,6 @@ export function editShortcutFor(e: KeyLike): EditAction | null {
   if (k === 'l' || k === 'o') return 'toggleLibrary'; // L for Library; O is Logic's Loop Browser
   if (k === 'b') return 'toggleSmartControls';
   if (k === 'p') return 'togglePianoRoll';
+  if (k === 'x') return 'toggleMixer'; // Logic's Mixer key
   return null;
 }

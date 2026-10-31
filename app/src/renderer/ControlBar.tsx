@@ -2,7 +2,7 @@
 // time signature, key) and the click / count-in toggles. Also owns recording and the key
 // commands, since both drive the transport.
 import { useEffect, useRef, useState } from 'react';
-import { usePlaybackAnimation, usePlaylistControls } from '@waveform-playlist/browser';
+import { usePlaybackAnimation, usePlaylistControls, usePlaylistData } from '@waveform-playlist/browser';
 import { useMicrophoneAccess, useRecording } from '@waveform-playlist/recording';
 import { beatLength, formatBarsBeats, formatTime, nextBarLine, prevBarLine, type Meter } from '../core/metronome';
 import { TAP_RESET_MS, tapTempo, type TapState } from '../core/tapTempo';
@@ -21,6 +21,7 @@ import { DryWetToggle, StemsButton } from './MixControls'; // B18 dry / wet, ste
 import './ControlBar.css'; // Oct 29: the bar fits again with Versions, Dry and Stems
 import { setRecordingActive } from './pushToTalk'; // B2
 import { takeToNotes, type PlayedNote, type TypingInstrument } from '../core/musicalTyping';
+import { liveTake } from './liveTake'; // the take as it grows in the arrange
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
 
@@ -56,8 +57,9 @@ export function ControlBar({ session, run, importFiles, addBuffer, snap }: Props
 
   const actions: Record<ShortcutAction, () => void> = {
     // with Cycle on, play always starts at the cycle's left edge. "Rolling" is the engine or the
-    // session: a play still starting the audio (or a stop the engine missed) is stopped, not restarted
-    playStop: () => rec.cancelCountIn() || (isPlaying || session.transport.playing ? run('stop', { at: heard() }) : run('play', { from: cycleOn ? cyc!.start : now() })),
+    // session: a play still starting the audio (or a stop the engine missed) is stopped, not restarted.
+    // During a take it ends the take, which stops the transport too (Logic: Space stops recording)
+    playStop: () => rec.cancelCountIn() || (rec.isRecording ? rec.toggle() : isPlaying || session.transport.playing ? run('stop', { at: heard() }) : run('play', { from: cycleOn ? cyc!.start : now() })),
     goToStart: () => run('go_to', { position: 0 }),
     record: () => rec.toggle(),
     metronome: () => run('set_metronome', { on: !session.metronome.on }),
@@ -322,7 +324,8 @@ interface MidiTake {
  *  exactly on the downbeat; R or Space during it cancels. */
 function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: AudioBuffer) => void, meter: Meter) {
   const mic = useMicrophoneAccess();
-  const rec = useRecording(mic.stream);
+  const { samplesPerPixel } = usePlaylistData();
+  const rec = useRecording(mic.stream, { samplesPerPixel }); // live peaks at the arrange's zoom
   const { isPlaying, currentTimeRef, playbackStartTimeRef, getLookAhead } = usePlaybackAnimation();
   const { play, setRecordingActive } = usePlaylistControls();
   const [countingIn, setCountingIn] = useState(false);
@@ -362,6 +365,13 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     if (!t) return;
     take.current = null;
     clearTimeout(t.punchTimer);
+    try {
+      await commit(t, end);
+    } finally {
+      liveTake.set(null); // after the take's region is placed, so it replaces the live one
+    }
+  };
+  const commit = async (t: Take, end?: number) => {
     const ctx = audioContext();
     // linear: counted on past each cycle wrap; onCycle() maps it back to the timeline
     const stopAt = Math.max(t.start, end ?? heardPosition(ctx.currentTime, t.anchor, outputDelay(ctx)));
@@ -405,9 +415,36 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
   }, [isPlaying]);
   useEffect(() => {
     if (midiFor === null) return;
-    const id = setInterval(() => take.current?.midi && setMidiFor(Math.max(0, (currentTimeRef.current ?? 0) - take.current.start)), 100);
+    const id = setInterval(() => {
+      const t = take.current;
+      if (!t?.midi) return;
+      setMidiFor(Math.max(0, (currentTimeRef.current ?? 0) - t.start));
+      // the region so far, folded over cycle passes like the finished take
+      const now = heardPosition(audioContext().currentTime, t.anchor, outputDelay(audioContext()));
+      const region = foldMidiTake(t.midi.played, t.start, Math.max(t.start, now), t.cycle);
+      liveTake.set({ kind: 'midi', trackId: t.trackId, start: region.start, duration: region.end - region.start, notes: takeToNotes(region.played, region.start, region.end) });
+    }, 50);
     return () => clearInterval(id);
   }, [midiFor === null]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // a mic take's live waveform, from where its first heard sample lands (as trimTake keeps it);
+  // ten updates a second, so redrawing the arrange never crowds the audio timing
+  const lastPreview = useRef(0);
+  useEffect(() => {
+    const t = take.current;
+    if (!t?.mic || !rec.isRecording || performance.now() - lastPreview.current < 100) return;
+    lastPreview.current = performance.now();
+    const ctx = audioContext();
+    const { trim, start } = trimTake({ anchor: t.anchor, recStart: t.mic.recStart, outputDelay: outputDelay(ctx), inputDelay: t.mic.inputDelay });
+    const sr = ctx.sampleRate;
+    // with Cycle on, the region stops growing at the cycle end (the last pass is kept)
+    const dur = Math.min(rec.duration, trim + (t.cycle ? Math.max(0, t.cycle.end - start) : Infinity));
+    liveTake.set({
+      kind: 'audio',
+      trackId: t.trackId,
+      preview: rec.peaks[0]?.length ? { isRecording: true, trackId: t.trackId, startSample: Math.round(start * sr), durationSamples: Math.round(dur * sr), peaks: rec.peaks, bits: 16, latencyOffset: trim } : null,
+    });
+  }, [rec.peaks, rec.duration, rec.isRecording]);
 
   const start = async () => {
     const midi = musicalTyping.get().on;
@@ -480,7 +517,11 @@ function useRecorder(session: Session, run: Run, addBuffer: (id: string, b: Audi
     if (midi) {
       t.midi = { played, unsubscribe, rolling: true, instrument: musicalTyping.instrument() }; // startTransport has it rolling
       setMidiFor(0);
-    } else setRecordingActive(true, trackId);
+      liveTake.set({ kind: 'midi', trackId, start: at, duration: 0, notes: [] });
+    } else {
+      setRecordingActive(true, trackId);
+      liveTake.set({ kind: 'audio', trackId, preview: null });
+    }
     // punch out when the punch end reaches the speakers
     if (s.punchIn) {
       const end = s.punchIn.end;

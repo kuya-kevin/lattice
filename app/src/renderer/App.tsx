@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Waveform,
   WaveformPlaylistProvider,
@@ -17,6 +17,8 @@ import { SNAP_LABELS, SNAP_MODES, type SnapMode } from '../core/snap';
 import { ArrangeInteraction, type DropTarget } from './Arrange';
 import { buffers, dbToGain, decodeFile, diffToToolCalls, newSourceId, sameLayout, toClipTracks } from './audio';
 import { clicks } from './click';
+import { useLiveTake } from './liveTake'; // the take being recorded, drawn as it grows
+import { Mixer } from './Mixer'; // X: every track's channel strip
 import { audioContext, outputDelay, transportHandoff } from './audioClock';
 import { ControlBar } from './ControlBar';
 import { ChatPanel } from './ChatPanel';
@@ -316,6 +318,7 @@ export function App({ bridge }: { bridge: Bridge }) {
     // B and P each toggle their own tab of the editor area (Logic: Smart Controls, Piano Roll)
     toggleSmartControls: () => openEditor('fx'),
     togglePianoRoll: () => openEditor('notes'),
+    toggleMixer: () => openEditor('mix'),
     toggleSnap: () => setSnap((s) => (s === 'off' ? lastSnap.current : 'off')),
     musicalTyping: () => musicalTyping.toggle(),
   };
@@ -402,7 +405,7 @@ export function App({ bridge }: { bridge: Bridge }) {
                       </div>
                     ) : (
                       <BeatsAndBarsProvider bpm={session.tempo} timeSignature={session.timeSignature} snapTo={snap === 'sixteenth' ? 'beat' : snap}>
-                        <Waveform showClipHeaders interactiveClips renderTrackControls={(i) => <TrackHeader session={session} index={i} run={run} />} />
+                        <LiveWaveform renderTrackControls={(i) => <TrackHeader session={session} index={i} run={run} />} />
                       </BeatsAndBarsProvider>
                     )}
                   </ArrangeInteraction>
@@ -418,11 +421,11 @@ export function App({ bridge }: { bridge: Bridge }) {
               {/* ─── region: Smart Controls / DevicePanel mount (effects agent) ─── */}
               {smartOpen && session.tracks.length > 0 && <SplitHandle layout={layout} />}
               {smartOpen && session.tracks.length > 0 && (
-                <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} regionKind={selClip && !selClip.midi ? 'audio' : 'midi'} pianoRoll={selClip && !selClip.midi ? <AudioEditor session={session} run={run} bridge={bridge} /> : <PianoRoll session={session} run={run} bridge={bridge} />}>
+                <SmartControls session={session} tab={editorTab} onTab={setEditorTab} onClose={() => setSmartOpen(false)} regionKind={selClip && !selClip.midi ? 'audio' : 'midi'} pianoRoll={selClip && !selClip.midi ? <AudioEditor session={session} run={run} bridge={bridge} /> : <PianoRoll session={session} run={run} bridge={bridge} />} mixer={<Mixer session={session} run={run} />}>
                   <DevicePanel session={session} run={run} /> {/* [S1 fx] device panel */}
                 </SmartControls>
               )}
-              {smartOpen && session.tracks.length > 0 && editorTab === 'notes' && <EditorHandle layout={layout} />}
+              {smartOpen && session.tracks.length > 0 && editorTab !== 'fx' && <EditorHandle layout={layout} />}
               {/* ─── end region: Smart Controls ─── */}
             </div>
           </div>
@@ -458,6 +461,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           <button className={`ibtn${libraryOpen ? ' on' : ''}`} aria-pressed={libraryOpen} title="Sound library (L)" aria-label="Library" onClick={() => editActions.current.toggleLibrary()}><Icon name="library" /></button>
           <button className={`ibtn${smartOpen && editorTab === 'fx' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'fx'} title="Device chain (B)" aria-label="Smart Controls" onClick={() => editActions.current.toggleSmartControls()}><Icon name="knob" /></button>
           <button className={`ibtn${smartOpen && editorTab === 'notes' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'notes'} title="Region editor: Piano Roll or Audio Editor (P)" aria-label="Piano Roll" onClick={() => editActions.current.togglePianoRoll()}><Icon name="roll" /></button>
+          <button className={`ibtn${smartOpen && editorTab === 'mix' ? ' on' : ''}`} aria-pressed={smartOpen && editorTab === 'mix'} title="Mixer (X)" aria-label="Mixer" onClick={() => editActions.current.toggleMixer()}><Icon name="mixer" /></button>
           <MusicalTypingButton className="ibtn"><Icon name="keys" /></MusicalTypingButton>
           <hr />
           <button className={`ibtn${snap !== 'off' ? ' on' : ''}`} aria-pressed={snap !== 'off'} title="Snap to grid (⌘G)" aria-label="Snap to grid" onClick={() => editActions.current.toggleSnap()}><Icon name="magnet" /></button>
@@ -706,4 +710,21 @@ function SelectionSync({ session, run, getSession }: { session: Session; run: Ru
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel]);
   return null;
+}
+
+/** The arrange's waveform, with a mic take drawing in as it records (liveTake.ts). */
+function LiveWaveform({ renderTrackControls }: { renderTrackControls: (i: number) => ReactNode }) {
+  const take = useLiveTake();
+  const preview = take?.kind === 'audio' ? take.preview : null;
+  // mark the playlist's preview region (its header is not draggable, so it has no clip id) for
+  // the red recording style in Arrange.css
+  useLayoutEffect(() => {
+    for (const n of document.querySelectorAll('[data-clip-container]')) {
+      const live = !!preview && n.getAttribute('data-track-id') === preview.trackId && !n.firstElementChild?.hasAttribute('data-clip-id');
+      if (live === n.hasAttribute('data-lt-recording')) continue;
+      n.toggleAttribute('data-lt-recording', live);
+      if (live) n.setAttribute('aria-label', 'Take in progress'); // not "Recording…": the Record button keeps its name
+    }
+  });
+  return <Waveform showClipHeaders interactiveClips renderTrackControls={renderTrackControls} recordingState={take?.kind === 'audio' && take.preview ? take.preview : undefined} />;
 }
