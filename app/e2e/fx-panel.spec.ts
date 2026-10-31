@@ -1,6 +1,7 @@
 // Device panel + live effects hook: add devices from the catalog-generated panel, move a
 // knob (preview, then commit as a set_param hand edit), and play through the chain.
 import { expect, test } from '@playwright/test';
+import { shot } from './evidence';
 
 function sineWav(seconds = 2, sr = 22050, hz = 220): Buffer {
   const n = seconds * sr;
@@ -43,6 +44,6 @@ test('add devices, turn a knob, play through the live chain', async ({ page }) =
 
   await panel.getByRole('button', { name: 'Remove Limiter' }).click();
   await expect.poll(async () => (await session()).map((d) => d.kind)).toEqual(['eq']);
-  await page.screenshot({ path: 'test-results/fx-panel.png', fullPage: true });
+  await shot(page, 'test-results/fx-panel.png', { fullPage: true });
   expect(errors).toEqual([]);
 });

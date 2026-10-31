@@ -3,6 +3,7 @@
 // trim the edges and drag the region onto the grid. Trims and moves run trim_clip / move_clip,
 // so they are undoable and Muse sees them as hand edits.
 import { expect, test, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 function sineWav(seconds = 2, sr = 22050, hz = 220): Buffer {
   const n = seconds * sr;
@@ -94,7 +95,7 @@ test('double-click an audio region opens the audio editor; trim, move to grid, s
   // undo the move, then both trims
   for (let i = 0; i < 3; i++) await page.getByRole('button', { name: 'Undo' }).click();
   await expect.poll(async () => { const k = await clip(page); return [k.start, k.offset, k.duration]; }).toEqual([0, 0, 2]);
-  await page.screenshot({ path: 'test-results/audio-editor.png' });
+  await shot(page, 'test-results/audio-editor.png');
   expect(errors).toEqual([]);
 });
 

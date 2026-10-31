@@ -2,6 +2,7 @@
 // area, BandLab's MIDI Editor), then edit notes with the mouse. Every edit is one tool call
 // (edit_midi_notes / transpose_midi / quantize_midi), so it is undoable and Muse sees it.
 import { expect, test, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 function sineWav(seconds = 2, sr = 22050, hz = 220): Buffer {
   const n = seconds * sr;
@@ -89,7 +90,7 @@ test('double-click a MIDI region opens the Piano Roll; drag, add, delete, transp
   await expect(page.getByTestId('device-panel-slot')).toBeVisible();
   await page.getByRole('button', { name: 'Hide Smart Controls' }).click();
   await expect(page.getByTestId('smart-controls')).toHaveCount(0);
-  await page.screenshot({ path: 'test-results/piano-roll.png' });
+  await shot(page, 'test-results/piano-roll.png');
   expect(errors).toEqual([]);
 });
 

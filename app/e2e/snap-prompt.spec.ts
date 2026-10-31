@@ -1,7 +1,8 @@
 // 1/16 snap for clip moves, and hiding / showing the Muse prompt bar.
 import { expect, test, type Page } from '@playwright/test';
+import { shot, evidenceVideo } from './evidence';
 
-test.use({ video: 'on', viewport: { width: 1400, height: 860 } });
+test.use({ video: evidenceVideo, viewport: { width: 1400, height: 860 } });
 
 const session = (page: Page) => page.evaluate(() => window.lattice!.getSession());
 
@@ -49,7 +50,7 @@ test('Snap 1/16 lands clip moves on sixteenth notes', async ({ page }) => {
   await expect.poll(async () => (await session(page)).tracks[0].clips[0].start).toBe(1.375);
   await dragClipTo(page, 't1', 0, 2.23);
   await expect.poll(async () => (await session(page)).tracks[0].clips[0].start).toBe(2.25);
-  await page.screenshot({ path: 'screenshots/snap-prompt/snap-sixteenth.png' });
+  await shot(page, 'screenshots/snap-prompt/snap-sixteenth.png');
 
   // Cmd/Ctrl-G toggles snap off and back to 1/16
   await page.locator('body').click({ position: { x: 5, y: 600 } });
@@ -67,7 +68,7 @@ test('the Muse prompt bar hides into a pill, stays hidden after reload, and come
   await expect(prompt).toBeHidden();
   const pill = page.getByRole('button', { name: 'Show Muse prompt' });
   await expect(pill).toBeVisible();
-  await page.screenshot({ path: 'screenshots/snap-prompt/prompt-hidden.png' });
+  await shot(page, 'screenshots/snap-prompt/prompt-hidden.png');
 
   await page.reload();
   await expect(page.getByLabel('Message Muse')).toBeHidden();
@@ -77,5 +78,5 @@ test('the Muse prompt bar hides into a pill, stays hidden after reload, and come
   await expect(prompt).toBeVisible();
   await expect(prompt).toBeFocused(); // ready to type
   await expect(pill).toHaveCount(0);
-  await page.screenshot({ path: 'screenshots/snap-prompt/prompt-shown.png' });
+  await shot(page, 'screenshots/snap-prompt/prompt-shown.png');
 });

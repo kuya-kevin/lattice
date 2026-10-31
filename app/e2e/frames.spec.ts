@@ -3,6 +3,7 @@
 // and keep the layout across a reload. Asserts on session.frames and frame boxes, not pixels.
 // Evidence lands in screenshots/frames/.
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 test.use({ viewport: { width: 1600, height: 1000 } });
 
@@ -65,7 +66,7 @@ test('drag frames by their titles: dock, place freely, cancel; Layout menu and s
   expect(e.y).toBeGreaterThan(b.y + b.height - 1);
   expect(Math.round(e.width)).toBe(Math.round(b.width));
   expect(await frames(page)).toMatchObject({ ideas: { dock: 'board', side: 'left' }, editor: { dock: 'board', side: 'bottom' } });
-  await page.screenshot({ path: `${SHOTS}/1-default.png` });
+  await shot(page, `${SHOTS}/1-default.png`);
 
   // the Layout menu: Ideas right
   await page.getByRole('button', { name: 'Layout' }).click();
@@ -88,13 +89,13 @@ test('drag frames by their titles: dock, place freely, cancel; Layout menu and s
   }, { x: head.x + head.width, x1: b.x + b.width, y0: b.y, y1: b.y + b.height });
   expect(await page.locator('.wires path').count()).toBe(3);
   expect(inLanes).toBe(false);
-  await page.screenshot({ path: `${SHOTS}/2-ideas-right.png` });
+  await shot(page, `${SHOTS}/2-ideas-right.png`);
 
   // drag Ideas onto the board's top edge: the dock preview shows; dropped, Ideas turn into a strip above
   b = await box(boardF(page));
   await dragTo(page, page.locator('.ideas .frame-title'), b.x + b.width / 2, b.y - 24, async (p) => {
     await expect(p.getByTestId('frame-dock-preview')).toBeVisible();
-    await p.screenshot({ path: `${SHOTS}/3-dock-preview.png` });
+    await shot(p, `${SHOTS}/3-dock-preview.png`);
     await p.mouse.up();
   });
   await expect.poll(async () => (await frames(page))?.ideas).toEqual({ dock: 'board', side: 'top' });
@@ -104,7 +105,7 @@ test('drag frames by their titles: dock, place freely, cancel; Layout menu and s
   expect(i.y + i.height).toBeLessThan(b.y);
   expect(Math.round(i.width)).toBe(Math.round(b.width));
   await noOverlap(page);
-  await page.screenshot({ path: `${SHOTS}/4-ideas-strip.png` });
+  await shot(page, `${SHOTS}/4-ideas-strip.png`);
 
   // Escape cancels a drag: nothing changes
   const before = await frames(page);
@@ -139,7 +140,7 @@ test('drag frames by their titles: dock, place freely, cancel; Layout menu and s
     return ee.x > bb.x + bb.width && Math.abs(ee.y - bb.y) < 1 && ee.height >= bb.height - 1;
   }).toBe(true);
   await expect(editorF(page)).toHaveClass(/tall/);
-  await page.screenshot({ path: `${SHOTS}/5-columns-mixer.png` });
+  await shot(page, `${SHOTS}/5-columns-mixer.png`);
 
   // app-wide: kept across a reload, and sent to the new session
   await page.reload();

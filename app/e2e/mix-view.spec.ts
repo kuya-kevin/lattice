@@ -110,6 +110,8 @@ test('Stems exports one WAV per track per set; dry stems are the source audio', 
     let worst = 0;
     for (let i = 0; i < ref.length; i++) worst = Math.max(worst, Math.abs(stem.left[i] - ref[i] * k));
     expect(worst).toBeLessThan(1e-4);
-    for (let i = ref.length; i < stem.n; i++) expect(stem.left[i]).toBe(0);
+    let tail = 0; // one expect, not one per sample (that cost ~6 s)
+    for (let i = ref.length; i < stem.n; i++) tail = Math.max(tail, Math.abs(stem.left[i]));
+    expect(tail).toBe(0);
   }
 });

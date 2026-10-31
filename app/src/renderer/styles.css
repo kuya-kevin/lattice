@@ -2,45 +2,56 @@
    with DAW precision on top. Musical conventions stay Logic's (M blue, S yellow, R red, bar.beat).
    Layout spec: app/docs/ux-notes.md (Layout). */
 :root {
-  /* ground and surfaces: blue-biased near-blacks, so the teal accent sits in the same family */
-  --ground: #0c0d10;
-  --dot: #262931;
-  --island: #15171b;      /* floating chrome, cards */
-  --island-2: #1c1f24;    /* raised inside an island */
-  --island-3: #252830;    /* hover / selected */
-  --line: #2a2d34;
-  --line-strong: #393d46;
-  --text: #e7e9ee;
-  --muted: #8a909c;
-  --faint: #5b616d;
-  --accent: #5fd0e0;      /* playhead, focus, Muse */
-  --accent-ink: #062327;
-  --rec: #ff5a4e;
-  --mute: #6aa8ff;
-  --solo: #f2c14e;
+  /* ground and surfaces: arena night (Oct 31, variant C in ui-reference/arena-palette.html). Steel
+     near-blacks lit by an electric cyan accent and red laser light, kept to the canvas gaps */
+  --ground: #07080d;
+  --dot: #1a1d27;
+  --island: #12151d;      /* floating chrome, cards */
+  --island-2: #191d27;    /* raised inside an island */
+  --island-3: #232835;    /* hover / selected */
+  --line: #262b38;
+  --line-strong: #363c4c;
+  --text: #eceef3;
+  --muted: #8b909e;
+  --faint: #565b69;
+  --accent: #46c6ff;      /* playhead, focus, Muse */
+  --accent-ink: #021624;
+  --rec: #ff2e4d;
+  --mute: #4f8dff;
+  --solo: #ffc84a;
   --on-rec: #fff;         /* text on the coloured M / S / R buttons */
-  --on-mute: #071326;
+  --on-mute: #04102a;
   --on-solo: #2a1f00;
-  --danger: #c4473a;
-  --soft: #c4c9d3;        /* secondary text a step brighter than --muted */
-  --lane: #1a1c21;        /* Piano Roll / Audio Editor grid */
-  --region-body: #3b3e47; /* what a region's waveform sits on */
-  --wash: rgba(255, 255, 255, 0.14); /* hover highlight over a coloured region */
+  --danger: #e0435c;
+  --soft: #c7cbd6;        /* secondary text a step brighter than --muted */
+  --lane: #0c0e14;        /* Piano Roll / Audio Editor grid */
+  --region-body: #252a36; /* what a region's waveform sits on */
+  --wash: rgba(220, 230, 255, 0.14); /* hover highlight over a coloured region */
+  /* brushed steel on the islands: a sheen lit from above and a faint horizontal grain */
+  --edge: rgba(255, 255, 255, 0.09); /* top highlight where the light catches */
+  --sheen: linear-gradient(180deg, rgba(220, 230, 255, 0.055), rgba(220, 230, 255, 0) 38%, rgba(0, 0, 0, 0) 70%, rgba(0, 0, 0, 0.18));
+  --brush: repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.014) 0 1px, transparent 1px 3px, rgba(0, 0, 0, 0.03) 3px 4px, transparent 4px 7px);
+  /* stage light behind the canvas: a cool wash from above, red from the low corners. Three layers;
+     light.css swaps them for none */
+  --canvas-glow:
+    radial-gradient(1100px 480px at 50% -180px, rgba(70, 160, 255, 0.09), transparent 70%),
+    radial-gradient(800px 500px at -160px 110%, rgba(255, 30, 60, 0.10), transparent 70%),
+    radial-gradient(800px 500px at calc(100% + 160px) 110%, rgba(255, 30, 60, 0.09), transparent 70%);
   /* track colours, one per palette slot (TrackHeader.tsx TRACK_COLORS, core/trackColors.ts names) */
-  --track-0: #f08a6c; --track-1: #e9b85a; --track-2: #7fd39a; --track-3: #8fb3ff;
-  --track-4: #c79cf0; --track-5: #6fcfc0; --track-6: #f08aa8; --track-7: #b9d36a;
+  --track-0: #ff3d5e; --track-1: #ffad3d; --track-2: #3fe0a2; --track-3: #4f9bff;
+  --track-4: #b07dff; --track-5: #33d6e6; --track-6: #ff62b6; --track-7: #c2e35c;
 
   /* legacy names still read by DevicePanel.css */
   --bg: var(--ground);
   --panel: var(--island);
   --panel-2: var(--island-2);
   --panel-3: var(--island-3);
-  --line-soft: #22252b;
+  --line-soft: #1d212c;
 
   --r-island: 18px;
   --r-card: 12px;
   --r-ctl: 9px;
-  --shadow: 0 10px 40px rgba(0, 0, 0, 0.45), 0 1px 0 rgba(255, 255, 255, 0.03) inset;
+  --shadow: 0 12px 44px rgba(0, 2, 10, 0.6), 0 1px 0 var(--edge) inset;
   --font-ui: 'Instrument Sans Variable', 'Instrument Sans', -apple-system, 'SF Pro Text', 'Segoe UI', system-ui, sans-serif;
   --font-data: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
@@ -75,7 +86,7 @@ code { font: 11px var(--font-data); color: var(--soft); }
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 
 /* shared pieces */
-.island { background: var(--island); border: 1px solid var(--line); border-radius: var(--r-island); box-shadow: var(--shadow); }
+.island { background: var(--sheen), var(--brush), var(--island); border: 1px solid var(--line); border-radius: var(--r-island); box-shadow: var(--shadow); }
 .pill { display: inline-flex; align-items: center; gap: 8px; border-radius: 999px; padding: 0 16px; height: 44px; }
 .ibtn {
   display: inline-grid; place-items: center; width: 34px; height: 34px; padding: 0;
@@ -101,8 +112,9 @@ code { font: 11px var(--font-data); color: var(--soft); }
 .canvas {
   position: absolute; inset: 0; z-index: 0; overflow: auto; cursor: default; /* own stacking context: the playhead stays under the chrome */
   background-color: var(--ground);
-  background-image: radial-gradient(var(--dot) 1.1px, transparent 1.3px);
-  background-size: 22px 22px; background-attachment: local;
+  background-image: radial-gradient(var(--dot) 1.1px, transparent 1.3px), var(--canvas-glow);
+  background-size: 22px 22px, auto, auto, auto;
+  background-attachment: local, fixed, fixed, fixed;
 }
 .canvas.panning { cursor: grabbing; user-select: none; }
 .world {

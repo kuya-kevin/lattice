@@ -37,16 +37,20 @@ second.
    Use a short length (0.1 s) to test one-shot edge cases.
 4. **Get keyboard focus without clicking.** Use `locator.focus()` before `page.keyboard.press(...)`.
    Clicking a `<select>` opens a native menu that Playwright can't see.
-5. **Evidence for the human.**
-   - **Web build:** add `test.use({ video: 'on' })` to the spec. A `.webm` per test lands in
-     `test-results/` (or wherever `--output=` points).
-   - **Electron:** `electron.launch({ args: ['.'], recordVideo: { dir: 'screenshots/…' } })`.
-   - **Screenshots:** `page.screenshot({ path: 'screenshots/<topic>/<name>.png' })`.
+5. **Evidence for the human** (off by default since Oct 31; it slows the suite and loads the CPU,
+   which the audio timing specs are sensitive to). Run with `LATTICE_EVIDENCE=1` to write it.
+   - **Web build:** `test.use({ video: evidenceVideo })` (from `e2e/evidence.ts`). A `.webm` per
+     test lands in `test-results/` (or wherever `--output=` points).
+   - **Electron:** `electron.launch({ ..., ...(EVIDENCE ? { recordVideo: { dir: 'screenshots/…' } } : {}) })`.
+   - **Screenshots:** `shot(page, 'screenshots/<topic>/<name>.png')` (a page or a locator).
      `screenshots/` and `test-results/` are gitignored.
 
-Worked examples: `e2e/playback.spec.ts` (web) and the "0.1 s one-shot" test in
-`e2e/electron.spec.ts` (Electron). Both came from the Oct 27 fix: playback now continues past the
-last clip, and Space plays/pauses even when a button, slider or menu has focus.
+Worked example: `e2e/playback.spec.ts`. It came from the Oct 27 fix: playback now continues past
+the last clip, and Space plays/pauses even when a button, slider or menu has focus.
+
+Electron specs run in their own Playwright project on one worker. Most of `e2e/electron.spec.ts`
+shares one app launch and starts each test from an empty session (`new_session` keeps the id
+counter, so read track ids from the session rather than assuming `t1`).
 
 ## Gotchas
 

@@ -30,19 +30,19 @@ async function importTone(page: Page) {
   await expect.poll(async () => (await session(page)).tracks.length).toBe(1);
 }
 
-for (const width of [1600, 1400, 1280, 1210, 1190, 1100, 960]) {
-  test(`control bar: every transport and file control is reachable at ${width} px`, async ({ page }) => {
+test('control bar: every transport and file control is reachable from 1600 down to 960 px', async ({ page }) => {
+  await page.goto('/');
+  await importTone(page);
+  const bar = page.getByRole('toolbar', { name: 'Transport' });
+  for (const width of [1600, 1400, 1280, 1210, 1190, 1100, 960]) {
     await page.setViewportSize({ width, height: 860 });
-    await page.goto('/');
-    await importTone(page);
-    const bar = page.getByRole('toolbar', { name: 'Transport' });
     for (const name of ['Go to beginning', 'Play', 'Record', 'Cycle', 'Click', 'Count-in', 'Dry', 'Export stems', 'Import…', 'Track']) {
       const l = bar.getByRole('button', { name, exact: true }).first();
-      expect(await reachable(l), `${name} at ${width} px`).toBe(true);
+      await expect.poll(() => reachable(l), `${name} at ${width} px`).toBe(true); // the layout settles after a resize
     }
-    expect(await reachable(page.getByTestId('versions-open')), `Versions at ${width} px`).toBe(true);
-  });
-}
+    await expect.poll(() => reachable(page.getByTestId('versions-open')), `Versions at ${width} px`).toBe(true);
+  }
+});
 
 test('library: the My Sounds tab is reachable and its footer counts shelf sounds', async ({ page }) => {
   await page.setViewportSize({ width: 1400, height: 860 });

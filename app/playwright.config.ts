@@ -8,6 +8,13 @@ const port = Number(process.env.E2E_PORT ?? 5299);
 export default defineConfig({
   testDir: 'e2e',
   timeout: 30_000,
+  // Electron specs run one at a time: in parallel they take as long and only slow each other
+  // (and the load-sensitive audio timing specs) down. Listed first so their serial chain starts
+  // at once instead of trailing the web specs.
+  projects: [
+    { name: 'electron', testMatch: /electron.*\.spec\.ts/, workers: 1 },
+    { name: 'web', testIgnore: /electron.*\.spec\.ts/ },
+  ],
   use: {
     baseURL: `http://localhost:${port}`,
     launchOptions: { args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--autoplay-policy=no-user-gesture-required'] },

@@ -3,6 +3,7 @@
 // region at a loop wrap, then measures how far each pass's downbeat click is from the audio.
 // The tempo is chosen so the cycle isn't a whole number of the engine's ticks (Tone's Transport
 // runs 192 PPQ at its own 120 BPM, so a tick is 1/384 s and its loop ends on the next tick).
+// A 2/4 bar keeps the pass count of the original 4/4 run (~38) in half the time.
 import { expect, test, type Page } from '@playwright/test';
 
 function sineWav(seconds: number, sr = 22050): Buffer {
@@ -45,17 +46,18 @@ async function watchAudio(page: Page) {
 }
 
 test('the click stays on the loop downbeat pass after pass', async ({ page }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(60_000);
   await watchAudio(page);
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({ name: 'tone.wav', mimeType: 'audio/wav', buffer: sineWav(8) });
   await expect(page.getByTestId('track-t1')).toBeVisible();
   await page.locator('body').click({ position: { x: 5, y: 600 } });
-  await tool(page, 'set_tempo', { bpm: 230 }); // a bar is 1.0435 s = 400.7 engine ticks
+  await tool(page, 'set_tempo', { bpm: 230 });
+  await tool(page, 'set_time_signature', { beats: 2, unit: 4 }); // a bar is 0.5217 s = 200.35 engine ticks
   await tool(page, 'set_cycle', { from_bar: 1, to_bar: 1 });
   await tool(page, 'set_metronome', { on: true });
   await page.keyboard.press('Space');
-  await page.waitForTimeout(40_000); // ~38 passes
+  await page.waitForTimeout(20_000); // ~38 passes
   await page.keyboard.press('Space');
   const log = await page.evaluate(() => (window as unknown as { __audioLog: Log }).__audioLog);
   // a wrap restarts the region from its start (offset 0); the first start is the play itself
@@ -69,9 +71,9 @@ test('the click stays on the loop downbeat pass after pass', async ({ page }) =>
   console.log(`passes ${wraps.length}; click minus audio per pass (ms): ${offs.map((o) => o.toFixed(1)).join(' ')}`);
   expect(wraps.length).toBeGreaterThan(30);
   for (const o of offs) expect(Math.abs(o)).toBeLessThan(3);
-  // four beats a pass, the first accented: none doubled at a wrap, none dropped
+  // two beats a pass, the first accented: none doubled at a wrap, none dropped
   for (let i = 0; i + 1 < wraps.length; i++) {
     const pass = heard.filter((c) => c.t >= wraps[i] - 0.005 && c.t < wraps[i + 1] - 0.005);
-    expect(pass.map((c) => c.accent)).toEqual([true, false, false, false]);
+    expect(pass.map((c) => c.accent)).toEqual([true, false]);
   }
 });

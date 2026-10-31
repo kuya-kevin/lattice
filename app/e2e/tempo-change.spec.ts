@@ -1,5 +1,5 @@
-// A tempo change keeps things on their bars (Logic, GarageBand): MIDI regions and notes (unit
-// tests cover the session), the cycle area and the playhead, stopped or playing.
+// A tempo change keeps things on their bars (Logic, GarageBand): MIDI regions, notes and a stopped
+// playhead are unit tests (tests/session.test.ts); here the cycle area and a playing playhead.
 import { expect, test, type Page } from '@playwright/test';
 
 function sineWav(seconds: number, sr = 22050): Buffer {
@@ -30,15 +30,6 @@ async function setTempo(page: Page, bpm: number) {
   await tool(page, 'set_tempo', { bpm });
   await expect(page.getByLabel('Tempo')).toHaveValue(String(bpm));
 }
-
-test('a stopped playhead stays on its bar', async ({ page }) => {
-  await load(page);
-  await tool(page, 'go_to', { position: 4 }); // bar 3 at 120 BPM
-  await expect(page.getByTestId('lcd-bars')).toHaveText('3 1 1');
-  await setTempo(page, 60);
-  await expect(page.getByTestId('lcd-bars')).toHaveText('3 1 1');
-  expect(await lcdSeconds(page)).toBeCloseTo(8, 1);
-});
 
 test('a playing playhead stays on its bar', async ({ page }) => {
   await load(page);

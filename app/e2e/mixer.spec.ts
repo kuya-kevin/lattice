@@ -2,6 +2,7 @@
 // (window.lattice.getSession) and on the strips' data attributes, not pixels.
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 const SHOTS = 'screenshots/mixer';
 mkdirSync(SHOTS, { recursive: true });
@@ -71,7 +72,7 @@ test('X shows a strip per track; the fader is the track volume and the pan knob 
   await expect.poll(async () => (await track(page, 't2')).soloed).toBe(true);
   await page.getByTestId('strip-t1').locator('.strip-name').click();
   await expect.poll(async () => (await session(page)).selection.trackId).toBe('t1');
-  await page.screenshot({ path: `${SHOTS}/mixer.png` });
+  await shot(page, `${SHOTS}/mixer.png`);
 
   await page.keyboard.press('x'); // toggles it away again
   await expect(mixer).toHaveCount(0);
@@ -97,7 +98,7 @@ test('the meters show each track’s level while it plays, with the peak held', 
   expect(await peak()).toBeLessThan(-13);
   await expect.poll(async () => Number((await page.getByTestId(`meter-${hum}`).getAttribute('data-level'))!.split(',')[0])).toBeGreaterThan(-20);
   await expect(page.getByTestId(`meter-${empty}`)).toHaveAttribute('data-level', '-inf,-inf');
-  await page.screenshot({ path: `${SHOTS}/meters-playing.png` });
+  await shot(page, `${SHOTS}/meters-playing.png`);
   await page.getByRole('button', { name: 'Stop' }).click();
   // the held peak stays until clicked
   await page.getByTestId(`peak-${hum}`).click();
@@ -123,13 +124,15 @@ test('a MIDI take shows in the arrange while it records, notes appearing as play
   await expect(live).toHaveAttribute('data-notes', '2');
   await expect(live.locator('svg.lt-notes rect')).toHaveCount(2);
   expect((await live.boundingBox())!.width).toBeGreaterThan(w0 + 10); // it grows with the playhead
-  await page.screenshot({ path: `${SHOTS}/midi-take-live.png` });
+  await shot(page, `${SHOTS}/midi-take-live.png`);
   await page.keyboard.press('r');
   await expect(live).toHaveCount(0); // the recorded region takes its place
   await expect(page.locator('[data-track-row][data-track-id="t1"] [data-clip-container]')).toHaveCount(1);
 });
 
 test('a mic take shows its waveform in the arrange while it records', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
   await load(page);
   await page.getByRole('button', { name: /Enable mic/ }).click();
   await expect(page.getByRole('button', { name: /Enable mic/ })).toHaveCount(0);
@@ -140,10 +143,14 @@ test('a mic take shows its waveform in the arrange while it records', async ({ p
   const id = (await session(page)).tracks[0].id;
   await expect(page.locator(`[data-track-row][data-track-id="${id}"] [data-clip-container][data-lt-recording]`)).toHaveCount(1);
   await page.waitForTimeout(800);
-  await page.screenshot({ path: `${SHOTS}/mic-take-live.png` });
+  await shot(page, `${SHOTS}/mic-take-live.png`);
   await page.getByRole('button', { name: 'Record' }).click();
   await expect(preview).toHaveCount(0);
   await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
+  const clip = (await session(page)).tracks[0].clips[0];
+  expect(clip.name).toMatch(/^Take/);
+  expect(clip.duration).toBeGreaterThan(0.5);
+  expect(errors).toEqual([]);
 });
 
 test('Space ends a mic take and stops the transport, keeping the take', async ({ page }) => {

@@ -1,10 +1,11 @@
 // Resizable layout: drag the Ideas / board-width / board-height handles, reload to check the
 // sizes persist, double-click to reset, and change the track lane height (toolbar and
 // Option-scroll). Evidence (before/after screenshots and a video per test) lands in
-// screenshots/resize/.
+// screenshots/resize/ with LATTICE_EVIDENCE=1.
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { shot, evidenceVideo } from './evidence';
 
-test.use({ video: 'on', viewport: { width: 1400, height: 900 } });
+test.use({ video: evidenceVideo, viewport: { width: 1400, height: 900 } });
 
 const SHOTS = 'screenshots/resize';
 
@@ -73,7 +74,7 @@ test('panel handles resize ideas, board width and board height; persist; double-
   const col = page.locator('.board-col');
   const board = page.locator('section.board');
   const chain = page.getByTestId('smart-controls');
-  await page.screenshot({ path: `${SHOTS}/panels-before.png` });
+  await shot(page, `${SHOTS}/panels-before.png`);
 
   const before = { ideas: (await box(ideas)).width, col: await box(col), board: (await box(board)).height, chain: (await box(chain)).height };
   expect(before.ideas).toBe(264);
@@ -115,7 +116,7 @@ test('panel handles resize ideas, board width and board height; persist; double-
   // handles neither pan the canvas nor move a region
   expect(await scroll(page)).toEqual(scroll0);
   expect((await session(page)).tracks.map((t) => t.clips.map((c) => [c.id, c.start]))).toEqual(clips);
-  await page.screenshot({ path: `${SHOTS}/panels-after.png` });
+  await shot(page, `${SHOTS}/panels-after.png`);
 
   // persisted across a reload (the web build's session starts empty again, so re-import)
   await page.reload();
@@ -129,7 +130,7 @@ test('panel handles resize ideas, board width and board height; persist; double-
   expect((await box(ideas)).width).toBe(344);
   expect(Math.round((await box(col)).width)).toBe(Math.round(after.colW));
   expect(Math.round((await box(board)).height)).toBe(Math.round(after.board));
-  await page.screenshot({ path: `${SHOTS}/panels-after-reload.png` });
+  await shot(page, `${SHOTS}/panels-after-reload.png`);
 
   // double-click resets each handle
   await page.getByTestId('rz-ideas').dblclick();
@@ -139,7 +140,7 @@ test('panel handles resize ideas, board width and board height; persist; double-
   await expect(col).not.toHaveClass(/fixed-w/);
   expect(Math.round((await box(col)).width)).toBe(Math.round(before.col.width));
   expect(Math.round((await box(board)).height)).toBe(Math.round(before.board));
-  await page.screenshot({ path: `${SHOTS}/panels-reset.png` });
+  await shot(page, `${SHOTS}/panels-reset.png`);
 
   // keyboard: arrows nudge a focused handle, Enter resets it
   await page.getByTestId('rz-ideas').focus();
@@ -178,7 +179,7 @@ test('track height: toolbar and Option-scroll change the lane height; headers co
     expect(fit).toBe(true);
   };
   const clips = (await session(page)).tracks.map((t) => t.clips.map((c) => [c.id, c.start, c.duration]));
-  await page.screenshot({ path: `${SHOTS}/lanes-before.png` });
+  await shot(page, `${SHOTS}/lanes-before.png`);
 
   expect(await laneH()).toBe(84 + 22); // waveform + region header
   await expect(header.locator('input[type=range]')).toBeVisible();
@@ -188,7 +189,7 @@ test('track height: toolbar and Option-scroll change the lane height; headers co
   // the waveform redraws at the new height
   await expect.poll(async () => Math.round((await box(lane.locator('canvas').first())).height)).toBe(112);
   await headerFits();
-  await page.screenshot({ path: `${SHOTS}/lanes-taller.png` });
+  await shot(page, `${SHOTS}/lanes-taller.png`);
 
   for (const [steps, wave, vol] of [[1, 84, true], [1, 64, true], [1, 48, false], [1, 32, false]] as const) {
     for (let i = 0; i < steps; i++) await page.getByRole('button', { name: 'Shorter tracks' }).click();
@@ -198,7 +199,7 @@ test('track height: toolbar and Option-scroll change the lane height; headers co
     else await expect(header.locator('input[type=range]')).toBeHidden();
   }
   await expect(page.getByRole('button', { name: 'Shorter tracks' })).toBeDisabled();
-  await page.screenshot({ path: `${SHOTS}/lanes-shortest.png` });
+  await shot(page, `${SHOTS}/lanes-shortest.png`);
 
   // Option-scroll over the lanes: scrolling up makes them taller
   const lb = await box(lane);
@@ -213,7 +214,7 @@ test('track height: toolbar and Option-scroll change the lane height; headers co
   // clips and audio are untouched by the height change; the height persists across a reload
   expect((await session(page)).tracks.map((t) => t.clips.map((c) => [c.id, c.start, c.duration]))).toEqual(clips);
   await expect(page.locator('[data-clip-container]')).toHaveCount(3);
-  await page.screenshot({ path: `${SHOTS}/lanes-option-scroll.png` });
+  await shot(page, `${SHOTS}/lanes-option-scroll.png`);
   await page.reload();
   await page.getByTestId('file-input').setInputFiles({ name: 'again.wav', mimeType: 'audio/wav', buffer: sineWav(2) });
   await expect(page.getByTestId('track-t1')).toBeVisible();
@@ -228,7 +229,7 @@ test('a long device chain shows in full: the canvas grows instead of clipping it
   await expect.poll(async () => (await page.evaluate(() => window.lattice!.getSession())).tracks[0].devices.length).toBe(4);
   await expectChainInFull(page);
   await page.locator('.canvas').evaluate((el) => el.scrollTo(0, el.scrollHeight));
-  await page.screenshot({ path: `${SHOTS}/long-chain-scrolled.png` });
+  await shot(page, `${SHOTS}/long-chain-scrolled.png`);
 });
 
 test('each track resizes on its own by dragging its bottom edge; Height −/+ scales them all', async ({ page }) => {
@@ -240,7 +241,7 @@ test('each track resizes on its own by dragging its bottom edge; Height −/+ sc
   const ids = (await page.evaluate(() => window.lattice!.getSession())).tracks.map((t) => t.id);
   const h0 = await heights();
   expect(new Set(h0).size).toBe(1); // all lanes start alike
-  await page.screenshot({ path: `${SHOTS}/track-heights-before.png` });
+  await shot(page, `${SHOTS}/track-heights-before.png`);
 
   // drag the first track's bottom edge down 60 px: only that lane grows, the guide line shows while dragging
   const handle = page.getByTestId(`lane-h-${ids[0]}`);
@@ -258,7 +259,7 @@ test('each track resizes on its own by dragging its bottom edge; Height −/+ sc
   // drag the second one up: shorter (its header compacts)
   await drag(page, page.getByTestId(`lane-h-${ids[1]}`), 0, -50);
   await expect.poll(async () => (await heights())[1]).toBe(h0[1] - 50);
-  await page.screenshot({ path: `${SHOTS}/track-heights-mixed.png` });
+  await shot(page, `${SHOTS}/track-heights-mixed.png`);
 
   // clicking inside the third lane still selects the third track (the patched hit-test)
   const r3 = await box(rows.nth(2));
@@ -282,7 +283,7 @@ test('each track resizes on its own by dragging its bottom edge; Height −/+ sc
   await expect.poll(async () => { const h = await heights(); return h[0] === h[2]; }).toBe(true);
   await page.getByRole('button', { name: 'Undo' }).click(); // undoes the last edit before (none: the import)
   expect((await page.evaluate(() => window.lattice!.getSession())).tracks[1].heightScale).toBeLessThan(1);
-  await page.screenshot({ path: `${SHOTS}/track-heights-after.png` });
+  await shot(page, `${SHOTS}/track-heights-after.png`);
   expect(errors).toEqual([]);
 });
 
@@ -303,7 +304,7 @@ test('the region editor resizes by dragging its bottom edge; persists; double-cl
   // the editor's lane follows the new height (it draws to what it is given)
   await expect.poll(async () => Math.round((await box(editor.locator('canvas').first())).height)).toBeGreaterThan(300);
   expect(await page.evaluate(() => JSON.parse(localStorage.getItem('lattice.layout.v1')!).editorH)).toBe(410);
-  await page.screenshot({ path: `${SHOTS}/editor-taller.png` });
+  await shot(page, `${SHOTS}/editor-taller.png`);
 
   await toBottom();
   await drag(page, handle, 0, -2000);

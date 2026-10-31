@@ -1,9 +1,10 @@
 // The transport rolls past the last region (DAW-style), so short one-shots play out in full,
 // and Space plays/stops even while a button, slider or menu has keyboard focus.
-// Videos of each run land in test-results/ (video: 'on').
+// With LATTICE_EVIDENCE=1, videos of each run land in test-results/.
 import { expect, test, type Page } from '@playwright/test';
+import { shot, evidenceVideo } from './evidence';
 
-test.use({ video: 'on', viewport: { width: 1400, height: 860 } });
+test.use({ video: evidenceVideo, viewport: { width: 1400, height: 860 } });
 
 function sineWav(seconds: number, sr = 22050): Buffer {
   const n = Math.round(seconds * sr);
@@ -24,25 +25,17 @@ async function load(page: Page, seconds: number) {
   await page.locator('body').click({ position: { x: 5, y: 600 } });
 }
 
-test('playback keeps rolling past the last region', async ({ page }) => {
-  await load(page, 1);
-  await page.keyboard.press('Space');
-  await page.waitForTimeout(2500); // well past the 1 s clip
-  await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
-  expect((await session(page)).transport.playing).toBe(true);
-  await page.screenshot({ path: 'screenshots/playback-fix/playback-past-end.png' });
-  await page.keyboard.press('Space');
-  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
-  expect((await session(page)).transport.position).toBeGreaterThan(2); // stops where it is
-});
-
-test('a 0.1 s one-shot does not stop the transport', async ({ page }) => {
+test('playback keeps rolling past the last region: a 0.1 s one-shot does not stop the transport', async ({ page }) => {
   await load(page, 0.1);
   await page.keyboard.press('Space');
-  await page.waitForTimeout(1000);
+  await page.waitForTimeout(1500); // well past the 0.1 s clip
   await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
+  expect((await session(page)).transport.playing).toBe(true);
   await expect(page.getByTestId('lcd-time')).not.toHaveText(/^0:00\.[0-4]/);
+  await shot(page, 'screenshots/playback-fix/playback-past-end.png');
   await page.keyboard.press('Space');
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+  expect((await session(page)).transport.position).toBeGreaterThan(1); // stops where it is
 });
 
 test('Space plays/stops while a button, slider or the Add device menu has focus', async ({ page }) => {
@@ -61,7 +54,7 @@ test('Space plays/stops while a button, slider or the Add device menu has focus'
   const s = await session(page);
   expect(s.tracks[0].muted).toBe(false); // Space did not press M
   expect(s.tracks[0].devices).toEqual([]); // nor pick a device
-  await page.screenshot({ path: 'screenshots/playback-fix/space-with-focus.png' });
+  await shot(page, 'screenshots/playback-fix/space-with-focus.png');
 
   // typing in the chat still types
   const chat = page.getByPlaceholder(/trim the vocal/);

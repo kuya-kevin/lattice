@@ -25,7 +25,11 @@
   --lane: #e9ebee;
   --region-body: #ffffff;
   --wash: rgba(0, 0, 0, 0.12);
-  --shadow: 0 8px 28px rgba(30, 34, 44, 0.12), 0 1px 0 rgba(255, 255, 255, 0.6) inset;
+  --canvas-glow: none, none, none;
+  --sheen: none;
+  --brush: none;
+  --edge: rgba(255, 255, 255, 0.6);
+  --shadow: 0 8px 28px rgba(30, 34, 44, 0.12), 0 1px 0 var(--edge) inset;
   /* Pastel ink */
   --track-0: #e8896d; --track-1: #e3b45a; --track-2: #74c08a; --track-3: #7c9ff0;
   --track-4: #b890e8; --track-5: #62c4b8; --track-6: #ea8cae; --track-7: #b6cc62;

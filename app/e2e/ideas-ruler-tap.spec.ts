@@ -129,11 +129,12 @@ test('tap tempo: T previews in the LCD, then sets the tempo once; clicking the B
   await page.keyboard.press('ControlOrMeta+z'); // one undo step for the whole tap run
   await expect.poll(async () => (await session(page)).tempo).toBe(120);
 
-  // and from anywhere
-  for (let i = 0; i < 4; i++) {
+  // and from anywhere: T starts a tap run (its commit is checked above; the math in Vitest)
+  for (let i = 0; i < 2; i++) {
     await page.keyboard.press('t');
     await page.waitForTimeout(600);
   }
-  await expect.poll(async () => (await session(page)).tempo).toBeLessThan(110);
-  expect((await session(page)).tempo).toBeGreaterThan(90);
+  await expect(page.getByTestId('tempo-label')).toHaveText('TAP');
+  expect(Number(await page.getByLabel('Tempo').inputValue())).toBeGreaterThan(90);
+  expect(Number(await page.getByLabel('Tempo').inputValue())).toBeLessThan(110);
 });

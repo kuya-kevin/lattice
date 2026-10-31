@@ -108,15 +108,19 @@ test('a mic take with count-in starts where recording started, without the count
   await expect(page.getByRole('button', { name: /Enable mic/ })).toHaveCount(0);
   await page.locator('body').click({ position: { x: 5, y: 600 } });
   await page.keyboard.press('r');
+  await expect(page.getByTestId('lcd')).toContainText('COUNT-IN');
   await clickTimes(page, 6); // into the take
+  await expect(page.getByTestId('lcd')).toContainText('REC');
   await page.waitForTimeout(500);
   await page.keyboard.press('r');
   await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
   const s = await session(page);
   const clip = s.tracks[0].clips[0];
   expect(clip.start).toBeCloseTo(1.3, 3);
-  // the take runs from 1.3 to where it was stopped; the count-in bar was trimmed off the front
-  expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.05);
+  // the take runs from 1.3 to where it was stopped; the count-in bar was trimmed off the front.
+  // It ends ~35-50 ms short of the stop (the input-latency compensation, plus ~6 ms of block
+  // jitter on each side), so 0.05 failed now and then; an untrimmed count-in would be 2 s off.
+  expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.1);
 });
 
 /** Cycle on over bar 4 at 240 BPM (3-4 s), the playhead elsewhere: a take from a stop starts at
@@ -159,12 +163,17 @@ test('cycle recording audio keeps the latest pass, from the cycle start', async 
   await page.locator('body').click({ position: { x: 5, y: 600 } });
   await page.keyboard.press('r');
   await clickTimes(page, 4);
-  await page.waitForTimeout(1000 + 1500);
+  await page.waitForTimeout(1200); // past the first wrap
+  // stop mid-pass: a stop in a pass's first beat keeps the pass before it (cycleMicTake), and a
+  // fixed wait landed there now and then under load
+  await expect(page.getByTestId('lcd-bars')).toHaveText(/^4 [23] /);
   await page.keyboard.press('r');
   await expect.poll(async () => (await session(page)).tracks[0].clips.length).toBe(1);
   const s = await session(page);
   const clip = s.tracks[0].clips[0];
   expect(clip.start).toBe(3);
-  expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.05); // runs to where it stopped
+  // runs to where it stopped, less the latency compensation (see the count-in mic take above); an
+  // earlier pass would end ~0.5 s off
+  expect(Math.abs(clip.start + clip.duration - s.transport.position)).toBeLessThan(0.1);
   expect(s.transport.position).toBeLessThan(4);
 });

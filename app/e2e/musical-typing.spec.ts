@@ -2,8 +2,9 @@
 // (except R: Record, which then records a MIDI take).
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { shot, evidenceVideo } from './evidence';
 
-test.use({ video: 'on' });
+test.use({ video: evidenceVideo });
 
 const SHOTS = 'screenshots/musical-typing';
 mkdirSync(SHOTS, { recursive: true });
@@ -70,8 +71,8 @@ test('A W S play a chord: keys light, note-on and note-off', async ({ page }) =>
   for (const k of ['A', 'W', 'S']) await expect(pianoKey(page, k)).toHaveAttribute('data-active', 'true');
   await expect(pianoKey(page, 'D')).toHaveAttribute('data-active', 'false');
   await expect(keyboard(page)).toHaveAttribute('data-voices', '3');
-  await page.screenshot({ path: `${SHOTS}/chord-held.png` });
-  await keyboard(page).screenshot({ path: `${SHOTS}/keyboard-chord.png` });
+  await shot(page, `${SHOTS}/chord-held.png`);
+  await shot(keyboard(page), `${SHOTS}/keyboard-chord.png`);
   await page.keyboard.up('w');
   await expect(pianoKey(page, 'W')).toHaveAttribute('data-active', 'false');
   await page.keyboard.up('a');
@@ -123,7 +124,7 @@ test('K C O pause while on and work again when off; Space still plays', async ({
   await page.keyboard.press('s'); // play along
   await page.keyboard.press('Space');
   await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
-  await page.screenshot({ path: `${SHOTS}/shortcuts-paused.png` });
+  await shot(page, `${SHOTS}/shortcuts-paused.png`);
 
   await page.keyboard.press('ControlOrMeta+k');
   await page.keyboard.press('k');
@@ -146,7 +147,7 @@ test('typing in the chat box with the mode on types text, no notes', async ({ pa
   await expect(chat).toHaveValue('ask sd');
   expect(await notes(page)).toEqual([]);
   await expect(keyboard(page)).toHaveAttribute('data-voices', '0');
-  await page.screenshot({ path: `${SHOTS}/chat-typing.png` });
+  await shot(page, `${SHOTS}/chat-typing.png`);
 });
 
 test('R records a MIDI take while musical typing is on; Space also ends it', async ({ page }) => {
@@ -169,7 +170,7 @@ test('R records a MIDI take while musical typing is on; Space also ends it', asy
     await page.keyboard.up(k);
     await page.waitForTimeout(100);
   }
-  await page.screenshot({ path: `${SHOTS}/midi-recording.png` });
+  await shot(page, `${SHOTS}/midi-recording.png`);
   await page.keyboard.press('r');
   await expect(page.getByTestId('lcd')).not.toContainText('REC');
 
@@ -185,7 +186,7 @@ test('R records a MIDI take while musical typing is on; Space also ends it', asy
   expect(played[1].start - played[0].start).toBeGreaterThan(0.3); // in the order and spacing played
   expect(s.selection.clipId).toBe(clip.id);
   await expect(page.locator('[data-track-row][data-track-id="t3"] [data-clip-container]')).toHaveCount(1);
-  await page.screenshot({ path: `${SHOTS}/midi-take-recorded.png` });
+  await shot(page, `${SHOTS}/midi-take-recorded.png`);
 
   // a second take, ended with Space instead of R
   await page.keyboard.press('Enter'); // back to the start
@@ -246,8 +247,8 @@ test('the selected audio clip plays as a sampler; MIDI or nothing selected is th
   await page.keyboard.down('k'); // C5: an octave up
   await page.keyboard.down('g'); // G4: a fifth up
   await expect(keyboard(page)).toHaveAttribute('data-voices', '3');
-  await page.screenshot({ path: `${SHOTS}/sampler-chord.png` });
-  await keyboard(page).screenshot({ path: `${SHOTS}/sampler-header.png` });
+  await shot(page, `${SHOTS}/sampler-chord.png`);
+  await shot(keyboard(page), `${SHOTS}/sampler-header.png`);
   for (const k of ['a', 'k', 'g']) await page.keyboard.up(k);
   await expect(keyboard(page)).toHaveAttribute('data-voices', '0');
   expect(await sources(page)).toEqual([
@@ -311,7 +312,7 @@ test('a MIDI take recorded with a sample plays back with that sample', async ({ 
   ]);
   // the take is selected now and keeps the sample as the instrument
   await expect(page.getByTestId('mt-instrument')).toHaveText(audio.name);
-  await page.screenshot({ path: `${SHOTS}/sampler-take-recorded.png` });
+  await shot(page, `${SHOTS}/sampler-take-recorded.png`);
 
   // play it back
   await page.keyboard.press('Enter');

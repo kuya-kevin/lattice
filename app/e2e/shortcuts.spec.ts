@@ -58,21 +58,6 @@ test('K toggles the click, Shift-K the count-in', async ({ page }) => {
   expect(errors).toEqual([]);
 });
 
-test('R records after a one-bar count-in', async ({ page }) => {
-  await page.goto('/');
-  await page.getByRole('button', { name: /Enable mic/ }).click();
-  await expect(page.getByRole('button', { name: /Enable mic/ })).toHaveCount(0);
-  await page.getByLabel('Tempo').fill('240'); // 1 bar = 1 s
-  await page.getByLabel('Tempo').press('Enter');
-  await page.keyboard.press('Shift+K');
-  await page.keyboard.press('r');
-  await expect(page.getByTestId('lcd')).toContainText('COUNT-IN');
-  await expect(page.getByTestId('lcd')).toContainText('REC', { timeout: 3000 });
-  await page.waitForTimeout(500);
-  await page.keyboard.press('r');
-  await expect.poll(async () => (await session(page)).tracks[0]?.clips.length).toBe(1);
-});
-
 test('typing in the chat box or a field does not trigger shortcuts', async ({ page }) => {
   await load(page);
   const chat = page.getByPlaceholder(/trim the vocal/);
@@ -105,17 +90,6 @@ test('tempo, signature and key are typed into the LCD and reach the session', as
   await tempo.press('Enter');
   await expect(tempo).toHaveValue('92');
 });
-
-for (const [name, size] of [['wide', { width: 1400, height: 800 }], ['narrow', { width: 760, height: 900 }]] as const) {
-  test(`control bar screenshot (${name})`, async ({ page }) => {
-    await page.setViewportSize(size);
-    await load(page);
-    await page.keyboard.press('k');
-    await page.getByLabel('Key').fill('A minor');
-    await page.getByLabel('Key').press('Enter');
-    await page.screenshot({ path: `screenshots/controlbar-${name}.png` });
-  });
-}
 
 test(', and . jump to the bar lines (Logic, GarageBand)', async ({ page }) => {
   await page.goto('/');

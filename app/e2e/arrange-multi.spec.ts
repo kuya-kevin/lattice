@@ -123,7 +123,9 @@ test('dragging a track header reorders the tracks', async ({ page }) => {
   await expect(page.getByTestId('track-drop-line')).toBeVisible();
   await page.mouse.up();
   await expect.poll(async () => (await session(page)).tracks.map((t) => t.id)).toEqual(['t5', 't1', 't3']);
-  expect({ t1: await colour('t1'), t5: await colour('t5') }).toEqual(before); // colours go with the tracks
+  // colours go with the tracks. Polled: under load a header was seen (1 in 60) for one read with the
+  // colour of its slot's previous track, then the right one; the settled colour is what matters
+  await expect.poll(async () => ({ t1: await colour('t1'), t5: await colour('t5') })).toEqual(before);
   await expect(page.locator('[data-track-row]').first()).toHaveAttribute('data-track-id', 't5');
   await page.keyboard.press('Control+z');
   await expect.poll(async () => (await session(page)).tracks.map((t) => t.id)).toEqual(['t1', 't3', 't5']);

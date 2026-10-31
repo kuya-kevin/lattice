@@ -54,11 +54,11 @@ test('Muse sets a two-bar loop; Space plays from it, and Stop stops it every tim
   const r = await tool(page, 'set_cycle', { from_bar: 2, to_bar: 3 });
   expect(r.result).toMatchObject({ on: true, start: 1, end: 3 });
   await expect(page.getByRole('button', { name: 'Cycle' })).toHaveClass(/on/);
-  for (let i = 0; i < 6; i++) {
+  for (const ms of [300, 1100, 2150]) { // early, late, and past the wrap (the loop is 2 s)
     await page.keyboard.press('Space');
     await expect.poll(async () => (await session(page)).transport.playing).toBe(true);
     expect((await session(page)).transport.position).toBe(1); // from the cycle start, not the playhead
-    await page.waitForTimeout(300 + i * 370); // stop at different points of the loop, some across the wrap
+    await page.waitForTimeout(ms);
     await page.keyboard.press('Space');
     await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
     await page.waitForTimeout(400);

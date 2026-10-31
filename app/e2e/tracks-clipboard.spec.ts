@@ -1,8 +1,9 @@
 // Track rename (double-click) and delete (× button, undoable), and Cmd/Ctrl-C / -V to copy a
 // clip and paste it at the playhead on the selected track (web build, mock bridge).
 import { expect, test, type Page } from '@playwright/test';
+import { shot, evidenceVideo } from './evidence';
 
-test.use({ video: 'on' });
+test.use({ video: evidenceVideo });
 
 const shots = 'screenshots/tracks-clipboard';
 const session = (page: Page) => page.evaluate(() => window.lattice!.getSession());
@@ -49,14 +50,14 @@ test('double-click renames a track; Esc cancels, Enter commits', async ({ page }
   await field.fill('Lead synth');
   await page.keyboard.press('k'); // typing in the field must not toggle the click
   await page.keyboard.press('Backspace'); // nor delete anything
-  await page.screenshot({ path: `${shots}/rename-editing.png` });
+  await shot(page, `${shots}/rename-editing.png`);
   await field.press('Enter');
   await expect(page.getByTestId('track-t1').locator('.track-name')).toHaveText('Lead synth');
   const s = await session(page);
   expect(s.tracks[0].name).toBe('Lead synth');
   expect(s.metronome.on).toBe(false);
   expect(s.tracks[0].clips).toHaveLength(1);
-  await page.screenshot({ path: `${shots}/rename-done.png` });
+  await shot(page, `${shots}/rename-done.png`);
 
   await page.getByRole('button', { name: 'Undo' }).click();
   await expect(page.getByTestId('track-t1').locator('.track-name')).toHaveText('loop');
@@ -66,7 +67,7 @@ test('× deletes a track (and its selection); undo brings it back', async ({ pag
   await load(page);
   await clickLane(page, 't1', 0.5); // select clip c2 on t1
   await expect.poll(async () => (await session(page)).selection.clipId).toBe('c2');
-  await page.screenshot({ path: `${shots}/delete-before.png` });
+  await shot(page, `${shots}/delete-before.png`);
 
   await page.getByTestId('track-t1').getByRole('button', { name: 'Delete', exact: true }).click();
   await expect(page.getByTestId('track-t1')).toHaveCount(0);
@@ -75,7 +76,7 @@ test('× deletes a track (and its selection); undo brings it back', async ({ pag
   expect(s.selection).toEqual({ trackId: null, clipId: null });
   await expect(page.locator('[data-track-row]')).toHaveCount(1); // the lane goes too, with its clip
   await expect(page.locator('[data-clip-container]')).toHaveCount(0);
-  await page.screenshot({ path: `${shots}/delete-after.png` });
+  await shot(page, `${shots}/delete-after.png`);
 
   await page.locator('body').click({ position: { x: 5, y: 600 } });
   await page.keyboard.press('ControlOrMeta+z');
@@ -84,7 +85,7 @@ test('× deletes a track (and its selection); undo brings it back', async ({ pag
   expect(s.tracks.map((t) => t.id)).toEqual(['t1', 't3']);
   expect(s.tracks[0].clips[0]).toMatchObject({ id: 'c2', start: 0 });
   await expect(page.locator('[data-track-row][data-track-id="t1"] [data-clip-container]')).toHaveCount(1);
-  await page.screenshot({ path: `${shots}/delete-undone.png` });
+  await shot(page, `${shots}/delete-undone.png`);
 });
 
 test('Cmd-C / Cmd-V pastes the clip at the playhead on the selected track, again and again', async ({ page }) => {
@@ -116,7 +117,7 @@ test('Cmd-C / Cmd-V pastes the clip at the playhead on the selected track, again
   expect(s.selection.clipId).toBe(s.tracks[1].clips[1].id);
   expect(s.tracks[0].clips).toHaveLength(1); // the original stays put
   await expect(page.locator('[data-track-row][data-track-id="t3"] [data-clip-container]')).toHaveCount(2); // drawn with its audio
-  await page.screenshot({ path: `${shots}/paste-twice.png` });
+  await shot(page, `${shots}/paste-twice.png`);
 
   await page.keyboard.press('ControlOrMeta+z'); // one paste at a time
   await expect.poll(async () => (await session(page)).tracks[1].clips.map((c) => c.start)).toEqual([2]);
@@ -139,6 +140,6 @@ test.describe('chat box', () => {
     await page.waitForTimeout(300);
     const s = await session(page);
     expect(s.tracks.flatMap((t) => t.clips)).toHaveLength(1);
-    await page.screenshot({ path: `${shots}/chat-paste.png` });
+    await shot(page, `${shots}/chat-paste.png`);
   });
 });

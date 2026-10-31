@@ -3,6 +3,7 @@
 // Finder, renaming pads and the kit, a kit card dragged onto the arrangement, its Piano Roll rows.
 import { mkdirSync } from 'node:fs';
 import { expect, test, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 const SHOTS = 'screenshots/drum-pad';
 mkdirSync(SHOTS, { recursive: true });
@@ -50,7 +51,7 @@ test('make a kit, put a sound on a pad, play it and record a take on it', async 
   await page.locator('body').click({ position: { x: 5, y: 600 } });
   await page.keyboard.down('z');
   await expect(pad(page, 'Z')).toHaveAttribute('data-active', 'true');
-  await page.screenshot({ path: `${SHOTS}/pad-hit.png` });
+  await shot(page, `${SHOTS}/pad-hit.png`);
   await page.keyboard.up('z');
   await page.keyboard.press('x');
   expect(await notes(page)).toEqual(['on 36 100', 'off 36 100', 'on 38 100', 'off 38 100']);
@@ -73,7 +74,7 @@ test('make a kit, put a sound on a pad, play it and record a take on it', async 
   expect(s.tracks[1].name).toBe('Sample pad 1');
   expect(take.midi).toMatchObject({ drum: true, kit: kitId });
   expect(take.midi!.notes.map((n) => n.pitch)).toEqual([36, 38, 36]);
-  await page.screenshot({ path: `${SHOTS}/take-recorded.png` });
+  await shot(page, `${SHOTS}/take-recorded.png`);
 
   // deleting the kit keeps the take (built-in drums)
   await page.locator(`.idea-kit[data-kit="${kitId}"]`).hover();
@@ -139,6 +140,6 @@ test('any sound on a sample pad: Finder files, renamed pads and kit, a region fr
   await expect(roll.locator('.pr-key[data-pad]')).toHaveCount(9); // every pad has a row, Perc (56) too
   await page.getByRole('button', { name: 'Close Musical Typing' }).click();
   await roll.locator('.pr-key[data-pad="4"]').scrollIntoViewIfNeeded();
-  await roll.locator(".pr-keys").screenshot({ path: `${SHOTS}/sample-pad-rows.png` });
+  await shot(roll.locator(".pr-keys"), `${SHOTS}/sample-pad-rows.png`);
   expect(errors).toEqual([]);
 });

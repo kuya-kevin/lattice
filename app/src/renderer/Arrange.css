@@ -13,7 +13,7 @@
   border: 1px solid color-mix(in srgb, var(--region-color) 55%, transparent); border-bottom: 0; border-radius: 9px 9px 0 0;
 }
 .live-take-body {
-  position: relative; flex: 1; background: color-mix(in srgb, var(--region-color) 10%, #3b3e47);
+  position: relative; flex: 1; background: color-mix(in srgb, var(--region-color) 10%, var(--region-body));
   border: 1px solid color-mix(in srgb, var(--region-color) 55%, transparent); border-top: 0; border-radius: 0 0 9px 9px;
 }
 .live-take-body .lt-notes { fill: color-mix(in srgb, var(--region-color) 70%, #fff); }

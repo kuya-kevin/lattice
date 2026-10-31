@@ -2,6 +2,7 @@
 // middleware answers with tests/fixtures/source_prep/manifest.json), and get MIDI tracks that
 // play through the built-in synth. Then quantize one with the same tool Muse uses, and undo.
 import { expect, test } from '@playwright/test';
+import { shot } from './evidence';
 
 function sineWav(seconds = 2, sr = 22050, hz = 220): Buffer {
   const n = seconds * sr;
@@ -62,6 +63,6 @@ test('extracts MIDI tracks from a voice note and plays them', async ({ page }) =
   await page.getByRole('button', { name: 'Play' }).click();
   await expect(page.getByRole('button', { name: 'Stop' })).toBeVisible();
   await page.getByRole('button', { name: 'Stop' }).click();
-  await page.screenshot({ path: 'test-results/extract-midi.png' });
+  await shot(page, 'test-results/extract-midi.png');
   expect(errors).toEqual([]);
 });

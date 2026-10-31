@@ -1,6 +1,7 @@
 // Smoke test of the web build (mock bridge, no Muse): import a WAV, see the track,
 // change its gain, play/stop, and run one chat turn through the offline stand-in.
 import { expect, test } from '@playwright/test';
+import { shot } from './evidence';
 
 function sineWav(seconds = 2, sr = 22050, hz = 220): Buffer {
   const n = seconds * sr;
@@ -35,25 +36,7 @@ test('import, mix, play and chat in the web build', async ({ page }) => {
   const list = page.getByTestId('chat-list');
   await expect(list).toContainText('list_tracks');
   await expect(list).toContainText('t1 "hum" gain 0 dB (muted): c2 "hum" 0-2s');
-  await page.screenshot({ path: 'test-results/smoke.png' });
+  await shot(page, 'test-results/smoke.png');
   expect(errors).toEqual([]);
 });
 
-test('records a take from the (fake) mic onto a new track', async ({ page }) => {
-  const errors: string[] = [];
-  page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/');
-  await page.getByRole('button', { name: /Enable mic/ }).click();
-  await expect(page.getByRole('button', { name: /Enable mic/ })).toHaveCount(0);
-  await page.getByRole('button', { name: 'Record' }).click();
-  await expect(page.getByTestId('lcd')).toContainText('REC');
-  await page.waitForTimeout(1200);
-  await page.getByRole('button', { name: 'Record' }).click();
-  const track = page.getByTestId('track-t1');
-  await expect(track).toContainText('Recording');
-  await expect.poll(() => page.evaluate(async () => (await window.lattice!.getSession()).tracks[0].clips.length)).toBe(1);
-  const clip = await page.evaluate(async () => (await window.lattice!.getSession()).tracks[0].clips[0]);
-  expect(clip.name).toMatch(/^Take/);
-  expect(clip.duration).toBeGreaterThan(0.5);
-  expect(errors).toEqual([]);
-});

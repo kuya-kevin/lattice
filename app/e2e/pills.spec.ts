@@ -4,6 +4,7 @@
 // snaps there, and a double-click (or Layout > Reset pills) puts them back.
 // Asserts on the stored offsets and element boxes, not pixels.
 import { expect, test, type Locator, type Page } from '@playwright/test';
+import { shot } from './evidence';
 
 test.use({ viewport: { width: 1600, height: 1000 } });
 
@@ -15,6 +16,14 @@ const box = async (l: Locator) => (await l.boundingBox())!;
 const transport = (p: Page) => p.locator('.controlbar .transport');
 const rail = (p: Page) => p.locator('nav.rail');
 const project = (p: Page) => p.locator('.project-menu-wrap');
+
+/** Reload and wait for the web fonts: the pills are centred, so a font landing after a measure
+ *  moves them (~1.6 px). */
+async function reload(page: Page) {
+  await page.reload();
+  await expect(transport(page)).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+}
 
 /** Press at the centre of `grip`, move by (dx, dy) in steps, release. */
 async function drag(page: Page, grip: Locator, dx: number, dy: number) {
@@ -32,8 +41,7 @@ test('drag pills by their background; clamped, remembered across a reload, reset
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/');
   await page.evaluate((k) => localStorage.removeItem(k), KEY);
-  await page.reload();
-  await expect(transport(page)).toBeVisible();
+  await reload(page);
 
   // the transport, by an LCD label (not a button): moves 60 px to the left and stays there
   const t0 = await box(transport(page));
@@ -65,8 +73,7 @@ test('drag pills by their background; clamped, remembered across a reload, reset
   await expect(page.getByTestId('project-menu-open')).toHaveAttribute('aria-expanded', 'false');
 
   // kept across a reload
-  await page.reload();
-  await expect(transport(page)).toBeVisible();
+  await reload(page);
   t = await box(transport(page));
   r = await box(rail(page));
   expect(t.x).toBeCloseTo(t0.x - 60, 0);
@@ -110,6 +117,6 @@ test('drag pills by their background; clamped, remembered across a reload, reset
   expect(r.x).toBeCloseTo(r0.x, 0);
   expect(r.y).toBeCloseTo(r0.y, 0);
   expect((await box(project(page))).x).toBeCloseTo(p0.x, 0);
-  await page.screenshot({ path: 'screenshots/pills/reset.png' });
+  await shot(page, 'screenshots/pills/reset.png');
   expect(errors).toEqual([]);
 });

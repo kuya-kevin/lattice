@@ -10,7 +10,7 @@
 .pan { display: flex; flex-direction: column; align-items: center; gap: 2px; }
 .pan-knob {
   position: relative; width: 30px; height: 30px; border-radius: 50%; cursor: ns-resize; touch-action: none;
-  background: radial-gradient(circle at 50% 35%, #3a3e47, #23262c); border: 1px solid var(--line-strong);
+  background: radial-gradient(circle at 50% 35%, var(--line-strong), var(--island-2)); border: 1px solid var(--line-strong);
 }
 .pan-knob:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .pan-pointer { position: absolute; inset: 0; }
