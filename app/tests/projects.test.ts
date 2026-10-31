@@ -8,7 +8,7 @@ import { SessionStore } from '../src/core/store';
 import { StubSidecar } from '../src/core/sidecar';
 import { museSummary, museToolSpecs, runTool, type ToolContext } from '../src/core/tools';
 import { MemoryProjectLibrary } from '../src/core/projects';
-import { isVocalTrack, MemorySetupLibrary } from '../src/core/setups';
+import { familyOf, MemorySetupLibrary, shapeOf, trackGroups } from '../src/core/setups';
 import { MemoryVersionLibrary } from '../src/core/versions';
 import { FileProjectLibrary, loadAutosave } from '../src/node/projectFiles';
 import { FileSetupLibrary } from '../src/node/setupFile';
@@ -33,8 +33,8 @@ const ok = async (c: ToolContext, tool: string, args: Record<string, unknown> = 
 const names = (c: ToolContext) => c.store.get().tracks.map((t) => t.name);
 
 /** The user's vocals by hand: Vocal centre, Vocal L/R 40% out, each with EQ + compressor. */
-async function vocalSetup(c: ToolContext) {
-  for (const [name, pan] of [['Vocal', 0], ['Vocal L', -0.4], ['Vocal R', 0.4]] as const) {
+async function vocalSetup(c: ToolContext, names: readonly string[] = ['Vocal', 'Vocal L', 'Vocal R'], width = 0.4) {
+  for (const [name, pan] of [[names[0], 0], [names[1], -width], [names[2], width]] as const) {
     const { track_id } = await ok(c, 'add_track', { name });
     await ok(c, 'insert_device', { track_id, device: 'eq', params: { b3_gain: 2 } });
     await ok(c, 'insert_device', { track_id, device: 'comp' });
@@ -117,61 +117,92 @@ describe('projects (Oct 30)', () => {
 });
 
 describe('setups learned on Save (Oct 30)', () => {
-  it('Save offers the vocal setup; saving it keeps names, pans and chains, and the chain', async () => {
+  it('offers a setup once it is done the same way in two projects (names and knobs may differ)', async () => {
     const c = ctx();
     await vocalSetup(c);
-    const saved = await ok(c, 'save_project');
-    expect(saved.name).toMatch(/^Saved /);
-    expect(saved.setup_offer).toMatchObject({ name: 'Vocal setup', replaces: false });
-    expect(saved.setup_offer.tracks.map((t: any) => `${t.name} ${t.pan}`)).toEqual(['Vocal centre', 'Vocal L 40% L', 'Vocal R 40% R']);
-    expect(saved.setup_offer.tracks[0].devices).toEqual(['Channel EQ', 'Compressor']);
+    expect((await ok(c, 'save_project')).setup_offers).toBeUndefined(); // once is not a habit
+    expect((await ok(c, 'save_project')).setup_offers).toBeUndefined(); // saving again is the same project
+    await ok(c, 'new_project', {});
+    await vocalSetup(c, ['Vox', 'Vox Dbl L', 'Vox Dbl R']);
+    await ok(c, 'set_param', { track_id: c.store.get().tracks[0].id, device_id: 'eq', param: 'b3_gain', value: 5 }); // a different EQ is still this setup
+    const [offer, ...more] = (await ok(c, 'save_project')).setup_offers;
+    expect(more).toEqual([]);
+    expect(offer).toMatchObject({ name: 'Vocal setup', family: 'vocal', projects: 2, replaces: false });
+    expect(offer.tracks.map((t: any) => `${t.name} ${t.pan}`)).toEqual(['Vox centre', 'Vox Dbl L 40% L', 'Vox Dbl R 40% R']);
+    expect(offer.tracks[0].devices).toEqual(['Channel EQ', 'Compressor']);
 
-    const r = await ok(c, 'save_setup', { track_ids: saved.setup_offer.track_ids });
+    const r = await ok(c, 'save_setup', { name: offer.name, track_ids: offer.track_ids });
     expect(r).toMatchObject({ name: 'Vocal setup', chain_saved: 'Vocal chain' });
     expect(c.chains!.get('Vocal chain')!.devices.map((d) => d.kind)).toEqual(['eq', 'comp']);
-    expect((await ok(c, 'save_project')).setup_offer).toBeUndefined(); // nothing new to learn
-    expect(museSummary(c)).toContain('"Vocal setup": Vocal (centre, Channel EQ, Compressor), Vocal L (40% L, Channel EQ, Compressor)');
+    expect((await ok(c, 'save_project')).setup_offers).toBeUndefined(); // known now
+    expect(museSummary(c)).toContain('"Vocal setup": Vox (centre, Channel EQ, Compressor), Vox Dbl L (40% L, Channel EQ, Compressor)');
   });
 
-  it('no offer without a vocal setup; a changed one offers to replace', async () => {
+  it('works for any kind of track, and the count is a setting', async () => {
     const c = ctx();
-    await ok(c, 'add_track', { name: 'Lead Vocal' });
-    expect((await ok(c, 'save_project')).setup_offer).toBeUndefined(); // one bare vocal track
-    await vocalSetup(c);
-    await ok(c, 'save_setup', {});
-    await ok(c, 'set_param', { track_id: 't5', device_id: 'utility', param: 'pan', value: -0.6 });
-    expect((await ok(c, 'save_project')).setup_offer).toMatchObject({ replaces: true });
+    await ok(c, 'set_setup_learning', { after: 1 });
+    await vocalSetup(c, ['Gtr', 'Gtr L', 'Gtr R'], 0.8);
+    const { track_id } = await ok(c, 'add_track', { name: 'Audio 1' }); // says nothing: no group
+    await ok(c, 'insert_device', { track_id, device: 'eq' });
+    const offers = (await ok(c, 'save_project')).setup_offers;
+    expect(offers.map((o: any) => [o.name, o.projects])).toEqual([['Guitar setup', 1]]);
+    expect(offers[0].tracks.map((t: any) => t.pan)).toEqual(['centre', '80% L', '80% R']);
   });
 
-  it('in a new project, apply_setup sets up the vocal track and makes the doubles (one undo step)', async () => {
+  it('"Not now" waits for another project; a changed habit offers to update', async () => {
     const c = ctx();
+    await ok(c, 'set_setup_learning', { after: 1 });
     await vocalSetup(c);
-    await ok(c, 'save_setup', {});
+    const [offer] = (await ok(c, 'save_project')).setup_offers;
+    await ok(c, 'decline_setup', { family: offer.family, shape: offer.shape, projects: offer.projects });
+    expect((await ok(c, 'save_project')).setup_offers).toBeUndefined();
     await ok(c, 'new_project', {});
-    await ok(c, 'add_track', { name: 'Vox' });
-    const r = await ok(c, 'apply_setup', {}, 'muse');
-    expect(r.tracks.map((t: any) => [t.name, t.made])).toEqual([['Vox', false], ['Vocal L', true], ['Vocal R', true]]);
+    await vocalSetup(c);
+    expect((await ok(c, 'save_project')).setup_offers).toHaveLength(1); // seen in a second project
+    await ok(c, 'save_setup', { name: 'Vocal setup' });
+
+    await ok(c, 'new_project', {});
+    await vocalSetup(c, undefined, 0.3); // the user now goes 30% out
+    expect((await ok(c, 'save_project')).setup_offers).toMatchObject([{ name: 'Vocal setup', replaces: true, projects: 1 }]);
+  });
+
+  it('in a new project, apply_setup sets up the bare track and makes the others (one undo step)', async () => {
+    const c = ctx();
+    await vocalSetup(c);
+    await ok(c, 'save_setup', { name: 'Vocal setup' });
+    await ok(c, 'new_project', {});
+    await ok(c, 'add_track', { name: 'Lead Vox' });
+    const r = await ok(c, 'apply_setup', { name: 'vocal' }, 'muse');
+    expect(r.tracks.map((t: any) => [t.name, t.made])).toEqual([['Lead Vox', false], ['Vocal L', true], ['Vocal R', true]]);
     const s = c.store.get();
     expect(s.tracks.map((t) => t.devices.map((d) => d.kind))).toEqual([['eq', 'comp'], ['eq', 'comp', 'utility'], ['eq', 'comp', 'utility']]);
     expect(s.tracks[1].devices[2].params.pan).toBe(-0.4);
     c.store.undo();
-    expect(names(c)).toEqual(['Vox']);
+    expect(names(c)).toEqual(['Lead Vox']);
   });
 
-  it('setups span projects and relaunches (setups.json)', async () => {
+  it('setups and what Lattice has seen span relaunches (setups.json)', async () => {
     const file = join(mkdtempSync(join(tmpdir(), 'lattice-setups-')), 'setups.json');
     const c = { ...ctx(), setups: new FileSetupLibrary(file) };
     await vocalSetup(c);
-    await ok(c, 'save_setup', {});
-    expect(new FileSetupLibrary(file).get('vocal setup')?.tracks).toHaveLength(3);
+    await ok(c, 'save_project');
+    expect(trackGroups(c.store.get()).map((g) => g.family)).toEqual(['vocal']);
+    expect(new FileSetupLibrary(file).see('vocal', 'p2', shapeOf(trackGroups(c.store.get())[0].tracks))).toBe(2); // p1's Save was kept
+    await ok(c, 'set_setup_learning', { after: 3 });
+    await ok(c, 'save_setup', { name: 'Vocal setup' });
+    const again = new FileSetupLibrary(file);
+    expect(again.get('vocal setup')?.tracks).toHaveLength(3);
+    expect(again.learnAfter).toBe(3);
     await ok(c, 'forget_setup', { name: 'Vocal setup' });
     expect(new FileSetupLibrary(file).list()).toEqual([]);
   });
 
-  it('vocal tracks by whole words', () => {
-    const s = S.emptySession();
-    const t = (name: string) => ({ ...S.addTrack(s, name)[1] });
-    for (const n of ['Vocal', 'Vox L', 'Lead Vocals', 'BGV 2', 'Double R', 'Harmony']) expect(isVocalTrack(s, t(n)), n).toBe(true);
-    for (const n of ['Vocoder', 'Lead Synth', 'Voxel pad', 'Keys']) expect(isVocalTrack(s, t(n)), n).toBe(false);
+  it('a track\'s kind: its last word that is not a side, number or take, one spelling', () => {
+    const cases: [string, string | null][] = [
+      ['Vocal', 'vocal'], ['Vox L', 'vocal'], ['Lead Vocals', 'vocal'], ['BGV 2', 'vocal'], ['Vocal Double R', 'vocal'],
+      ['Gtr L', 'guitar'], ['Acoustic Guitar', 'guitar'], ['Kick', 'kick'], ['Drums', 'drum'], ['Lead Synth', 'synth'],
+      ['Vocoder', 'vocoder'], ['Audio 1', null], ['Track 3', null], ['L', null],
+    ];
+    for (const [n, f] of cases) expect(familyOf(n), n).toBe(f);
   });
 });

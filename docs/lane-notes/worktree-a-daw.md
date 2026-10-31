@@ -122,3 +122,25 @@ Projects and the vocal setup (Oct 30, night; covers the B23 demo, with a vocal s
   incl. projects.spec.ts (new); Electron: electron-projects.spec.ts (new, relaunch), electron.spec,
   electron-shelves pass after a build (the trim-drag test failed once in the full run, passed 3/3
   alone). Spend $0.
+
+Setups for any kind of track, learned from repetition (Oct 30, late night; replaces the vocal-only rule above):
+- Nothing is tied to vocals now. A track's kind is the last word of its name that isn't a side,
+  number or take, in one spelling ("Vox L" / "Lead Vocal" -> vocal, "Gtr R" -> guitar, "Audio 1"
+  -> none, then its first region's name). A group is the tracks of one kind with at least one set
+  up by hand. Setup names come from the kind ("Vocal setup", "Guitar setup").
+- Each Save notes every group's shape for that project (pans to 5% and which devices; not knob
+  values or track names). Lattice offers a setup once the same shape is in **2 projects** ("You've
+  set up vocal tracks this way in 2 projects: ... Keep it?"); a saved setup whose shape changes in
+  that many projects offers "Update setup". "Not now" waits for one more project. The count is a
+  setting at the bottom of the pill menu (1-3; `set_setup_learning`). A bare track of a saved kind
+  in another project gets "Use your <kind> setup here?".
+- setups.json (version 2) also keeps the sightings, declines and the setting. Tools: `save_setup`
+  (name or track_ids), `apply_setup` (name), `decline_setup`, `set_setup_learning`, `list_setups`.
+- Demo (count 2): project 1 "Demo song": Vocal / Vocal L / Vocal R with an EQ each, Utility pan
+  ∓0.40 on L/R, ⌘S ("Saved"). New Project: the same as Vox / Vox L / Vox R, ⌘S -> the offer ->
+  Save vocal setup. New Project, add "Lead Vocal" -> Use it. (For a one-project demo, set the
+  count to 1 in the pill menu.)
+- Tests: vitest 409 (projects.test.ts 11), tsc clean; web e2e all 37 specs (121) pass; Electron
+  electron-projects + electron-shelves pass. electron.spec's trim-twice test flakes when it runs
+  after another Electron test: the commit before projects (30a2530) fails it 2 of 3 times too, so
+  it is not from this work. Spend $0.

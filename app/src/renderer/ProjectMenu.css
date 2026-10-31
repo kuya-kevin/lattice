@@ -36,3 +36,5 @@ button.session-pill:hover:not(:disabled) { background: var(--island-2); }
 .pm-setup-actions .link { font-size: 12px; }
 /* a notice that asks something (the vocal setup) wraps instead of running off screen */
 .notice { max-width: min(760px, calc(100vw - 32px)); }
+.pm-learn { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding-top: 4px; border-top: 1px solid var(--line); }
+.pm-learn select { height: 26px; border-radius: 999px; padding: 0 8px; }

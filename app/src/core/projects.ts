@@ -6,7 +6,7 @@
 import * as S from './session';
 import { MemoryVersionLibrary, versionLibrary, type VersionLibrary } from './versions';
 import type { ToolContext, ToolDef } from './tools';
-import { setupOffer } from './setups';
+import { setupOffers } from './setups';
 
 export interface ProjectMeta {
   id: string; // p1, p2, ...
@@ -263,7 +263,7 @@ export const PROJECT_TOOLS: ToolDef[] = [
     name: 'save_project',
     description:
       'Save: a named version of the open project (Lattice autosaves every change; this is a point to go back to). ' +
-      'Saving is when Lattice learns: if the project has a vocal setup (vocal tracks with their pans and effects) that differs from the saved one, the result offers to save it.',
+      'Saving is when Lattice learns: it notes how each kind of track (vocals, guitars, ...) is set up, and once the same setup shows up in enough projects the result offers to keep it.',
     userOnly: true,
     noHistory: true,
     parameters: obj({ name: str('Version name (default "Saved <time>")') }),
@@ -272,8 +272,8 @@ export const PROJECT_TOOLS: ToolDef[] = [
       const time = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       const name = String(a.name ?? '').trim() || `Saved ${time}`;
       const { id } = versionLibrary(ctx).save({ name, auto: false, session: s });
-      const offer = setupOffer(ctx, s);
-      return { version: id, name, project: projectLibrary(ctx).current().name, ...(offer ? { setup_offer: offer } : {}) };
+      const offers = setupOffers(ctx, s);
+      return { version: id, name, project: projectLibrary(ctx).current().name, ...(offers.length ? { setup_offers: offers } : {}) };
     },
     logText: (_a, r) => `saved the project ("${r.name}")`,
   },

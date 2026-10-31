@@ -1,10 +1,15 @@
-// Oct 30: the producer's setups, learned on Save (save_project). A setup is a group of tracks the
-// user builds the same way in every project, e.g. vocals: "Vocal" in the centre and doubles
-// 40% left and right, each with their EQ and compressor (pan is the Utility device's knob, so a
-// track's chain carries it). Lattice notices vocal tracks when the user saves and offers to keep
-// them as the "Vocal setup"; in a later project it offers it back when a vocal track appears, and
-// Muse can add it (apply_setup). Setups span projects: Electron keeps them in setups.json in
-// userData (node/setupFile.ts); web and tests keep them in memory.
+// Oct 30: the producer's setups, learned from what they do by hand. A setup is a group of tracks
+// the user builds the same way in project after project, e.g. vocals: "Vocal" in the centre and
+// doubles 40% left and right, each with their EQ and compressor (pan is the Utility device's knob,
+// so a track's chain carries it). Nothing here knows about vocals: a group is the tracks whose
+// names share a word once sides and numbers are dropped ("Gtr L" / "Gtr R" -> guitar, "Vox" /
+// "Vocal L" -> vocal), with at least one set up by hand.
+// Learning: each Save (save_project) notes every group's shape (pans and device kinds, not exact
+// knob values) for that project. Once the same shape has been seen in `learnAfter` projects (a
+// setting, default 2), the notice offers to keep it; a different shape seen that often offers to
+// update it. In a later project a bare track of that kind gets the offer to use it (apply_setup),
+// and Muse sees the setups. Setups span projects: Electron keeps them in setups.json in userData
+// (node/setupFile.ts); web and tests keep them in memory.
 import * as S from './session';
 import * as C from '../fx/chain';
 import { getDevice } from '../fx/catalog';
@@ -19,54 +24,138 @@ export interface SetupTrack {
 
 export interface Setup {
   name: string; // "Vocal setup"
+  family: string; // the kind of track it is for, "vocal" (familyOf)
   tracks: SetupTrack[];
   learnedIn?: string; // the project it was saved from
   savedAt: string;
 }
 
-export interface SetupLibrary {
-  list(): Setup[];
-  get(name: string): Setup | undefined;
-  /** Adds or overwrites by name (any case); returns true if one was replaced. */
-  save(setup: Setup): boolean;
-  remove(name: string): boolean;
+/** A group's shape seen at a Save, one per family per project (the latest Save). */
+export interface Sighting {
+  family: string;
+  project: string;
+  shape: string;
+  at: string;
 }
 
-export class MemorySetupLibrary implements SetupLibrary {
-  constructor(protected setups: Setup[] = []) {}
+export interface SetupState {
+  setups: Setup[];
+  seen: Sighting[];
+  declined: { family: string; shape: string; count: number }[]; // "Not now" at that many projects
+  learnAfter: number; // projects with the same shape before Lattice offers it
+}
+
+export const DEFAULT_LEARN_AFTER = 2;
+
+export class MemorySetupLibrary {
+  protected state: SetupState;
+
+  constructor(initial: Partial<SetupState> = {}) {
+    this.state = {
+      setups: (initial.setups ?? []).map((x) => ({ ...x, family: x.family ?? familyOf(x.name.replace(/\s*setup$/i, '')) ?? x.name.toLowerCase() })),
+      seen: initial.seen ?? [],
+      declined: initial.declined ?? [],
+      learnAfter: initial.learnAfter ?? DEFAULT_LEARN_AFTER,
+    };
+  }
+  /** File-backed libraries write here. */
+  protected changed() {}
+
   list() {
-    return this.setups;
+    return this.state.setups;
   }
   get(name: string) {
-    return this.setups.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
+    return this.state.setups.find((x) => x.name.toLowerCase() === name.trim().toLowerCase());
   }
+  forFamily(family: string) {
+    return this.state.setups.find((x) => x.family === family);
+  }
+  /** Adds or overwrites (same name or same family); returns true if one was replaced. */
   save(setup: Setup) {
-    const had = !!this.get(setup.name);
-    this.setups = [...this.setups.filter((x) => x.name.toLowerCase() !== setup.name.toLowerCase()), setup].sort((a, b) => a.name.localeCompare(b.name));
+    const same = (x: Setup) => x.name.toLowerCase() === setup.name.toLowerCase() || x.family === setup.family;
+    const had = this.state.setups.some(same);
+    this.state.setups = [...this.state.setups.filter((x) => !same(x)), setup].sort((a, b) => a.name.localeCompare(b.name));
+    this.changed();
     return had;
   }
   remove(name: string) {
-    const had = !!this.get(name);
-    this.setups = this.setups.filter((x) => x.name.toLowerCase() !== name.trim().toLowerCase());
-    return had;
+    const x = this.get(name);
+    this.state.setups = this.state.setups.filter((y) => y !== x);
+    this.changed();
+    return !!x;
+  }
+  /** Note a group's shape in a project (replacing that project's earlier one); returns how many
+   *  projects have this shape now. */
+  see(family: string, project: string, shape: string): number {
+    this.state.seen = [...this.state.seen.filter((o) => !(o.family === family && o.project === project)), { family, project, shape, at: new Date().toISOString() }];
+    this.changed();
+    return this.state.seen.filter((o) => o.family === family && o.shape === shape).length;
+  }
+  declinedAt(family: string, shape: string) {
+    return this.state.declined.find((d) => d.family === family && d.shape === shape)?.count ?? 0;
+  }
+  decline(family: string, shape: string, count: number) {
+    this.state.declined = [...this.state.declined.filter((d) => !(d.family === family && d.shape === shape)), { family, shape, count }];
+    this.changed();
+  }
+  get learnAfter() {
+    return this.state.learnAfter;
+  }
+  set learnAfter(n: number) {
+    this.state.learnAfter = n;
+    this.changed();
   }
 }
+export type SetupLibrary = MemorySetupLibrary;
 
 export function setupLibrary(ctx: { setups?: SetupLibrary }): SetupLibrary {
   return (ctx.setups ??= new MemorySetupLibrary());
 }
 
-export const VOCAL_SETUP = 'Vocal setup';
+// ---- what kind of track a name is ----
+// spellings of the same kind; anything else is its own kind ("Gtr" and "Guitar" match, "Sax" is "sax")
+const ALIASES: Record<string, string> = {
+  vox: 'vocal', vocals: 'vocal', voc: 'vocal', voice: 'vocal', vocalist: 'vocal', singer: 'vocal', bgv: 'vocal', bgvs: 'vocal', bv: 'vocal', bvs: 'vocal',
+  gtr: 'guitar', gtrs: 'guitar', guitars: 'guitar', drums: 'drum', kit: 'drum', basses: 'bass', key: 'keys', keyboard: 'keys', keyboards: 'keys',
+  pno: 'piano', synths: 'synth', pads: 'pad', strings: 'string', horns: 'horn', harmonies: 'harmony', harm: 'harmony',
+};
+// sides, positions and takes: "Vocal L", "Gtr Double 2", "Vox Main"
+const MODIFIERS = new Set(['l', 'r', 'left', 'right', 'c', 'ctr', 'center', 'centre', 'mid', 'middle', 'main', 'lead', 'double', 'doubles', 'dbl', 'dt', 'dub', 'wide', 'hard', 'take', 'comp', 'a', 'b', 'the', 'my']);
+// names that say nothing about the sound
+const GENERIC = new Set(['track', 'audio', 'untitled', 'recording', 'rec', 'midi', 'inst', 'instrument', 'new', 'sound', 'region', 'wav', 'mp3', 'aif', 'aiff']);
+const DISPLAY: Record<string, string> = { drum: 'Drums', keys: 'Keys', string: 'Strings' };
 
-// whole words: "Vox L", "Lead Vocal", "BGV 2", "Double R"; never "Voc" inside "Vocoder" or "Lead Synth"
-const VOCAL = /\b(vox|vocals?|voc|voice|singer|doubles?|dbl|harmon(y|ies)|harm|bvs?|bgvs?|backing|adlibs?|ad-libs?)\b/i;
-
-/** A vocal track: its name says so, or one of its audio regions' does. */
-export function isVocalTrack(s: S.Session, t: S.Track): boolean {
-  return VOCAL.test(t.name) || t.clips.some((c) => !c.midi && (VOCAL.test(c.name) || VOCAL.test(s.sources[c.sourceId]?.name ?? '')));
+/** The kind of track a name is: its last word that isn't a side, number or take, in one spelling;
+ *  null for names like "Audio 1". */
+export function familyOf(name: string): string | null {
+  const words = name.toLowerCase().split(/[^a-z0-9]+/).filter((w) => w && !/^\d+$/.test(w) && !MODIFIERS.has(w));
+  const head = words[words.length - 1];
+  if (!head || GENERIC.has(head)) return null;
+  return ALIASES[head] ?? head;
 }
 
-export const vocalTracks = (s: S.Session) => s.tracks.filter((t) => isVocalTrack(s, t));
+/** A track's kind: by its name, else (a take on "Audio 1") by its first audio region's. */
+export function trackFamily(s: S.Session, t: S.Track): string | null {
+  const own = familyOf(t.name);
+  if (own) return own;
+  const c = t.clips.find((x) => !x.midi);
+  return c ? (familyOf(c.name) ?? familyOf(s.sources[c.sourceId]?.name ?? '')) : null;
+}
+
+export const setupNameFor = (family: string) => `${DISPLAY[family] ?? family[0].toUpperCase() + family.slice(1)} setup`;
+
+/** The tracks of each kind that the user set up (two or more, or one with effects). */
+export function trackGroups(s: S.Session): { family: string; tracks: S.Track[] }[] {
+  const by = new Map<string, S.Track[]>();
+  for (const t of s.tracks) {
+    const f = trackFamily(s, t);
+    if (f) by.set(f, [...(by.get(f) ?? []), t]);
+  }
+  return [...by].filter(([, ts]) => ts.some((t) => t.devices.length) && (ts.length > 1 || ts[0].devices.length)).map(([family, tracks]) => ({ family, tracks: byPan(tracks) }));
+}
+
+// the centre track first (a bare track takes it when applied), then out from the middle, left first
+const byPan = <T extends { devices: SetupTrack['devices'] }>(ts: T[]) => [...ts].sort((a, b) => Math.abs(trackPan(a)) - Math.abs(trackPan(b)) || trackPan(a) - trackPan(b));
 
 /** A track's pan: the first switched-on Utility device's Pan knob (0 = centre). */
 export function trackPan(t: { devices: { kind: string; on: boolean; params: Record<string, unknown> }[] }): number {
@@ -76,40 +165,63 @@ export function trackPan(t: { devices: { kind: string; on: boolean; params: Reco
 
 export const panText = (p: number) => (Math.abs(p) < 0.005 ? 'centre' : `${Math.round(Math.abs(p) * 100)}% ${p < 0 ? 'L' : 'R'}`);
 
+/** Two setups are "the same way" with the same pans (to 5%) and the same devices on each track
+ *  (switched on), whatever the tracks are called and wherever the knobs are. */
+export function shapeOf(tracks: { devices: SetupTrack['devices'] }[]): string {
+  return byPan(tracks)
+    .map((t) => `${Math.round(trackPan(t) * 20) / 20}:${t.devices.filter((d) => d.on && d.kind !== 'utility').map((d) => d.kind).join('+')}`)
+    .join('|');
+}
+
 /** What a setup track is, in words: "Vocal L: 40% L; Channel EQ, Compressor". */
 export function describeTrack(t: SetupTrack) {
   const devices = t.devices.filter((d) => d.kind !== 'utility').map((d) => getDevice(d.kind).label);
   return { name: t.name, pan: panText(trackPan(t)), devices, ...(t.gainDb ? { gain_db: t.gainDb } : {}) };
 }
 
-export function setupFrom(tracks: S.Track[], name: string, learnedIn?: string): Setup {
+export function setupFrom(tracks: S.Track[], name: string, family: string, learnedIn?: string): Setup {
   return {
     name,
-    tracks: tracks.map((t) => ({ name: t.name, gainDb: t.gainDb, devices: t.devices.map((d) => ({ kind: d.kind, on: d.on, params: { ...d.params } })) })),
+    family,
+    tracks: byPan(tracks).map((t) => ({ name: t.name, gainDb: t.gainDb, devices: t.devices.map((d) => ({ kind: d.kind, on: d.on, params: { ...d.params } })) })),
     ...(learnedIn ? { learnedIn } : {}),
     savedAt: new Date().toISOString(),
   };
 }
 
-// the same setup whatever the tracks are called: same levels, pans and chains, in order
-const shape = (x: Setup) => JSON.stringify(x.tracks.map((t) => [Math.round(t.gainDb * 10), t.devices]));
-
 export interface SetupOffer {
-  name: string;
+  name: string; // "Vocal setup" (or the saved one's name)
+  family: string;
+  shape: string; // for decline_setup
   track_ids: string[];
   tracks: ReturnType<typeof describeTrack>[];
-  replaces: boolean; // a saved one with this name differs
+  projects: number; // how many projects have this shape
+  replaces: boolean; // updates a saved setup of this kind
 }
 
-/** On Save: vocal tracks set up by hand (two or more, or one with effects) that aren't already
- *  the saved Vocal setup. */
-export function setupOffer(ctx: ToolContext, s: S.Session): SetupOffer | null {
-  const vt = vocalTracks(s);
-  if (vt.length < 2 && !vt.some((t) => t.devices.length)) return null;
-  const proposal = setupFrom(vt, VOCAL_SETUP);
-  const saved = setupLibrary(ctx).get(VOCAL_SETUP);
-  if (saved && shape(saved) === shape(proposal)) return null;
-  return { name: VOCAL_SETUP, track_ids: vt.map((t) => t.id), tracks: proposal.tracks.map(describeTrack), replaces: !!saved };
+/** On Save: note each group's shape for this project, and offer the ones seen in enough projects
+ *  that aren't the saved setup already (or that the user turned down at this count). */
+export function setupOffers(ctx: ToolContext, s: S.Session): SetupOffer[] {
+  const lib = setupLibrary(ctx);
+  const project = ctx.projects?.current().id ?? 'p1';
+  const offers: SetupOffer[] = [];
+  for (const g of trackGroups(s)) {
+    const shape = shapeOf(g.tracks);
+    const projects = lib.see(g.family, project, shape);
+    const saved = lib.forFamily(g.family);
+    if (saved && shapeOf(saved.tracks) === shape) continue; // known
+    if (projects < lib.learnAfter || lib.declinedAt(g.family, shape) >= projects) continue;
+    offers.push({
+      name: saved?.name ?? setupNameFor(g.family),
+      family: g.family,
+      shape,
+      track_ids: g.tracks.map((t) => t.id),
+      tracks: setupFrom(g.tracks, '', g.family).tracks.map(describeTrack),
+      projects,
+      replaces: !!saved,
+    });
+  }
+  return offers;
 }
 
 /** What Muse sees: each saved setup, track by track. */
@@ -122,7 +234,7 @@ export function setupsLine(ctx: ToolContext): string | undefined {
       .map(describeTrack)
       .map((t) => `${t.name} (${[t.pan, ...t.devices].join(', ')})`)
       .join(', ');
-  return `The producer's setups (saved by them, apply_setup adds one): ${all.map(one).join('; ')}.`;
+  return `The producer's setups (learned from their projects, apply_setup adds one): ${all.map(one).join('; ')}.`;
 }
 
 /** Put a setup's chains (and levels) on tracks: on `targets` in order, then on new tracks named
@@ -147,11 +259,15 @@ export function applySetup(s: S.Session, setup: Setup, targets: string[]): { ses
   return { session: s, tracks: out };
 }
 
+/** Tracks of a setup's kind with no effects yet: where applying it starts. */
+export const bareTracks = (s: S.Session, family: string) => s.tracks.filter((t) => !t.devices.length && trackFamily(s, t) === family);
+
 function findSetup(ctx: ToolContext, name: string): Setup {
-  const x = setupLibrary(ctx).get(name);
+  const lib = setupLibrary(ctx);
+  const x = lib.get(name) ?? lib.get(`${name} setup`) ?? (familyOf(name.replace(/\s*setup$/i, '')) ? lib.forFamily(familyOf(name.replace(/\s*setup$/i, ''))!) : undefined);
   if (x) return x;
-  const names = setupLibrary(ctx).list().map((y) => JSON.stringify(y.name));
-  throw new S.SessionError(`no setup "${name}" (${names.length ? `saved: ${names.join(', ')}` : 'none saved yet; the user saves one with Save'})`);
+  const names = lib.list().map((y) => JSON.stringify(y.name));
+  throw new S.SessionError(`no setup "${name}" (${names.length ? `saved: ${names.join(', ')}` : 'none saved yet; Lattice offers one when the user sets tracks up the same way and saves'})`);
 }
 
 const str = (description: string) => ({ type: 'string', description });
@@ -164,42 +280,78 @@ export const SETUP_TOOLS: ToolDef[] = [
     description: 'List the producer\'s saved setups (track groups they build the same way in every project, e.g. their vocal setup), track by track.',
     parameters: obj({}),
     quiet: true,
-    run: (ctx) => ({
-      setups: setupLibrary(ctx)
-        .list()
-        .map((x) => ({ name: x.name, tracks: x.tracks.map(describeTrack), ...(x.learnedIn ? { learned_in: x.learnedIn } : {}), saved_at: x.savedAt })),
-    }),
+    run: (ctx) => {
+      const lib = setupLibrary(ctx);
+      return {
+        setups: lib.list().map((x) => ({ name: x.name, family: x.family, tracks: x.tracks.map(describeTrack), ...(x.learnedIn ? { learned_in: x.learnedIn } : {}), saved_at: x.savedAt })),
+        learn_after: lib.learnAfter,
+      };
+    },
   },
   {
     name: 'save_setup',
     description:
       'Keep tracks as one of the producer\'s setups for later projects: their names, levels and whole chains (pan included). ' +
-      `Default: the vocal tracks, as "${VOCAL_SETUP}". Use it when the user asks you to remember how they set something up. The first chain is also saved as "<name> chain" for load_chain.`,
-    parameters: obj({ name: str(`Setup name (default "${VOCAL_SETUP}")`), track_ids: ids('Tracks, in order (default: the vocal tracks)') }),
+      'Give track_ids, or a name like "Vocal setup" for all tracks of that kind. Use it when the user asks you to remember how they set something up. ' +
+      'The first chain is also saved as "<kind> chain" for load_chain.',
+    parameters: obj({ name: str('Setup name, e.g. "Vocal setup" (default: from the tracks\' names)'), track_ids: ids('Tracks to keep (default: every track of the named kind)') }),
     run: (ctx, a) => {
       const s = ctx.store.get();
-      const name = String(a.name ?? '').trim() || VOCAL_SETUP;
-      const tracks = a.track_ids?.length ? (a.track_ids as string[]).map((id) => S.getTrack(s, id)) : vocalTracks(s);
-      if (!tracks.length) throw new S.SessionError('no vocal tracks to save (name them, e.g. "Vocal", "Vocal L"), or give track_ids');
-      const setup = setupFrom(tracks, name, ctx.projects?.current().name);
-      const replaced = setupLibrary(ctx).save(setup);
-      const first = tracks.find((t) => t.devices.length);
-      const chain = first && `${name.replace(/\s*setup$/i, '') || name} chain`;
-      if (first && chain) chainLibrary(ctx).save({ name: chain, devices: setup.tracks[tracks.indexOf(first)].devices, savedAt: setup.savedAt });
-      return { name, tracks: setup.tracks.map(describeTrack), replaced, ...(chain ? { chain_saved: chain } : {}) };
+      const given = String(a.name ?? '').trim();
+      let tracks: S.Track[];
+      let family: string | null;
+      if (a.track_ids?.length) {
+        tracks = (a.track_ids as string[]).map((id) => S.getTrack(s, id));
+        family = trackFamily(s, tracks[0]) ?? (given ? familyOf(given.replace(/\s*setup$/i, '')) : null);
+      } else {
+        family = given ? familyOf(given.replace(/\s*setup$/i, '')) : null;
+        tracks = family ? s.tracks.filter((t) => trackFamily(s, t) === family) : [];
+      }
+      if (!family) throw new S.SessionError('say which tracks (track_ids) or what kind, e.g. name "Vocal setup"');
+      if (!tracks.length) throw new S.SessionError(`no ${family} tracks to save (name them, e.g. "${setupNameFor(family).replace(/ setup$/, '')} L"), or give track_ids`);
+      const name = given || setupNameFor(family);
+      const setup = setupFrom(tracks, /setup$/i.test(name) ? name : `${name} setup`, family, ctx.projects?.current().name);
+      const lib = setupLibrary(ctx);
+      const replaced = lib.save(setup);
+      lib.see(family, ctx.projects?.current().id ?? 'p1', shapeOf(setup.tracks));
+      const first = setup.tracks.find((t) => t.devices.some((d) => d.kind !== 'utility'));
+      const chain = first && `${setup.name.replace(/\s*setup$/i, '')} chain`;
+      if (first && chain) chainLibrary(ctx).save({ name: chain, devices: first.devices, savedAt: setup.savedAt });
+      return { name: setup.name, family, tracks: setup.tracks.map(describeTrack), replaced, ...(chain ? { chain_saved: chain } : {}) };
     },
     logText: (_a, r) => `saved "${r.name}" (${r.tracks.map((t: { name: string; pan: string }) => `${t.name} ${t.pan}`).join(', ')})`,
+  },
+  {
+    name: 'decline_setup',
+    description: 'The user said "Not now" to keeping a setup: don\'t offer this shape again until it shows up in another project.',
+    userOnly: true,
+    quiet: true,
+    parameters: obj({ family: str(''), shape: str(''), projects: { type: 'number', description: '' } }, ['family', 'shape', 'projects']),
+    run: (ctx, a) => (setupLibrary(ctx).decline(String(a.family), String(a.shape), Number(a.projects)), { declined: a.family }),
+  },
+  {
+    name: 'set_setup_learning',
+    description: 'How many projects the user sets tracks up the same way in before Lattice offers to keep it as a setup.',
+    userOnly: true,
+    quiet: true,
+    parameters: obj({ after: { type: 'number', description: 'Projects (1-5)' } }, ['after']),
+    run: (ctx, a) => {
+      const n = Math.round(Number(a.after));
+      if (!(n >= 1 && n <= 5)) throw new S.SessionError('after must be 1 to 5 projects');
+      setupLibrary(ctx).learnAfter = n;
+      return { learn_after: n };
+    },
   },
   {
     name: 'apply_setup',
     description:
       'Add one of the producer\'s setups to this project: its chains (pan included) and levels go on the given tracks in order, ' +
-      'then on new tracks named as in the setup. Default tracks: the vocal tracks with no effects yet. One undo step.',
-    parameters: obj({ name: str(`Setup name (default "${VOCAL_SETUP}")`), track_ids: ids('Existing tracks to set up, in setup order; the rest are made') }),
+      'then on new tracks named as in the setup. Default tracks: this project\'s tracks of that kind with no effects yet. One undo step.',
+    parameters: obj({ name: str('Setup name, e.g. "Vocal setup"'), track_ids: ids('Existing tracks to set up, in setup order (centre first); the rest are made') }, ['name']),
     run: (ctx, a) => {
-      const setup = findSetup(ctx, String(a.name ?? '').trim() || VOCAL_SETUP);
+      const setup = findSetup(ctx, String(a.name));
       const s = ctx.store.get();
-      const targets = a.track_ids?.length ? (a.track_ids as string[]).map((id) => S.getTrack(s, id).id) : vocalTracks(s).filter((t) => !t.devices.length).map((t) => t.id);
+      const targets = a.track_ids?.length ? (a.track_ids as string[]).map((id) => S.getTrack(s, id).id) : bareTracks(s, setup.family).map((t) => t.id);
       if (targets.length > setup.tracks.length) targets.length = setup.tracks.length;
       const r = applySetup(s, setup, targets);
       ctx.store.set(r.session);

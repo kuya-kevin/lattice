@@ -33,7 +33,7 @@ test('electron: two projects with their own audio, and a vocal setup, survive a 
   await tool('rename_project', { name: 'Demo song' });
   const { track_id } = await tool('add_track', { name: 'Vocal L' });
   await tool('insert_device', { track_id, device: 'utility', params: { pan: -0.4 } });
-  await tool('save_setup', {});
+  await tool('save_setup', { name: 'Vocal setup' });
   const first = await session();
 
   await page.getByTestId('project-menu-open').click();

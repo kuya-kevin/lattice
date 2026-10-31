@@ -1,10 +1,11 @@
 // Oct 30: the Lattice pill (top left) opens the project menu: Save (⌘S), New Project, the other
 // projects to open (newest first), and the setups Lattice learned. Saving is when Lattice learns:
-// if the project has a vocal setup it doesn't know yet, the notice offers to keep it; in a later
-// project, a bare vocal track gets the offer to use it (apply_setup).
+// once a kind of track (vocals, guitars, ...) has been set up the same way in enough projects, the
+// notice offers to keep it (core/setups.ts); in a later project, a bare track of that kind gets the
+// offer to use it (apply_setup).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Session } from '../core/session';
-import { isVocalTrack, VOCAL_SETUP, type SetupOffer } from '../core/setups';
+import { bareTracks, type SetupOffer } from '../core/setups';
 import { Icon } from './icons';
 import { notify } from './Shelves';
 import { whenOf } from './Versions';
@@ -22,6 +23,7 @@ interface ProjectRow {
 type SetupTrackView = SetupOffer['tracks'][number];
 interface SetupRow {
   name: string;
+  family: string;
   tracks: SetupTrackView[];
   learned_in?: string;
 }
@@ -38,18 +40,19 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
   const [open, setOpen] = useState(false);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [setups, setSetups] = useState<SetupRow[]>([]);
+  const [learnAfter, setLearnAfter] = useState(2);
   const [renaming, setRenaming] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const switching = useRef(false); // the session may arrive before the project list says which one it is
-  const offered = useRef(new Set<string>()); // projects already asked about the vocal setup
+  const offered = useRef(new Set<string>()); // "<project> <kind>" already asked about using a setup
   const current = projects.find((p) => p.open);
 
   const refresh = useCallback(async () => {
     const [p, s] = await Promise.all([run('list_projects'), run('list_setups')]);
     if (p.ok) setProjects(p.result.projects);
-    if (s.ok) setSetups(s.result.setups);
+    if (s.ok) (setSetups(s.result.setups), setLearnAfter(s.result.learn_after));
   }, [run]);
   useEffect(() => void refresh(), [refresh]);
   useEffect(() => void (open && refresh()), [open, refresh]);
@@ -66,12 +69,36 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
     };
   }, [open]);
 
-  const saveSetup = useCallback(
-    async (offer: SetupOffer) => {
-      const r = await run('save_setup', { name: offer.name, track_ids: offer.track_ids });
-      if (current) offered.current.add(current.id); // just taught it here: don't offer it back
-      await refresh();
-      notify({ text: r.ok ? `Saved your ${offer.name.toLowerCase()}${r.result.chain_saved ? ` (its chain too, as "${r.result.chain_saved}")` : ''}. New projects will offer it.` : `Not saved: ${r.error}` });
+  // one offer at a time in the notice; the next shows once the user answers
+  const ask = useCallback(
+    (offers: SetupOffer[]) => {
+      const [offer, ...rest] = offers;
+      if (!offer) return;
+      const kind = offer.name.replace(/\s*setup$/i, '').toLowerCase();
+      const seen = offer.projects > 1 ? `You've set up ${kind} tracks this way in ${offer.projects} projects: ` : '';
+      const question = offer.replaces ? `Update your ${offer.name.toLowerCase()} to this?` : `Keep it as your ${offer.name.toLowerCase()} for new projects?`;
+      notify({
+        text: `${seen || (offer.replaces ? '' : 'New setup: ')}${setupText(offer.tracks)}. ${question}`,
+        actions: [
+          {
+            label: offer.replaces ? 'Update setup' : `Save ${offer.name.toLowerCase()}`,
+            onClick: async () => {
+              const r = await run('save_setup', { name: offer.name, track_ids: offer.track_ids });
+              if (current) offered.current.add(`${current.id} ${offer.family}`); // just taught it here: don't offer it back
+              await refresh();
+              notify({ text: r.ok ? `Saved your ${offer.name.toLowerCase()}${r.result.chain_saved ? ` (its chain too, as "${r.result.chain_saved}")` : ''}. New projects will offer it.` : `Not saved: ${r.error}` });
+              if (rest.length) setTimeout(() => ask(rest), 2500);
+            },
+          },
+          {
+            label: 'Not now',
+            onClick: () => {
+              run('decline_setup', { family: offer.family, shape: offer.shape, projects: offer.projects });
+              ask(rest);
+            },
+          },
+        ],
+      });
     },
     [run, refresh, current],
   );
@@ -79,16 +106,10 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
   const save = useCallback(async () => {
     const r = await run('save_project');
     if (!r.ok) return notify({ text: `Not saved: ${r.error}` });
-    const offer: SetupOffer | undefined = r.result.setup_offer;
-    if (!offer) return notify({ text: `Saved (in Versions as "${r.result.name}")` });
-    notify({
-      text: `Saved. ${offer.replaces ? 'Update your vocal setup to this one' : 'Keep this as your vocal setup for new projects'}? ${setupText(offer.tracks)}`,
-      actions: [
-        { label: offer.replaces ? 'Update setup' : 'Save vocal setup', onClick: () => void saveSetup(offer) },
-        { label: 'Not now', onClick: () => {} },
-      ],
-    });
-  }, [run, saveSetup]);
+    const offers: SetupOffer[] = r.result.setup_offers ?? [];
+    if (!offers.length) return notify({ text: `Saved (in Versions as "${r.result.name}")` });
+    ask(offers);
+  }, [run, ask]);
 
   // ⌘S / Ctrl+S anywhere, even while typing (it never types an "s")
   const saveRef = useRef(save);
@@ -120,20 +141,20 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
     return r.ok;
   };
 
-  // a later project: a vocal track with no effects yet gets the offer, once per project
-  const vocal = setups.find((x) => x.name === VOCAL_SETUP);
+  // a later project: a track of a setup's kind with no effects yet gets the offer, once per project
   useEffect(() => {
-    if (!vocal || !current || switching.current || offered.current.has(current.id)) return;
-    if (!session.tracks.some((t) => isVocalTrack(session, t) && !t.devices.length)) return;
-    offered.current.add(current.id);
+    if (!current || switching.current) return;
+    const x = setups.find((y) => !offered.current.has(`${current.id} ${y.family}`) && bareTracks(session, y.family).length);
+    if (!x) return;
+    offered.current.add(`${current.id} ${x.family}`);
     notify({
-      text: `Use your vocal setup here? ${setupText(vocal.tracks)}`,
+      text: `Use your ${x.name.toLowerCase()} here? ${setupText(x.tracks)}`,
       actions: [
-        { label: 'Use it', onClick: () => void run('apply_setup', { name: VOCAL_SETUP }) },
+        { label: 'Use it', onClick: () => void run('apply_setup', { name: x.name }) },
         { label: 'Not now', onClick: () => {} },
       ],
     });
-  }, [session, vocal, current, run]);
+  }, [session, setups, current, run]);
 
   const others = projects.filter((p) => !p.open);
   return (
@@ -191,7 +212,9 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
 
           <h4>Your setups</h4>
           <ul className="pm-list pm-setups">
-            {!setups.length && <li className="pm-empty">None yet. Set up your vocal tracks (pans, effects) and Save: Lattice offers to keep them.</li>}
+            {!setups.length && (
+              <li className="pm-empty">None yet. Set tracks up the way you like (e.g. vocals: pans, effects) and Save; once you've done it in {learnAfter === 1 ? 'a project' : `${learnAfter} projects`}, Lattice offers to keep it.</li>
+            )}
             {setups.map((x) => (
               <li key={x.name} className="pm-setup" data-testid="setup-row">
                 <div>
@@ -206,6 +229,12 @@ export function ProjectMenu({ session, run }: { session: Session; run: Run }) {
               </li>
             ))}
           </ul>
+          <label className="pm-learn">
+            Offer a setup once I've used it in
+            <select data-testid="learn-after" value={learnAfter} onChange={(e) => act('set_setup_learning', { after: Number(e.target.value) })}>
+              {[1, 2, 3].map((n) => <option key={n} value={n}>{n} project{n > 1 ? 's' : ''}</option>)}
+            </select>
+          </label>
         </div>
       )}
     </div>
