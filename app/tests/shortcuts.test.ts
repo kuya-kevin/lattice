@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shortcutFor } from '../src/renderer/shortcuts';
+import { inKeyNav, shortcutFor } from '../src/renderer/shortcuts';
 
 const key = (k: string, extra: Partial<{ shiftKey: boolean; metaKey: boolean; tag: string; type: string }> = {}) => ({
   key: k,
@@ -20,6 +20,14 @@ describe('key commands', () => {
     expect(shortcutFor(key('c'))).toBe('cycle');
     expect(shortcutFor(key(','))).toBe('barBack');
     expect(shortcutFor(key('x'))).toBeNull();
+  });
+
+  it('leaves Enter to a keyboard-navigated list (library results); Space still plays', () => {
+    const inList = { tagName: 'UL', isContentEditable: false, closest: (sel: string) => (sel === '[data-keynav]' ? {} : null) } as unknown as EventTarget;
+    expect(inKeyNav(inList)).toBe(true);
+    expect(inKeyNav(null)).toBe(false);
+    expect(shortcutFor({ ...key('Enter'), target: inList })).toBeNull();
+    expect(shortcutFor({ ...key(' '), target: inList })).toBe('playStop');
   });
 
   it('ignores typing and modifier combos', () => {

@@ -26,6 +26,8 @@ import { usePillDrag } from './Chrome'; // drag the floating pills (transport, r
 import { Icon } from './icons';
 import { IdeaWires, Ideas, ideaSources } from './Ideas';
 import { LibraryPanel } from './LibraryPanel';
+import { addRecent } from './libraryRecents';
+import { useShowSounds } from './libraryShow';
 import { libraryBuffer } from './libraryAudio';
 import { BoardWidthHandle, EditorHandle, EditorWidthHandle, IdeasHandle, LaneHeightControl, SplitHandle, useLayoutSizes } from './Resizable';
 import { FrameOverlay, LayoutMenu, useFrameDrag, useFrameGeometry, useFrameLayout } from './Frames'; // movable frames
@@ -133,6 +135,7 @@ export function App({ bridge }: { bridge: Bridge }) {
   // ─── region: layout state (floating panels, device chain, snap) ───
   const [libraryOpen, setLibraryOpen] = useState(false);
   useShowShelf(useCallback(() => setLibraryOpen(true), [])); // B17: the export notice's Show
+  useShowSounds(useCallback(() => setLibraryOpen(true), [])); // Nov 1: sound names in Muse's replies
   const [museOpen, setMuseOpen] = useState(false); // the conversation panel: closed at startup, the rail's spark opens it
   const [smartOpen, setSmartOpen] = useState(true); // the editor area under the board
   const [editorTab, setEditorTab] = useState<EditorTab>('fx'); // device chain or Piano Roll
@@ -247,7 +250,7 @@ export function App({ bridge }: { bridge: Bridge }) {
     async (id: string, target: DropTarget) => {
       try {
         const sound = await loadLibrarySound(id);
-        await run('place_audio', { ...sound, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) });
+        if ((await run('place_audio', { ...sound, start: target.start, ...(target.trackId ? { track_id: target.trackId } : {}) })).ok) addRecent(id);
       } catch (e) {
         setError(`Could not add ${id}: ${e instanceof Error ? e.message : e}`);
       }
@@ -260,6 +263,7 @@ export function App({ bridge }: { bridge: Bridge }) {
       try {
         const sound = await loadLibrarySound(id);
         if (!(await run('add_sound', sound)).ok) return;
+        addRecent(id);
         musicalTyping.audition(sound.source_id);
         musicalTyping.toggle(true);
         const sel = sessionRef.current?.selection;
@@ -492,7 +496,7 @@ export function App({ bridge }: { bridge: Bridge }) {
           voiceOn={session.voiceReply === true}
         />
         <aside className="library-float island" aria-label="Sound library" hidden={!libraryOpen}>
-          <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} run={run} />
+          <LibraryPanel bridge={bridge} open={libraryOpen} onAddIdea={addLibraryIdea} run={run} project={{ key: session?.key ?? null, tempo: session?.tempo ?? null }} />
         </aside>
         <nav className="rail island" aria-label="Panels">
           <button className={`ibtn${museOpen ? ' on' : ''}`} aria-pressed={museOpen} title="Muse conversation" aria-label="Muse" onClick={() => setMuseOpen((o) => !o)}><Icon name="spark" /></button>

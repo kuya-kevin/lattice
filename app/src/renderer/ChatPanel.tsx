@@ -6,6 +6,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Bridge } from '../core/bridge';
 import type { StepRecord } from '../core/agent';
+import { groupSoundRuns, linkSoundNames, soundsFromSteps } from '../core/library';
+import { showSounds } from './libraryShow';
 import { clipLength } from '../core/stt';
 import { Icon } from './icons';
 import { recordingActive, startCapture, type Capture } from './pushToTalk';
@@ -208,7 +210,15 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
           )}
           {entries.map((e, i) => (
             <div key={i} className={`msg ${e.role}${e.spoken ? ' spoken' : ''}`} title={e.spoken ? 'Spoken (push-to-talk)' : undefined}>
-              <div className="text">{e.spoken && <Icon name="mic" size={12} className="spoken-icon" />}{linkify(e.text)}</div>
+              <div className="text">{e.spoken && <Icon name="mic" size={12} className="spoken-icon" />}{e.role === 'muse' && e.steps ? withSounds(e.text, e.steps) : linkify(e.text)}</div>
+              {e.role === 'muse' && e.steps && soundsFromSteps(e.steps).length > 1 && (
+                <button
+                  className="link show-sounds" data-testid="chat-show-sounds"
+                  onClick={() => showSounds({ ids: soundsFromSteps(e.steps!).map((x) => x.library_id), label: 'From Muse' })}
+                >
+                  Show these {soundsFromSteps(e.steps).length} sounds in the library ›
+                </button>
+              )}
               {e.steps && e.steps.length > 0 && (
                 <ul className="steps">
                   {e.steps.map((s, j) => (
@@ -320,6 +330,37 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
 function compact(args: unknown): string {
   const s = JSON.stringify(args) ?? '';
   return s.length > 80 ? s.slice(0, 77) + '…' : s.replace(/^\{|\}$/g, '');
+}
+
+/** Sound names Muse found in the library become links: a click opens the library on that
+ *  sound and plays it, with the rest of what Muse found listed around it. A run of names
+ *  ("A, B, C and D") is shown as a list, one sound per row with its note. */
+function withSounds(text: string, steps: StepRecord[]) {
+  const sounds = soundsFromSteps(steps);
+  const ids = sounds.map((x) => x.library_id);
+  const noteOf = new Map(sounds.map((x) => [x.library_id, x.note]));
+  const open = (id: string) => (ev: React.MouseEvent) => {
+    ev.preventDefault();
+    showSounds({ ids, focus: id, label: 'From Muse' });
+  };
+  const link = (p: { text: string; id: string }, key: number) => (
+    <a key={key} href="#" role="button" className="sound-link" data-sound={p.id} title="Open in the library and play it" onClick={open(p.id)}>{p.text}</a>
+  );
+  return groupSoundRuns(linkSoundNames(text, sounds)).map((p, i) =>
+    'list' in p ? (
+      <ul key={i} className="sound-list" data-testid="chat-sound-list">
+        {p.list.map((s, j) => (
+          <li key={j}>
+            <a href="#" role="button" data-sound={s.id} title={`${s.text}: open in the library and play it`} onClick={open(s.id)}>
+              <span className="play" aria-hidden>▶</span>
+              <span className="nm">{s.text}</span>
+              {noteOf.get(s.id) && <span className="note">{noteOf.get(s.id)}</span>}
+            </a>
+          </li>
+        ))}
+      </ul>
+    ) : 'id' in p ? link(p, i) : <span key={i}>{linkify(p.text)}</span>,
+  );
 }
 
 function linkify(text: string) {

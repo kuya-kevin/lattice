@@ -14,9 +14,20 @@ import { MemorySetupLibrary } from '../core/setups'; // Oct 30
 import { MemorySoundShelf } from '../core/shelf'; // B17
 import type { LibraryEntry } from '../core/library';
 
-/** Offline stand-in: lists the tracks once, then answers with what it saw. */
+/** Offline stand-in: lists the tracks once, then answers with what it saw. "What pads (kicks, ...)
+ *  do we have" lists that library category instead, so the sound links in the chat can be tried. */
+const OFFLINE_CATEGORIES: Record<string, string> = { pad: 'pad', lead: 'synth_lead', bass: 'synth_bass', kick: 'kick', snare: 'snare', hat: 'closed_hat', pluck: 'pluck' };
 const offlineMuse: ChatFn = async ({ messages }) => {
   const last = messages[messages.length - 1];
+  const asked = String([...messages].reverse().find((m) => m.role === 'user')?.content ?? '').match(/what (\w+?)e?s? do we have/i);
+  const category = asked && OFFLINE_CATEGORIES[asked[1].toLowerCase()];
+  if (category && last.role === 'user') {
+    return { message: { content: null, tool_calls: [{ id: `mock-${messages.length}`, type: 'function', function: { name: 'find_library_sounds', arguments: JSON.stringify({ category }) } }] }, finish_reason: 'tool_calls' };
+  }
+  if (category && last.role === 'tool') {
+    const sounds = (JSON.parse(last.content).result?.sounds ?? []) as { name: string }[];
+    return { message: { content: `(offline mock) We have ${sounds.length}: ${sounds.map((x) => x.name).join(', ')}.` }, finish_reason: 'stop' };
+  }
   if (last.role === 'tool') {
     const summary = (JSON.parse(last.content).result?.summary as string) ?? '';
     return { message: { content: `(offline mock, no Muse in the browser build) Session:\n${summary}` }, finish_reason: 'stop' };

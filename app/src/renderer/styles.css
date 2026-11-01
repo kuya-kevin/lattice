@@ -393,7 +393,7 @@ select.lcd-field option { background: var(--island); }
 .hint p { margin: 0 0 8px; }
 .hint ul { margin: 0 0 10px; padding: 0; list-style: none; display: grid; gap: 6px; }
 .hint li { padding: 7px 10px; border-radius: 10px; background: var(--island-2); color: var(--soft); }
-.msg { white-space: pre-wrap; display: grid; gap: 8px; }
+.msg { white-space: pre-wrap; display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; } /* long names wrap or clip, never widen it */
 .msg.user { align-self: flex-end; max-width: 88%; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: var(--island-3); }
 .msg.error { color: var(--rec); }
 .msg.pending { color: var(--muted); }
@@ -405,6 +405,23 @@ select.lcd-field option { background: var(--island); }
 }
 .steps li b { color: var(--accent); font-weight: 500; }
 .steps li.fail { color: var(--rec); }
+/* Nov 1: sounds Muse found, one row each; a click opens the library on it and plays it */
+.msg .sound-link { color: var(--accent); text-decoration: none; }
+.msg .sound-link:hover { text-decoration: underline; }
+.sound-list {
+  white-space: normal; list-style: none; margin: 6px 0; padding: 4px; display: grid; gap: 1px;
+  background: var(--island-2); border: 1px solid var(--line); border-radius: var(--r-card);
+}
+.sound-list li { min-width: 0; }
+.sound-list a {
+  display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: var(--r-ctl);
+  color: var(--text); text-decoration: none; font-size: 13px;
+}
+.sound-list a:hover { background: var(--island-3); }
+.sound-list .play { font-size: 8px; color: var(--muted); width: 10px; flex: none; }
+.sound-list a:hover .play { color: var(--accent); }
+.sound-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sound-list .note { flex: none; font: 11px var(--font-data); color: var(--muted); }
 
 .prompt {
   /* centred in the space the side panels leave free */

@@ -38,6 +38,13 @@ export function isTyping(target: EventTarget | null): boolean {
   return tag === 'textarea' || el.isContentEditable === true;
 }
 
+/** True inside a keyboard-navigated list (data-keynav, e.g. the library results): its own
+ *  arrows, Enter and Esc win over the global ones. Space still plays/stops. */
+export function inKeyNav(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  return !!el && typeof el.closest === 'function' && !!el.closest('[data-keynav]');
+}
+
 // While Musical Typing is on (MusicalTyping.tsx sets this) the letter keys play notes.
 let musicalTyping = false;
 export function setMusicalTypingKeys(on: boolean) {
@@ -51,7 +58,7 @@ export function shortcutFor(e: KeyLike): ShortcutAction | null {
     case ' ':
       return 'playStop';
     case 'Enter':
-      return 'goToStart';
+      return inKeyNav(e.target) ? null : 'goToStart';
     case 'r':
     case 'R':
       return 'record';

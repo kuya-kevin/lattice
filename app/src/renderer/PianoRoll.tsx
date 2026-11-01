@@ -15,7 +15,7 @@ import type { Bridge } from '../core/bridge';
 import { barLength, beatLength, type Meter } from '../core/metronome';
 import { GRIDS, noteName, type MidiData, type MidiNote } from '../core/midi';
 import { selectedNotes, type Session } from '../core/session';
-import { isTyping } from './shortcuts';
+import { inKeyNav, isTyping } from './shortcuts';
 import { ExtractMidiControl } from './ExtractMidi';
 import { trackEffects } from '../fx/engine/live';
 import { buffers } from './audio';
@@ -202,7 +202,7 @@ export function PianoRoll({ session, run, bridge }: { session: Session; run: Run
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const { sel: s, notes: ns, commit: c, transpose: tr } = latest.current;
-      if (!s.size || isTyping(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (!s.size || isTyping(e.target) || inKeyNav(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'Delete' || e.key === 'Backspace') c(ns.filter((_, i) => !s.has(i)), new Set());
       else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') tr((e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 12 : 1));
       else if (e.key === 'Escape') setSel(new Set());

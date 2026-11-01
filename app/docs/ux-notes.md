@@ -212,6 +212,16 @@ unverified from memory, check on the Mac).
 - **Preview:** click a row to hear it; click again to stop. This matches the Loop Browser,
   where clicking a loop previews it. Previews play straight to the output, not through the
   track mixer. Closing the library stops the preview.
+- **Keyboard audition (Nov 1):** in the result list (or ↓ from the search field), ↑/↓ select
+  and play the next sound, Enter adds it to Ideas, Esc stops. Space stays play/stop, so you can
+  audition over the playing song, as in Logic's Loop Browser and Ableton's browser.
+- **Fits <key> (Nov 1):** a toggle in front of the keyword buttons. It keeps pitched sounds whose
+  note is in the project key, and phrases within 4% of the tempo (or half/double time). Drums,
+  textures and unmeasured sounds always pass. Category counts then read "5 of 8". It works like
+  Logic's "Play in" key and Splice's key/BPM filters. Muse's `find_library_sounds` takes the
+  same filter (`fits_project`, `key`).
+- **Recent (Nov 1):** a tab of the sounds last added to Ideas or dropped on a track, newest
+  first, kept across projects (localStorage).
 - **Adding sounds:** drag a row onto a track to add it there, at the snapped time under the
   pointer. Drop it on empty space below the tracks (or on the empty project) to make a new
   track. This is Logic's rule: "drag the loop to an empty part of the Tracks area to create a

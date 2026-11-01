@@ -141,6 +141,9 @@ describe('Muse fills a kit from the library', () => {
     { id: 'fs:2', set: 'freesound', category: 'kick', name: 'Clean 909 kick', tags: ['kick', '909'], duration: 0.4, license: 'CC0-1.0' },
     { id: 'fs:3', set: 'freesound', category: 'snare', name: 'Crusty snare', tags: ['snare', 'lofi'], duration: 0.3, license: 'CC-BY-4.0', author: 'tapes', url: 'https://freesound.org/s/3/' },
     { id: 'fs:4', set: 'freesound', category: 'closed_hat', name: 'Tape hat', tags: ['hat'], duration: 0.2, license: 'CC0-1.0' },
+    ...['C3', 'D3', 'F#2', 'Bb2', 'G1', 'A2', 'E3', 'C#3', 'D2', 'F2'].map((note, n) => ({
+      id: `fs:pad${n}`, set: 'freesound' as const, category: 'pad', kind: 'pitched', name: `Pad ${note}`, tags: ['pad'], duration: 2, license: 'CC0-1.0', note, bpm: 140,
+    })),
   ];
   function libCtx() {
     const adopted: [string, unknown][] = [];
@@ -157,6 +160,29 @@ describe('Muse fills a kit from the library', () => {
     expect((cat.result as any).count).toBe(2);
     expect((cat.result as any).sounds[0]).toMatchObject({ name: 'Dusty vinyl kick', category: 'Kick', license: 'CC0-1.0' });
     expect((await runTool(c, 'find_library_sounds', {}, 'muse')).ok).toBe(false);
+  });
+
+  it('lists a whole category ("what pads do we have") and filters by the project key or another key', async () => {
+    const { c } = libCtx();
+    const all = (await runTool(c, 'find_library_sounds', { category: 'pad' }, 'muse')).result as any;
+    expect(all.count).toBe(10);
+    expect(all.sounds).toHaveLength(10); // a category lists them all, not the first 8
+    expect(all.sounds[0]).not.toHaveProperty('bpm'); // a single note has no tempo
+    lib.push({ id: 'fs:wav', set: 'freesound', category: 'riser', name: 'Big Riser.wav', tags: [], duration: 4, license: 'CC0-1.0' });
+    expect(((await runTool(c, 'find_library_sounds', { category: 'riser' }, 'muse')).result as any).sounds[0].name).toBe('Big Riser'); // quoted as a link
+    lib.pop();
+    expect((await runTool(c, 'find_library_sounds', { category: 'pad', fits_project: true }, 'muse')).error).toMatch(/no key/);
+    await runTool(c, 'set_key', { key: 'G major' }, 'user');
+    const inG = (await runTool(c, 'find_library_sounds', { category: 'pad', fits_project: true }, 'muse')).result as any;
+    expect(inG.fits).toBe('G major, 120 BPM');
+    expect(inG.sounds.map((x: any) => x.note)).toEqual(['C3', 'D3', 'F#2', 'G1', 'A2', 'E3', 'D2']);
+    const inDm = (await runTool(c, 'find_library_sounds', { category: 'pad', key: 'Dm' }, 'muse')).result as any;
+    expect(inDm.sounds.map((x: any) => x.note)).toEqual(['C3', 'D3', 'Bb2', 'G1', 'A2', 'E3', 'D2', 'F2']);
+    const kicks = (await runTool(c, 'find_library_sounds', { category: 'kick', key: 'Dm' }, 'muse')).result as any;
+    expect(kicks.count).toBe(2); // drums always fit
+    const few = (await runTool(c, 'find_library_sounds', { category: 'pad', max_results: 3 }, 'muse')).result as any;
+    expect(few.more).toMatch(/^7 more/);
+    expect((await runTool(c, 'find_library_sounds', { category: 'pad', key: 'H minor' }, 'muse')).ok).toBe(false);
   });
 
   it('makes and fills a kit in one undo step; library sounds join Ideas with their credit and audio', async () => {

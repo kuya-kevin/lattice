@@ -2,7 +2,7 @@
 // these from the Ideas column and the pad view; Muse can too. B12b: Muse also searches the sound
 // library and fills a kit from it (fill_kit), bringing each sound into the session first.
 import * as K from './kit';
-import { categoryLabel, filterLibrary } from './library';
+import { categoryLabel, filterLibrary, phraseBpm, soundName, type ProjectFit } from './library';
 import { barLength } from './metronome';
 import { recordMidiTake } from './midiTools';
 import * as S from './session';
@@ -31,26 +31,45 @@ export const KIT_TOOLS: ToolDef[] = [
       'Search the sound library (curated Freesound one-shots and phrases, CC0 / CC-BY, plus the user\'s voice notes) by words in the name, tags, ' +
       'category, author or note, and/or a category. Drum categories: kick, snare, clap, closed_hat, open_hat, percussion; also noise_vinyl, riser, ' +
       'synth_lead, synth_bass, pad, pluck, piano_note, bell_mallet, brass_stab, organ, strings_note. Every word must match; for a mood ' +
-      '("dusty", "punchy") search by category and judge the names, tags and descriptions. Then fill_kit or set_pad with library_id.',
+      '("dusty", "punchy") search by category and judge the names, tags and descriptions. Then fill_kit or set_pad with library_id. ' +
+      'To answer "what pads (kicks, ...) do we have", give just the category: it lists them all; name every one in your reply. ' +
+      'Write sound names exactly as given (no shortening or renaming): the chat turns them into links that open and play the sound. ' +
+      'fits_project (or key) keeps pitched sounds whose note is in the key, and phrases near the tempo; drums and textures always pass.',
     quiet: true,
     parameters: obj({
       query: str('Words to match, e.g. "808" or "vinyl"; omit to list a category'),
       category: str('One category, e.g. "kick"'),
-      max_results: { type: 'integer', minimum: 1, maximum: 20, description: 'Default 8' },
+      fits_project: { type: 'boolean', description: "Only sounds that fit the project's key (and tempo, for phrases)" },
+      key: str('Only sounds that fit this key instead, e.g. "D minor"'),
+      max_results: { type: 'integer', minimum: 1, maximum: 50, description: 'Default: all of a category, else 8' },
     }),
     run: async (ctx, a) => {
       if (!a.query && !a.category) throw new S.SessionError('give query or category');
-      const found = filterLibrary(await library(ctx), { text: a.query, category: a.category ?? null });
+      const s = ctx.store.get();
+      let fits: ProjectFit | null = null;
+      if (a.key) {
+        const key = S.parseKey(a.key);
+        if (!key) throw new S.SessionError(`unknown key "${a.key}" (try e.g. "G minor", "Eb major", "F#m")`);
+        fits = { key, tempo: a.fits_project ? s.tempo : null };
+      } else if (a.fits_project) {
+        if (!s.key) throw new S.SessionError('the project has no key yet: set_key (or detect it) first, or pass key');
+        fits = { key: s.key, tempo: s.tempo };
+      }
+      const found = filterLibrary(await library(ctx), { text: a.query, category: a.category ?? null, fits });
+      const max = a.max_results ?? (a.query ? 8 : 50);
       return {
         count: found.length,
-        sounds: found.slice(0, a.max_results ?? 8).map((i) => ({
+        ...(fits ? { fits: `${fits.key}${fits.tempo ? `, ${fits.tempo} BPM` : ''}` } : {}),
+        ...(found.length > max ? { more: `${found.length - max} more not listed; narrow the search or raise max_results` } : {}),
+        sounds: found.slice(0, max).map((i) => ({
           library_id: i.id,
-          name: i.name,
+          name: soundName(i.name),
           category: categoryLabel(i.category),
           tags: i.tags.slice(0, 8),
           duration: r2(i.duration),
           license: i.license,
           ...(i.note ? { note: i.note } : {}),
+          ...(phraseBpm(i) ? { bpm: Math.round(phraseBpm(i)!) } : {}),
           ...(i.description ? { description: i.description.slice(0, 140) } : {}),
         })),
       };
