@@ -1,9 +1,10 @@
 // The mixer (X): one channel strip per track side by side, as in Logic's Mixer, so the tracks'
 // levels read against each other. Each strip has a pan knob, a volume fader with a live
 // post-fader meter beside it (peak, L and R), Mute / Solo, and the track's name in its colour.
-// The fader is the track's volume, the same value as the slider in its track header (set_gain).
-// The pan knob is the track's Utility Pan knob, the same value the device panel shows; it moves
-// it with set_pan, the tool Muse pans with (editTools.ts; it adds a Utility when there is none). Both play live while dragged and commit on release.
+// The fader and pan knob are the track's Utility Gain and Pan, the same values the device panel
+// shows; they move them with set_utility_gain and set_pan, the tools Muse uses (editTools.ts; they
+// add a Utility when there is none). The track volume (set_gain) stays on the track header slider.
+// Both play live while dragged and commit on release; click the dB readout to type a gain.
 import { useEffect, useRef, useState } from 'react';
 import { usePlaylistControls, usePlaylistData } from '@waveform-playlist/browser';
 import type { Session, Track } from '../core/session';
@@ -20,6 +21,10 @@ type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boole
 const TOP_DB = 12;
 const BOTTOM_DB = -60;
 const SCALE = [12, 6, 0, -6, -12, -24, -40, -60];
+/** The fader's travel: the Utility Gain's floor up to the scale's top (the Utility goes to +24; a
+ *  typed value above +12 pins the cap at the top). */
+const FADER_MIN = -48;
+const UTILITY_MAX = 24;
 const heightOf = (db: number) => (Math.max(BOTTOM_DB, Math.min(TOP_DB, db)) - BOTTOM_DB) / (TOP_DB - BOTTOM_DB);
 const dbText = (db: number) => (db === -Infinity || db <= BOTTOM_DB ? '-∞' : `${db > 0 ? '+' : ''}${db.toFixed(1)}`);
 
@@ -69,16 +74,25 @@ function Strip({ session, track: t, index, run, levels }: { session: Session; tr
   const { setTrackVolume, setTrackPan } = usePlaylistControls();
   const { tracks } = usePlaylistData();
   const engineIndex = tracks.findIndex((x) => x.id === t.id); // the playlist's order can lag a move
-  const [gain, setGain] = useState(t.gainDb);
-  useEffect(() => setGain(t.gainDb), [t.gainDb]);
   const selected = session.selection.trackId === t.id;
-  const commitGain = (v = gain) => v !== t.gainDb && run('set_gain', { track_id: t.id, gain_db: v });
+  const utility = panUtility(t);
+  const utilityGain = Number(utility?.params.gain ?? 0) || 0;
+  const [gain, setGain] = useState(utilityGain);
+  useEffect(() => setGain(utilityGain), [utilityGain]);
+  const previewGain = (v: number) => {
+    if (utility) previewParam(t.id, utility.id, 'gain', v);
+    else if (engineIndex >= 0) setTrackVolume(engineIndex, dbToGain(t.gainDb + v)); // no Utility yet: on the track volume, until set_utility_gain adds one
+  };
   const moveGain = (v: number) => {
     setGain(v);
-    if (engineIndex >= 0) setTrackVolume(engineIndex, dbToGain(v)); // heard while dragging
+    previewGain(v); // heard while dragging
+  };
+  const commitGain = async (v = gain) => {
+    if (Math.abs(v - utilityGain) < 0.05) return;
+    await run('set_utility_gain', { track_id: t.id, gain_db: v });
+    if (!utility && engineIndex >= 0) setTrackVolume(engineIndex, dbToGain(t.gainDb)); // the new Utility carries it from here on
   };
 
-  const utility = panUtility(t);
   const pan = Number(utility?.params.pan ?? 0) || 0;
   const previewPan = (v: number) => {
     if (utility) previewParam(t.id, utility.id, 'pan', v);
@@ -100,7 +114,7 @@ function Strip({ session, track: t, index, run, levels }: { session: Session; tr
     >
       <PanKnob name={t.name} value={pan} onMove={previewPan} onCommit={commitPan} />
       <div className="strip-readouts">
-        <span className="strip-db" data-testid={`gain-${t.id}`} title="Volume (dB)">{dbText(gain)}</span>
+        <GainField id={t.id} name={t.name} value={gain} onCommit={(v) => { moveGain(v); commitGain(v); }} />
         <button
           className={`strip-peak${levels.held > 0 ? ' over' : ''}`}
           data-testid={`peak-${t.id}`}
@@ -114,8 +128,9 @@ function Strip({ session, track: t, index, run, levels }: { session: Session; tr
       </div>
       <div className="strip-fader-area">
         <input
-          type="range" className="fader" min={BOTTOM_DB} max={TOP_DB} step={0.5} value={gain}
-          aria-label={`${t.name} volume`} title="Volume (Alt-click: 0 dB)"
+          type="range" className="fader" min={FADER_MIN} max={TOP_DB} step={0.5} value={Math.min(TOP_DB, gain)}
+          aria-label={`${t.name} volume`} title="Utility Gain (Alt-click: 0 dB)"
+          style={{ height: `${(1 - heightOf(FADER_MIN)) * 100}%` }}
           onChange={(e) => moveGain(Number(e.target.value))}
           onPointerDown={(e) => {
             if (!e.altKey) return;
@@ -144,6 +159,48 @@ function Strip({ session, track: t, index, run, levels }: { session: Session; tr
       </div>
       <div className="strip-name" title={`${t.name} (${t.id})`}>{t.name}</div>
     </div>
+  );
+}
+
+/** The fader's dB readout; click it to type a gain (Enter or leaving it sets it, Escape cancels). */
+function GainField({ id, name, value, onCommit }: { id: string; name: string; value: number; onCommit: (v: number) => void }) {
+  const [text, setText] = useState<string | null>(null);
+  const closed = useRef(false); // Enter / Escape already closed it; the blur that follows is not a second commit
+  const done = (keep: boolean) => {
+    if (closed.current) return;
+    closed.current = true;
+    const v = Number((text ?? '').trim().replace(/\s*dB$/i, '').replace('−', '-'));
+    setText(null);
+    if (keep && text !== null && text.trim() !== '' && Number.isFinite(v)) onCommit(Math.round(Math.max(FADER_MIN, Math.min(UTILITY_MAX, v)) * 10) / 10);
+  };
+  if (text === null)
+    return (
+      <button
+        className="strip-db" data-testid={`gain-${id}`} title="Utility Gain (dB). Click to type a value."
+        aria-label={`${name} volume value`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={() => {
+          closed.current = false;
+          setText(value.toFixed(1));
+        }}
+      >
+        {`${value > 0 ? '+' : ''}${value.toFixed(1)}`}
+      </button>
+    );
+  return (
+    <input
+      className="strip-db" data-testid={`gain-input-${id}`} aria-label={`${name} volume dB`} autoFocus
+      value={text} inputMode="decimal"
+      onFocus={(e) => e.target.select()}
+      onMouseDown={(e) => e.stopPropagation()}
+      onChange={(e) => setText(e.target.value)}
+      onBlur={() => done(true)}
+      onKeyDown={(e) => {
+        e.stopPropagation(); // typing digits mustn't fire the app's shortcuts
+        if (e.key === 'Enter') done(true);
+        else if (e.key === 'Escape') done(false);
+      }}
+    />
   );
 }
 

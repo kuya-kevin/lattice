@@ -26,7 +26,7 @@ async function load(page: Page) {
   await page.goto('/');
 }
 
-test('X shows a strip per track; the fader is the track volume and the pan knob the Utility pan', async ({ page }) => {
+test('X shows a strip per track; the fader and pan knob are the Utility gain and pan', async ({ page }) => {
   const errors: string[] = [];
   page.on('pageerror', (e) => errors.push(e.message));
   await load(page);
@@ -39,25 +39,37 @@ test('X shows a strip per track; the fader is the track volume and the pan knob 
   await expect(mixer.locator('.strip')).toHaveCount(2);
   await expect(page.getByTestId('strip-t2')).toContainText('Bass');
 
-  // the fader: keys move it, release commits set_gain; the track header slider follows
+  // the fader: keys move it, release commits set_utility_gain (adding a Utility); the track volume stays
   const fader = page.getByRole('slider', { name: 'Bass volume' });
   await fader.focus();
   for (let i = 0; i < 6; i++) await page.keyboard.press('ArrowDown'); // 0.5 dB steps
-  await expect.poll(async () => (await track(page, 't2')).gainDb).toBe(-3);
+  await expect.poll(async () => (await track(page, 't2')).devices.map((d) => [d.kind, d.params.gain])).toEqual([['utility', -3]]);
   await expect(page.getByTestId('gain-t2')).toHaveText('-3.0');
-  await expect(page.getByRole('slider', { name: 'Bass gain' })).toHaveValue('-3');
-  // and a gain set elsewhere (Muse) moves the fader
-  await page.evaluate(() => window.lattice!.runTool('set_gain', { track_id: 't2', gain_db: -10 }));
+  expect((await track(page, 't2')).gainDb).toBe(0);
+  // the Utility's gain set elsewhere (device panel, Muse) moves the fader
+  const utility = (await track(page, 't2')).devices[0].id;
+  await page.evaluate((id) => window.lattice!.runTool('set_param', { track_id: 't2', device_id: id, param: 'gain', value: -10 }), utility);
   await expect(fader).toHaveValue('-10');
+  // the readout takes a typed value: Enter sets it, Escape leaves it
+  await page.getByTestId('gain-t2').click();
+  await page.getByTestId('gain-input-t2').fill('-8');
+  await page.keyboard.press('Enter');
+  await expect.poll(async () => (await track(page, 't2')).devices[0].params.gain).toBe(-8);
+  await expect(page.getByTestId('gain-t2')).toHaveText('-8.0');
+  await expect(fader).toHaveValue('-8');
+  await page.getByTestId('gain-t2').click();
+  await page.getByTestId('gain-input-t2').fill('5');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('gain-t2')).toHaveText('-8.0');
+  expect((await track(page, 't2')).devices[0].params.gain).toBe(-8);
 
   // pan: the knob adds a Utility on first use, and then moves that Utility's Pan knob
   const knob = page.getByRole('slider', { name: 'Bass pan' });
   await knob.focus();
   for (let i = 0; i < 4; i++) await page.keyboard.press('ArrowLeft');
-  await expect.poll(async () => (await track(page, 't2')).devices.map((d) => [d.kind, d.params.pan])).toEqual([['utility', -0.2]]);
+  await expect.poll(async () => (await track(page, 't2')).devices.map((d) => [d.kind, d.params.pan])).toEqual([['utility', -0.2]]); // the fader's Utility
   await expect(knob).toHaveAttribute('aria-valuetext', '20% L');
   // the Utility's knob moved elsewhere (device panel, Muse) moves the mixer's knob
-  const utility = (await track(page, 't2')).devices[0].id;
   await page.evaluate((id) => window.lattice!.runTool('set_param', { track_id: 't2', device_id: id, param: 'pan', value: 0.6 }), utility);
   await expect(knob).toHaveAttribute('aria-valuenow', '0.6');
   await expect(page.getByTestId('strip-t2').locator('.pan-text')).toHaveText('60R');

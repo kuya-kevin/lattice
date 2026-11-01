@@ -211,6 +211,16 @@ export const panUtility = <D extends { kind: string; on: boolean }>(t: { devices
 
 export function setPan(s: S.Session, trackId: string, pan: number): { session: S.Session; deviceId: string; inserted: boolean } {
   if (!(pan >= -1 && pan <= 1)) throw new S.SessionError('pan must be -1 (left) to 1 (right)');
+  return setUtilityParam(s, trackId, 'pan', pan);
+}
+
+/** The mixer fader: the gain (dB) of the same Utility the pan knob moves, added when missing. */
+export function setUtilityGain(s: S.Session, trackId: string, gainDb: number): { session: S.Session; deviceId: string; inserted: boolean } {
+  if (!(gainDb >= -48 && gainDb <= 24)) throw new S.SessionError('gain_db must be -48 to +24');
+  return setUtilityParam(s, trackId, 'gain', Math.round(gainDb * 10) / 10);
+}
+
+function setUtilityParam(s: S.Session, trackId: string, param: 'pan' | 'gain', value: number): { session: S.Session; deviceId: string; inserted: boolean } {
   const t = S.getTrack(s, trackId);
   const have = panUtility(t);
   let out = s;
@@ -220,7 +230,7 @@ export function setPan(s: S.Session, trackId: string, pan: number): { session: S
     out = s1;
     id = dev.id;
   }
-  const [s2] = C.setDeviceParam(out, trackId, id, 'pan', pan, { range: 'full' });
+  const [s2] = C.setDeviceParam(out, trackId, id, param, value, { range: 'full' });
   return { session: s2, deviceId: id, inserted: !have };
 }
 
@@ -378,6 +388,18 @@ export const EDIT_TOOLS: ToolDef[] = [
       return { track_id: a.track_id, pan: a.pan, device_id: r.deviceId, ...(r.inserted ? { inserted_utility: true } : {}) };
     },
     logText: (_a, r) => `panned ${r.track_id} to ${r.pan === 0 ? 'centre' : `${Math.round(Math.abs(r.pan) * 100)}% ${r.pan < 0 ? 'left' : 'right'}`}`,
+  },
+  {
+    name: 'set_utility_gain',
+    description: 'Set a track\'s mixer fader: the gain in dB (-48 to +24; 0 is unity) of its Utility device, the one set_pan pans on (added if missing). set_gain is the separate track volume.',
+    parameters: obj({ track_id: str('Track id'), gain_db: num('-48 to +24 dB', { minimum: -48, maximum: 24 }) }, ['track_id', 'gain_db']),
+    run: (ctx, a) => {
+      const r = setUtilityGain(ctx.store.get(), a.track_id, a.gain_db);
+      ctx.store.set(r.session);
+      const gain = Number(r.session.tracks.find((t) => t.id === a.track_id)!.devices.find((d) => d.id === r.deviceId)!.params.gain);
+      return { track_id: a.track_id, gain_db: gain, device_id: r.deviceId, ...(r.inserted ? { inserted_utility: true } : {}) };
+    },
+    logText: (_a, r) => `set ${r.track_id} fader (Utility gain) to ${r.gain_db > 0 ? '+' : ''}${r.gain_db} dB`,
   },
 
   // ---- tracks ----

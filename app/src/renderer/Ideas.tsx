@@ -295,7 +295,7 @@ function KitCard({ kit, session, playing, onPlay, onRename, onDelete, onSave }: 
 }
 
 /** Bar-style peak overview of a source, drawn once per buffer and again when the card's colour
- *  changes (a canvas keeps the colour it was painted with). */
+ *  changes or the theme swaps (a canvas keeps the colour it was painted with). */
 function MiniWave({ sourceId, version, color }: { sourceId: string; version: number; color: string }) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
@@ -327,7 +327,13 @@ function MiniWave({ sourceId, version, color }: { sourceId: string; version: num
     draw();
     const ro = new ResizeObserver(draw); // redraw when the Ideas column is resized
     ro.observe(c);
-    return () => ro.disconnect();
+    // and when light / dark mode swaps: the colour is a token that changes under the same name
+    const mo = new MutationObserver(draw);
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [sourceId, version, color]);
   return <canvas ref={ref} className="idea-wave" data-color={color} aria-hidden />;
 }

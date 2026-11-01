@@ -22,6 +22,8 @@
   flex: 1; min-width: 0; padding: 2px 0; border-radius: 5px; text-align: center; font: 10.5px var(--font-data);
   background: var(--island); border: 1px solid var(--line); color: var(--text);
 }
+.strip-db { cursor: text; }
+input.strip-db { width: 100%; outline: none; border-color: var(--accent); }
 .strip-peak { cursor: pointer; color: var(--muted); }
 .strip-peak.over { color: #fff; background: var(--rec); border-color: transparent; }
 
@@ -29,7 +31,8 @@
 .strip-fader-area { flex: 1; min-height: 0; width: 100%; display: flex; justify-content: center; gap: 2px; padding: 6px 0; }
 /* a vertical fader (min at the bottom), its cap a short bar like a console fader; beats the
    global thin-slider rules in styles.css */
-input[type='range'].fader { writing-mode: vertical-lr; direction: rtl; flex: none; width: 24px; min-width: 0; height: 100%; margin: 0; cursor: ns-resize; }
+/* its travel stops at the Utility Gain floor (-48), so it covers the top part of the -60..+12 scale (height set inline) */
+input[type='range'].fader { writing-mode: vertical-lr; direction: rtl; flex: none; align-self: flex-start; width: 24px; min-width: 0; height: 100%; margin: 0; cursor: ns-resize; }
 input[type='range'].fader::-webkit-slider-runnable-track { width: 4px; height: 100%; border-radius: 2px; background: var(--line-strong); }
 input[type='range'].fader::-webkit-slider-thumb {
   width: 22px; height: 12px; margin: 0 0 0 -9px; border-radius: 3px;

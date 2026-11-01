@@ -1,5 +1,6 @@
-// The mixer's pan knob runs set_pan, the tool Muse pans with: a track's pan is its Utility
-// device's Pan knob, so the knob, the device panel and setups (trackPan) share one value.
+// The mixer's pan knob runs set_pan and its fader set_utility_gain, the tools Muse uses: a track's
+// pan and fader are its Utility device's Pan and Gain, so the mixer, the device panel and setups
+// (trackPan) share one value.
 import { describe, expect, it } from 'vitest';
 import { SessionStore } from '../src/core/store';
 import { StubSidecar } from '../src/core/sidecar';
@@ -57,5 +58,27 @@ describe('set_pan (the mixer pan knob)', () => {
 
   it('is the same tool Muse pans with', () => {
     expect(museToolSpecs().map((t) => t.function.name)).toContain('set_pan');
+  });
+});
+
+describe('set_utility_gain (the mixer fader)', () => {
+  it('sets the Utility the pan knob moves, adding one when missing, and leaves the track volume alone', async () => {
+    const c = await ctx();
+    const r = await runTool(c, 'set_utility_gain', { track_id: 't1', gain_db: -8 }, 'user');
+    expect(r).toMatchObject({ ok: true, result: { track_id: 't1', gain_db: -8, inserted_utility: true } });
+    expect(track(c).devices.map((d) => [d.kind, d.params.gain])).toEqual([['utility', -8]]);
+    expect(track(c).gainDb).toBe(0);
+    await runTool(c, 'set_pan', { track_id: 't1', pan: 0.3 }, 'user');
+    await runTool(c, 'set_utility_gain', { track_id: 't1', gain_db: 1.04 }, 'user');
+    expect(track(c).devices).toHaveLength(1);
+    expect(track(c).devices[0].params).toMatchObject({ gain: 1, pan: 0.3 });
+  });
+
+  it('refuses values outside the Utility gain range, and is logged as a hand edit', async () => {
+    const c = await ctx();
+    expect((await runTool(c, 'set_utility_gain', { track_id: 't1', gain_db: 30 }, 'user')).ok).toBe(false);
+    await runTool(c, 'set_utility_gain', { track_id: 't1', gain_db: 3 }, 'user');
+    expect(c.store.takeUserEdits()).toEqual(['set t1 fader (Utility gain) to +3 dB']);
+    expect(museToolSpecs().map((t) => t.function.name)).toContain('set_utility_gain');
   });
 });

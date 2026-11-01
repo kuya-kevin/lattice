@@ -194,4 +194,13 @@ test('a sound taken off its track and put back lights its card waveform in the t
   await page.evaluate((id) => window.lattice!.runTool('place_sound', { source_id: id, track_id: 't1', start: 0 }), sourceId);
   await expect(page.locator('.idea-meta')).toContainText('on hum');
   await expect.poll(match).toBe(true); // lit again
+  // and repainted in the other mode's track colour when light / dark swaps
+  const dot = () => page.evaluate(() => getComputedStyle(document.querySelector('.idea-head .dot')!).backgroundColor);
+  const was = await dot();
+  await page.getByTestId('theme-toggle').click();
+  await expect.poll(dot).not.toBe(was);
+  await expect.poll(match).toBe(true);
+  await page.getByTestId('theme-toggle').click();
+  await expect.poll(dot).toBe(was);
+  await expect.poll(match).toBe(true);
 });
