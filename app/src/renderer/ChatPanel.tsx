@@ -1,5 +1,6 @@
-// Muse on the canvas: the conversation floats on the left (collapsible) and the prompt bar sits
-// at the bottom centre. The prompt bar can be tucked away into a small "Ask Muse" pill (the
+// Muse on the canvas: one dock at the bottom centre, the prompt bar with the conversation opening
+// as a sheet just above it (Nov 1: it used to be a panel down the left, which took a column of
+// the canvas). The prompt bar can be tucked away into a small "Ask Muse" pill (the
 // choice is remembered); sending opens the conversation. B2: hold ` or the mic button to speak a
 // message instead; playback pauses, and the transcript is sent as soon as you let go.
 // B14: the speaker button (set_voice_reply) has Muse read its replies aloud (voiceReply.ts).
@@ -85,6 +86,11 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
     else voice.voice.warm?.(); // load the model now, not on the first reply
   }, [voiceOn, voice]);
   const toggleVoice = () => void bridge.runTool('set_voice_reply', { on: !voiceOn });
+
+  // the sheet opens on the latest message
+  useEffect(() => {
+    if (open) listRef.current?.scrollTo(0, listRef.current.scrollHeight);
+  }, [open, entries.length, busy]);
 
   const showPrompt = () => {
     setPromptHidden(false);
@@ -189,12 +195,12 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
   }, [listening]);
 
   return (
-    <>
+    <div className={`muse-dock${promptHidden ? ' prompt-hidden' : ''}`}>
       <aside className="chat island" aria-label="Muse chat" hidden={!open}>
         <header>
           <Icon name="spark" size={15} className="spark" />
           Muse {bridge.mode === 'web' && <span className="badge">offline mock</span>}
-          <button className="ibtn sm close" aria-label="Hide Muse" title="Hide Muse" onClick={() => onOpenChange(false)}><Icon name="close" size={14} /></button>
+          <button className="ibtn sm close" aria-label="Hide Muse" title="Hide the conversation" onClick={() => onOpenChange(false)}><Icon name="chev" size={14} /></button>
         </header>
         <div className="chat-list" ref={listRef} data-testid="chat-list">
           {entries.length === 0 && (
@@ -290,7 +296,7 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
         />
         <div className="prompt-row">
           {!open && entries.length > 0 && (
-            <button type="button" className="chip" onClick={() => onOpenChange(true)}>{entries.length} messages</button>
+            <button type="button" className="chip" title="Show the conversation" onClick={() => onOpenChange(true)}>{entries.length} messages</button>
           )}
           {context && <span className="chip ctx" title="Muse sees this selection">{context}</span>}
           <span className="spacer" />
@@ -323,7 +329,7 @@ export function ChatPanel({ bridge, open, onOpenChange, context, pausePlayback, 
           <button type="submit" className="send" disabled={busy || !text.trim()}><Icon name="send" size={16} />Send</button>
         </div>
       </form>
-    </>
+    </div>
   );
 }
 

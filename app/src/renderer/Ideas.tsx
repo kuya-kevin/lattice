@@ -10,6 +10,8 @@
 // the kit on the keyboard window; dragging it onto the arrangement puts an empty region on it;
 // double-click its name to rename it. Sounds on a kit's pads (and on no track) show on the kit's
 // card, not their own, and wires run from it to the tracks that play it. "New sample pad" makes one.
+// Nov 1: sounds on a track come first, in track order; the rest sit under "Not on a track", which
+// folds away (remembered per window) and opens again when a new sound lands there.
 import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from 'react';
 import { kitSources, PAD_COUNT, type Kit } from '../core/kit';
 import { rootSource, type Session, type Source } from '../core/session';
@@ -21,6 +23,15 @@ import { trackColor } from './TrackHeader';
 import { saveKit, StarButton } from './Shelves'; // B17
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: any; error?: string }>;
+
+const UNUSED_HIDDEN_KEY = 'lattice.ideasUnusedHidden';
+const loadUnusedHidden = () => {
+  try {
+    return localStorage.getItem(UNUSED_HIDDEN_KEY) === '1';
+  } catch {
+    return false;
+  }
+};
 
 const ORIGIN: Record<string, string> = { record: 'Recorded', import: 'Imported', freesound: 'Library' };
 const fmtDur = (s: number) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -70,6 +81,28 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
   const { audition, kit: playingKit, on: typing } = useSyncExternalStore(musicalTyping.subscribe, musicalTyping.get);
   useEffect(() => () => stopPreview(), []);
   const kits = Object.values(session.kits ?? {});
+  // on a track first, in track order (so the wires don't cross); then the rest, newest last
+  const firstTrack = (g: (typeof groups)[number]) => {
+    const { uses } = usage(session, new Set(g.versions.map((v) => v.id)));
+    return uses.length ? Math.min(...uses.map((u) => u.i)) : -1;
+  };
+  const ranked = groups.map((g) => ({ g, at: firstTrack(g) }));
+  const placed = ranked.filter((x) => x.at >= 0).sort((a, b) => a.at - b.at).map((x) => x.g);
+  const unplaced = ranked.filter((x) => x.at < 0).map((x) => x.g);
+  const [unusedHidden, setUnusedHidden] = useState(loadUnusedHidden);
+  const hideUnused = (hidden: boolean) => {
+    setUnusedHidden(hidden);
+    try {
+      localStorage.setItem(UNUSED_HIDDEN_KEY, hidden ? '1' : '0');
+    } catch {
+      // not remembered
+    }
+  };
+  const unusedCount = useRef(unplaced.length);
+  useEffect(() => {
+    if (unplaced.length > unusedCount.current) setUnusedHidden(false); // a sound just landed there: show it (the saved choice stays)
+    unusedCount.current = unplaced.length;
+  }, [unplaced.length]);
   if (!groups.length && !kits.length) return null;
   const play = (id: string) => {
     const b = buffers.get(id);
@@ -100,114 +133,20 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
         <b>Ideas</b> {groups.length} sound{groups.length === 1 ? '' : 's'}
         {kits.length > 0 && ` · ${kits.length} sample pad${kits.length > 1 ? 's' : ''}`}
       </div>
-      {groups.map(({ root, versions }) => {
-        const family = new Set(versions.map((v) => v.id));
-        // the card shows the newest version a track plays, else the newest one
-        const inUse = [...versions].reverse().find((v) => usage(session, v.id).uses.length);
-        const src = inUse ?? versions[versions.length - 1];
-        const { uses } = usage(session, src.id);
-        const { color } = usage(session, family);
-        const familyUses = usage(session, family).uses.filter((u) => !u.c.midi);
-        const first = uses[0];
-        const selected = !!first && uses.some((u) => u.c.id === session.selection.clipId);
-        const trying = typing && audition === src.id;
-        return (
-          <div
-            key={root} className="idea" data-idea={root} data-version={src.id} style={{ '--c': color } as React.CSSProperties}
-            draggable
-            onDragStart={(e) => {
-              soundDrag.idea = { sourceId: src.id, duration: src.duration };
-              e.dataTransfer.setData(IDEA_MIME, src.id);
-              e.dataTransfer.setData('text/plain', src.name);
-              e.dataTransfer.effectAllowed = 'copy';
-            }}
-            onDragEnd={() => (soundDrag.idea = null)}
-          >
-            <button
-              className={`idea-card${selected || trying ? ' sel' : ''}`}
-              data-trying={trying || undefined}
-              onClick={() => (first ? run('select', { track_id: first.t.id, clip_id: first.c.id }) : tryOut(src.id))}
-              onKeyDown={(e) => {
-                if (e.key !== 'Backspace' && e.key !== 'Delete') return;
-                e.preventDefault();
-                e.stopPropagation(); // the sound, not the selected clip (App's Delete key command)
-                askRemove(src.id);
-              }}
-              title={first ? `Select it on ${first.t.name}; drag it onto the arrangement for another copy` : 'Click to try it on Musical Typing; drag it onto the arrangement to put it on a track'}
-            >
-              <span className="idea-head">
-                <i className="dot" />
-                <span className="idea-name">{src.name}</span>
-                <span className="idea-dur">{fmtDur(src.duration)}</span>
-              </span>
-              <MiniWave sourceId={src.id} version={audioVersion} color={color} />
-              <span className="idea-meta">
-                {ORIGIN[src.origin] ?? src.origin}
-                {uses.length ? ` · on ${[...new Set(uses.map((u) => u.t.name))].join(', ')}` : trying ? ' · on Musical Typing' : ' · not on a track'}
-              </span>
-              {src.credit && <span className="idea-credit" title={src.credit}>{src.credit}</span>}
-            </button>
-            {versions.length > 1 && (
-              <div className="idea-versions" data-testid="idea-versions">
-                <button className="idea-versions-toggle" aria-expanded={open === root} onClick={() => setOpen(open === root ? null : root)}>
-                  <span className="ver-cur" title={versionLabel(src)}>{versionLabel(src)}</span>
-                  <span className="ver-count">{versions.length} versions <span aria-hidden>{open === root ? '▴' : '▾'}</span></span>
-                </button>
-                {open === root && (
-                  <ul>
-                    {versions.map((v) => {
-                      const on = familyUses.filter((u) => u.c.sourceId === v.id);
-                      const all = familyUses.length > 0 && on.length === familyUses.length;
-                      return (
-                        <li key={v.id} className={`idea-version${v.id === src.id ? ' cur' : ''}`} data-testid={`version-${v.id}`}>
-                          <button className="ver-play" aria-label={`Play ${versionLabel(v)}`} title="Listen to this version" disabled={!buffers.get(v.id)} onClick={() => play(v.id)}>
-                            {playing === v.id ? '■' : '▶'}
-                          </button>
-                          <span className="ver-name" title={versionLabel(v)}>{versionLabel(v)}</span>
-                          {all ? (
-                            <span className="ver-on">in use</span>
-                          ) : (
-                            <button className="ver-use" disabled={!familyUses.length} title={familyUses.length ? 'Play this version on the arrangement (undoable)' : 'No clips play this sound'} onClick={() => run('use_audio_version', { source_id: v.id })}>
-                              Use
-                            </button>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                )}
-              </div>
-            )}
-            <select
-              className={`idea-place${uses.length ? '' : ' unplaced'}`} aria-label={`Put ${src.name} on a track`} value=""
-              title="Put it on a track at the playhead"
-              onChange={(e) => {
-                const v = e.target.value;
-                e.target.blur();
-                if (v) run('place_sound', { source_id: src.id, start: session.transport.position, ...(v === 'new' ? {} : { track_id: v }) });
-              }}
-            >
-              <option value="">Add to track…</option>
-              {session.tracks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              <option value="new">New track</option>
-            </select>
-            {src.origin !== 'generated' && <StarButton run={run} args={{ source_id: src.id }} name={src.name} />}
-            <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
-            {confirm === src.id && (
-              <div className="idea-confirm" data-testid="idea-confirm" role="alertdialog" aria-label={`Delete ${src.name}?`} onKeyDown={(e) => e.key === 'Escape' && setConfirm(null)}>
-                <span>Delete “{src.name}”? {confirmText(uses.filter((u) => !u.c.midi).length, uses.filter((u) => u.c.midi).length)}</span>
-                <span className="idea-confirm-actions">
-                  <button onClick={() => setConfirm(null)}>Cancel</button>
-                  <button className="danger" autoFocus onClick={() => remove(src.id)}>Delete</button>
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })}
+      {placed.map(card)}
       {kits.map((k) => (
         <KitCard key={k.id} kit={k} session={session} playing={typing && playingKit === k.id} onPlay={() => openDrumPad(session, run, k.id)} onRename={(name) => run('rename_kit', { kit_id: k.id, name })} onDelete={() => run('delete_kit', { kit_id: k.id })} onSave={() => saveKit(run, k.id)} />
       ))}
+      {unplaced.length > 0 && (
+        <button
+          className="ideas-unused-toggle" data-testid="ideas-unused-toggle" aria-expanded={!unusedHidden}
+          title={unusedHidden ? 'Show the sounds not on a track' : 'Fold away the sounds not on a track'}
+          onClick={() => hideUnused(!unusedHidden)}
+        >
+          <span>Not on a track</span> <span className="count">{unplaced.length}</span> <span aria-hidden>{unusedHidden ? '▸' : '▾'}</span>
+        </button>
+      )}
+      {!unusedHidden && unplaced.map(card)}
       <button className="idea-new-kit" data-testid="new-drum-pad" title="Make a sample pad: put any sounds on 9 pads and play them from Q W E / A S D / Z X C" onClick={async () => {
         const r = await run('create_kit', {});
         if (r.ok) openDrumPad(session, run, r.result.kit_id);
@@ -216,6 +155,112 @@ export function Ideas({ session, run, audioVersion }: { session: Session; run: R
       </button>
     </section>
   );
+
+  function card({ root, versions }: (typeof groups)[number]) {
+    const family = new Set(versions.map((v) => v.id));
+    // the card shows the newest version a track plays, else the newest one
+    const inUse = [...versions].reverse().find((v) => usage(session, v.id).uses.length);
+    const src = inUse ?? versions[versions.length - 1];
+    const { uses } = usage(session, src.id);
+    const { color } = usage(session, family);
+    const familyUses = usage(session, family).uses.filter((u) => !u.c.midi);
+    const first = uses[0];
+    const selected = !!first && uses.some((u) => u.c.id === session.selection.clipId);
+    const trying = typing && audition === src.id;
+    return (
+      <div
+        key={root} className="idea" data-idea={root} data-version={src.id} style={{ '--c': color } as React.CSSProperties}
+        draggable
+        onDragStart={(e) => {
+          soundDrag.idea = { sourceId: src.id, duration: src.duration };
+          e.dataTransfer.setData(IDEA_MIME, src.id);
+          e.dataTransfer.setData('text/plain', src.name);
+          e.dataTransfer.effectAllowed = 'copy';
+        }}
+        onDragEnd={() => (soundDrag.idea = null)}
+      >
+        <button
+          className={`idea-card${selected || trying ? ' sel' : ''}`}
+          data-trying={trying || undefined}
+          onClick={() => (first ? run('select', { track_id: first.t.id, clip_id: first.c.id }) : tryOut(src.id))}
+          onKeyDown={(e) => {
+            if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+            e.preventDefault();
+            e.stopPropagation(); // the sound, not the selected clip (App's Delete key command)
+            askRemove(src.id);
+          }}
+          title={first ? `Select it on ${first.t.name}; drag it onto the arrangement for another copy` : 'Click to try it on Musical Typing; drag it onto the arrangement to put it on a track'}
+        >
+          <span className="idea-head">
+            <i className="dot" />
+            <span className="idea-name">{src.name}</span>
+            <span className="idea-dur">{fmtDur(src.duration)}</span>
+          </span>
+          <MiniWave sourceId={src.id} version={audioVersion} color={color} />
+          <span className="idea-meta">
+            {ORIGIN[src.origin] ?? src.origin}
+            {uses.length ? ` · on ${[...new Set(uses.map((u) => u.t.name))].join(', ')}` : trying ? ' · on Musical Typing' : ' · not on a track'}
+          </span>
+          {src.credit && <span className="idea-credit" title={src.credit}>{src.credit}</span>}
+        </button>
+        {versions.length > 1 && (
+          <div className="idea-versions" data-testid="idea-versions">
+            <button className="idea-versions-toggle" aria-expanded={open === root} onClick={() => setOpen(open === root ? null : root)}>
+              <span className="ver-cur" title={versionLabel(src)}>{versionLabel(src)}</span>
+              <span className="ver-count">{versions.length} versions <span aria-hidden>{open === root ? '▴' : '▾'}</span></span>
+            </button>
+            {open === root && (
+              <ul>
+                {versions.map((v) => {
+                  const on = familyUses.filter((u) => u.c.sourceId === v.id);
+                  const all = familyUses.length > 0 && on.length === familyUses.length;
+                  return (
+                    <li key={v.id} className={`idea-version${v.id === src.id ? ' cur' : ''}`} data-testid={`version-${v.id}`}>
+                      <button className="ver-play" aria-label={`Play ${versionLabel(v)}`} title="Listen to this version" disabled={!buffers.get(v.id)} onClick={() => play(v.id)}>
+                        {playing === v.id ? '■' : '▶'}
+                      </button>
+                      <span className="ver-name" title={versionLabel(v)}>{versionLabel(v)}</span>
+                      {all ? (
+                        <span className="ver-on">in use</span>
+                      ) : (
+                        <button className="ver-use" disabled={!familyUses.length} title={familyUses.length ? 'Play this version on the arrangement (undoable)' : 'No clips play this sound'} onClick={() => run('use_audio_version', { source_id: v.id })}>
+                          Use
+                        </button>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+        )}
+        <select
+          className={`idea-place${uses.length ? '' : ' unplaced'}`} aria-label={`Put ${src.name} on a track`} value=""
+          title="Put it on a track at the playhead"
+          onChange={(e) => {
+            const v = e.target.value;
+            e.target.blur();
+            if (v) run('place_sound', { source_id: src.id, start: session.transport.position, ...(v === 'new' ? {} : { track_id: v }) });
+          }}
+        >
+          <option value="">Add to track…</option>
+          {session.tracks.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          <option value="new">New track</option>
+        </select>
+        {src.origin !== 'generated' && <StarButton run={run} args={{ source_id: src.id }} name={src.name} />}
+        <button className="idea-del" aria-label="Delete sound" title="Delete this sound (⌫)" onClick={() => askRemove(src.id)}>×</button>
+        {confirm === src.id && (
+          <div className="idea-confirm" data-testid="idea-confirm" role="alertdialog" aria-label={`Delete ${src.name}?`} onKeyDown={(e) => e.key === 'Escape' && setConfirm(null)}>
+            <span>Delete “{src.name}”? {confirmText(uses.filter((u) => !u.c.midi).length, uses.filter((u) => u.c.midi).length)}</span>
+            <span className="idea-confirm-actions">
+              <button onClick={() => setConfirm(null)}>Cancel</button>
+              <button className="danger" autoFocus onClick={() => remove(src.id)}>Delete</button>
+            </span>
+          </div>
+        )}
+      </div>
+    );
+  }
 }
 
 /** Tracks with a region played by a kit, with their positions (for the card's colour and wires). */

@@ -15,3 +15,11 @@
 }
 .idea-place.unplaced, .idea:hover .idea-place, .idea-place:focus-visible { opacity: 1; pointer-events: auto; }
 .idea-place:hover { color: var(--text); }
+
+/* Nov 1: the fold over the sounds not on a track */
+.ideas-unused-toggle {
+  display: flex; align-items: center; gap: 6px; margin-bottom: -6px; padding: 2px 2px; border: 0; background: none;
+  color: var(--muted); font-size: 11.5px; font-weight: 600; text-align: left;
+}
+.ideas-unused-toggle .count { font: 10.5px var(--font-data); padding: 0 6px; border-radius: 999px; background: var(--island-2); border: 1px solid var(--line); }
+.ideas-unused-toggle:hover { color: var(--text); }

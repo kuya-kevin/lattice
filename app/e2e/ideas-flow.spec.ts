@@ -204,3 +204,53 @@ test('a sound taken off its track and put back lights its card waveform in the t
   await expect.poll(dot).toBe(was);
   await expect.poll(match).toBe(true);
 });
+
+test('Ideas lists sounds on a track first, in track order; the rest fold away under "Not on a track"', async ({ page }) => {
+  await page.goto('/');
+  await page.evaluate(() => localStorage.removeItem('lattice.ideasUnusedHidden'));
+  for (const name of ['a.wav', 'b.wav']) {
+    const n = (await session(page)).tracks.length;
+    await page.getByTestId('file-input').setInputFiles({ name, mimeType: 'audio/wav', buffer: sineWav(1) });
+    await expect.poll(async () => (await session(page)).tracks.length).toBe(n + 1);
+  }
+  const [ta, tb] = (await session(page)).tracks;
+  const [a, b] = [ta.clips[0], tb.clips[0]];
+  const order = () => page.locator('.idea[data-idea]').evaluateAll((els) => els.map((e) => e.getAttribute('data-idea')));
+  const toggle = page.getByTestId('ideas-unused-toggle');
+  await expect.poll(order).toEqual([a.sourceId, b.sourceId]);
+  await expect(toggle).toHaveCount(0);
+
+  // a off its track: it moves under the fold, below the placed one
+  await page.evaluate((id) => window.lattice!.runTool('delete_clip', { clip_id: id }), a.id);
+  await expect.poll(order).toEqual([b.sourceId, a.sourceId]);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect(toggle).toContainText('Not on a track 1');
+  await toggle.click();
+  await expect.poll(order).toEqual([b.sourceId]);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+  // the choice is remembered, but a sound newly off its track opens the fold to show it
+  await page.evaluate((id) => window.lattice!.runTool('delete_clip', { clip_id: id }), b.id);
+  await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+  await expect.poll(order).toEqual([a.sourceId, b.sourceId]);
+});
+
+test('the Muse conversation opens as a sheet over the prompt bar, not a column on the left', async ({ page }) => {
+  await page.setViewportSize({ width: 1400, height: 900 });
+  await page.goto('/');
+  const world = await page.locator('.world').evaluate((e) => getComputedStyle(e).paddingLeft);
+  await page.getByPlaceholder(/trim the vocal/).fill('what do I have?');
+  await page.getByRole('button', { name: 'Send' }).click();
+  const chat = page.getByRole('complementary', { name: 'Muse chat' });
+  await expect(page.getByTestId('chat-list')).toContainText('list_tracks');
+  const c = (await chat.boundingBox())!;
+  const p = (await page.locator('form.prompt').boundingBox())!;
+  expect(c.y + c.height).toBeLessThanOrEqual(p.y); // right above the bar
+  expect(Math.abs(c.x - p.x)).toBeLessThan(1); // and as wide
+  expect(Math.abs(c.width - p.width)).toBeLessThan(1);
+  expect(await page.locator('.world').evaluate((e) => getComputedStyle(e).paddingLeft)).toBe(world); // the canvas doesn't make room
+  await page.getByRole('button', { name: 'Hide Muse', exact: true }).click();
+  await expect(chat).toBeHidden();
+  await page.getByRole('button', { name: '2 messages' }).click();
+  await expect(chat).toBeVisible();
+});
