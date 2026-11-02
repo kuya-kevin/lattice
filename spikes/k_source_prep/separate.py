@@ -2,8 +2,7 @@
 
     spikes/j_evals/env.sh sep python spikes/k_source_prep/separate.py <in.wav> <out_dir> <model> [<model> ...]
 
-Models: mel_roformer (vocals / other, MIT), htdemucs_6s (vocals, drums, bass, guitar, piano,
-other; MIT). Writes <out_dir>/<model>-<stem>.wav and prints one JSON line with the paths.
+Model: htdemucs_6s (Meta Demucs, MIT; vocals, drums, bass, guitar, piano, other). Writes <out_dir>/<model>-<stem>.wav and prints one JSON line with the paths.
 Weights are read from $LATTICE_BIGDISK/models/audio-separator (downloaded there on first use).
 """
 import json
@@ -26,7 +25,7 @@ os.environ["PATH"] = f"{_bin}:{os.environ['PATH']}"
 from audio_separator.separator import Separator  # noqa: E402
 
 WEIGHTS = Path(os.environ["LATTICE_BIGDISK"]) / "models" / "audio-separator"
-MODELS = {"mel_roformer": "vocals_mel_band_roformer.ckpt", "htdemucs_6s": "htdemucs_6s.yaml"}
+MODELS = {"htdemucs_6s": "htdemucs_6s.yaml"}
 
 
 def main(src, out_dir, *models):

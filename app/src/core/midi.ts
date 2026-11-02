@@ -43,7 +43,9 @@ export interface PrepStem {
   notes_count: number;
   range: [string, string] | null;
   confidence: number;
-  midi: string;
+  /** null for an audio-only stem (chords: no Meta model transcribes them) */
+  midi: string | null;
+  audio_only?: boolean;
   notes: { pitch: number; start: number; end: number; velocity: number }[];
   drum_classes?: Record<string, number>;
 }

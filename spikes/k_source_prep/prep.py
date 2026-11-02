@@ -4,7 +4,7 @@
 
 Options (all optional):
   --mode auto|hum|keys|bass|drums|layered   what the recording is (auto: decided from the audio)
-  --separate auto|none|vocals|full           auto: Mel-RoFormer always, + htdemucs_6s when layered
+  --separate auto|none                       auto: htdemucs_6s (Meta Demucs, MIT), except for drums and a solo voice
   --denoise                                  spectral gating before everything (profile: quietest 0.5 s)
   --grid off|1/4|1/8|1/8T|1/16|1/16T|1/32    quantize grid (default 1/16)
   --strength 0-1                             quantize strength (default 1)
@@ -12,13 +12,11 @@ Options (all optional):
   --always-quantize                          quantize even when the tempo estimate is unsure (< 0.45)
   --no-key-snap                              keep out-of-key notes
   --min-len S                                minimum note length in seconds
-  --transcriber muscriptor|classic           pitched stems: MuScriptor medium (default; separate process in the
-                                             j_evals `muscriptor` env, CC BY-NC weights) or basic-pitch / pyin.
-                                             The melody of a layered note stays on basic-pitch either way.
-                                             A stem falls back to classic when MuScriptor fails, is missing, has
-                                             < 3 GB free VRAM, or returns no notes (with a warning)
-  --yourmt3                                  allow YourMT3+ for keys stems (separate GPL process; needs >= 14 GB free VRAM)
-  --bytedance                                allow ByteDance piano for the layered melody (no licence file upstream)
+
+The only model here is Demucs. A solo voice or whistle skips it: noisereduce (engineer.py, the same
+cleanup as cleanup_noise), then pyin. Other single lines come from their Demucs stem through pyin,
+and drums through onset detection (all DSP). Meta has no chord transcription model, so a chordal part keeps its Demucs stem as audio:
+its manifest entry has `audio_only: true`, no notes and no MIDI.
 
 Writes <out_dir>/manifest.json (schema below), <out_dir>/midi/<stem>.mid (cleaned) and
 <stem>.raw.mid, <out_dir>/stems/*.wav, <out_dir>/input.wav (mono 44.1 kHz). Prints one line
@@ -28,14 +26,15 @@ Manifest (version 1):
   {version, input, duration, mode, content, analysis{...}, tempo{bpm, offset, confidence, source},
    key{name, tonic, mode, r} | null, settings{...}, separation[...], warnings[...], timing{...},
    stems: [{name, role, instrument, is_drum, audio, transcriber, midi, raw_midi, raw_notes,
-            notes_count, range, confidence, cleanup{...}, notes: [{pitch, start, end, velocity}]}]}
+            notes_count, range, confidence, cleanup{...}, notes: [{pitch, start, end, velocity}]},
+           ...or {name, role, instrument, is_drum, audio, transcriber: "none", audio_only: true, midi: null,
+                  raw_midi: null, raw_notes: 0, notes_count: 0, range: null, confidence: 0, notes: []}]}
 """
 from __future__ import annotations
 
 import argparse
 import json
 import os
-import shutil
 import subprocess
 import sys
 import time
@@ -53,14 +52,15 @@ import drums as D  # noqa: E402
 import transcribers as T  # noqa: E402
 
 ENV_SH = HERE.parent / "j_evals" / "env.sh"
-YOURMT3_RUN = HERE.parent / "j_evals" / "yourmt3_run.py"
-MUSCRIPTOR_RUN = HERE / "muscriptor_stems.py"
 SR = 44100
-YOURMT3_MIN_FREE_MB = 14000
-MUSCRIPTOR_MIN_FREE_MB = 3000  # medium peaks at 2.3 GB while loading (3090, fp32)
 # Below this tempo confidence the notes are not quantized (synthetic set at a steady tempo:
 # 0.53-0.90; free-time real voice notes: 0.11-0.40).
 MIN_TEMPO_CONF = 0.45
+# Router thresholds, measured on the 16 synthetic phone clips (spikes/k_source_prep/README.md).
+VOCAL_HUM = 0.7  # htdemucs vocal share of the energy above this: only a hum
+VOCAL_INSTRUMENT = 0.2  # below this: no voice
+BASS_STEM = 0.6  # htdemucs bass stem's share of the non-vocal energy above this: a bass (clips 0.92-0.96, others < 0.6)
+LINE_CLARITY = 0.5  # line_stats clarity at or above this: one line, not chords (hums and whistles 0.61-0.75, chords and mixes < 0.27)
 
 
 def _np(o):
@@ -137,16 +137,27 @@ def analyse(y: np.ndarray, sr: int) -> dict:
             "median_pitch": round(med, 1) if med else None, "beat_tracker_bpm": round(tempo, 1)}
 
 
-def polyphony(notes: list[C.Note]) -> float:
-    """Mean number of sounding notes while anything sounds (50 ms frames)."""
-    if not notes:
-        return 0.0
-    end = max(n.end for n in notes)
-    t = np.arange(0, end, 0.05)
-    count = np.zeros(len(t))
-    for n in notes:
-        count[(t >= n.start) & (t < n.end)] += 1
-    return float(count[count > 0].mean()) if (count > 0).any() else 0.0
+def is_drums(analysis: dict) -> bool:
+    return analysis["percussive_ratio"] > 0.45 and analysis["voiced_fraction"] < 0.35
+
+
+def line_stats(path: str) -> dict:
+    """How much the audio behaves like one line, from pyin on (up to) the first 60 s: `clarity` is
+    the mean voiced probability over the loud frames (chords confuse pyin, so it drops; so does a
+    low bass in a short window, which is why the bass stem is checked first)."""
+    z = load_audio(path, 22050)[: 60 * 22050]
+    _, voiced, prob = librosa.pyin(z, fmin=38, fmax=1400, sr=22050, frame_length=2048, hop_length=512)
+    rms = librosa.feature.rms(y=z, hop_length=512)[0][: len(voiced)]
+    loud = rms > 0.1 * np.percentile(rms, 95)
+    return {"clarity": round(float(np.mean(prob[loud])) if loud.any() else 0.0, 3)}
+
+
+def noise_clean(src: str, dest: str) -> None:
+    """The cleanup_noise step (noisereduce), run in the `sep` env where engineer.py lives."""
+    cmd = [str(ENV_SH), "sep", "python", str(HERE / "engineer.py"), "cleanup", src, dest]
+    p = subprocess.run(cmd, capture_output=True, text=True, env=os.environ.copy())
+    if p.returncode != 0 or not Path(dest).exists():
+        raise RuntimeError(f"noise cleanup failed ({p.returncode}): {p.stderr[-2000:]}")
 
 
 def separate(src: str, out_dir: Path, models: list[str]) -> dict[str, str]:
@@ -157,32 +168,6 @@ def separate(src: str, out_dir: Path, models: list[str]) -> dict[str, str]:
         if line.startswith("RESULT "):
             return json.loads(line[7:])
     raise RuntimeError(f"separation failed ({p.returncode}): {p.stderr[-2000:]}")
-
-
-def yourmt3(jobs: list[tuple[str, str]], work: Path) -> bool:
-    jf = work / "yourmt3_jobs.json"
-    jf.write_text(json.dumps([{"in": a, "out": b} for a, b in jobs]))
-    p = subprocess.run([str(ENV_SH), "yourmt3", "python", str(YOURMT3_RUN), str(jf)], capture_output=True, text=True, env=os.environ.copy())
-    if p.returncode != 0:
-        log("YourMT3+ failed:", p.stderr[-1500:])
-    return p.returncode == 0
-
-
-def muscriptor(jobs: list[tuple[str, str]]) -> dict | None:
-    """{out_midi: {notes, retry, secs}}, or None if the process failed."""
-    jf = Path(jobs[0][1]).parent / "muscriptor_jobs.json"
-    jf.write_text(json.dumps([{"in": a, "out": b} for a, b in jobs]))
-    p = subprocess.run([str(ENV_SH), "muscriptor", "python", str(MUSCRIPTOR_RUN), str(jf)], capture_output=True, text=True, env=os.environ.copy())
-    for line in p.stdout.splitlines():
-        if line.startswith("RESULT "):
-            return json.loads(line[7:])
-    log("MuScriptor failed:", p.stderr[-1500:])
-    return None
-
-
-def notes_from_midi(path: str) -> list[C.Note]:
-    pm = pretty_midi.PrettyMIDI(path)
-    return [C.Note(n.pitch, n.start, n.end, n.velocity, n.velocity / 127) for i in pm.instruments if not i.is_drum for n in i.notes]
 
 
 # ---------------------------------------------------------------- output
@@ -205,58 +190,48 @@ def note_range(notes):
 # ---------------------------------------------------------------- main
 
 
-def plan_stems(mode: str, stems: dict[str, str], input_wav: str, analysis: dict, opts) -> tuple[str, list[dict], list[str]]:
+def plan_stems(mode: str, stems: dict[str, str], input_wav: str, analysis: dict) -> tuple[str, list[dict], list[str]]:
     """Decide the content and which stem goes to which transcriber.
     Returns (content, [{name, audio, role, transcriber}], warnings)."""
     warns: list[str] = []
-    voc, oth = stems.get("mel_roformer-vocals"), stems.get("mel_roformer-other")
-    content = mode
-    if mode == "auto":
-        if analysis["percussive_ratio"] > 0.45 and analysis["voiced_fraction"] < 0.35:
-            content = "drums"
-        elif voc and oth:
-            ev, eo = energy(voc), energy(oth)
-            share = ev / (ev + eo + 1e-12)
-            analysis["vocal_share"] = round(share, 3)
-            if share > 0.7:
-                content = "hum"
-            elif share < 0.2:
-                content = "instrument"
-            else:
-                content = "layered"
-        else:
-            content = "instrument"
-    if content == "instrument":  # bass or keys or a mono melody (whistle, single-line synth)
-        bp = T.basic_pitch(oth or input_wav)
-        poly = polyphony([n for n in bp if n.conf > 0.3])
-        pitches = [n.pitch for n in bp if n.conf > 0.3]
-        med = float(np.median(pitches)) if pitches else 60
-        analysis.update({"polyphony": round(poly, 2), "instrument_median_pitch": med})
-        content = "bass" if med < 50 and poly < 1.8 or med < 52 and poly < 1.4 else "keys" if poly >= 1.3 else "melody"
-    if content == "melody":
-        # a single line found in the instrument stem (whistle, synth lead): basic-pitch already saw it
-        return content, [{"name": "melody", "audio": oth or input_wav, "role": "melody", "transcriber": "basic_pitch"}], warns
-    if content == "hum":
-        return content, [{"name": "melody", "audio": voc or input_wav, "role": "melody", "transcriber": "pyin"}], warns
-    if content == "bass":
-        return content, [{"name": "bass", "audio": input_wav, "role": "bass", "transcriber": "basic_pitch"}], warns
-    if content == "keys":
-        return content, [{"name": "keys", "audio": input_wav, "role": "keys", "transcriber": "yourmt3" if opts.yourmt3 else "basic_pitch"}], warns
-    if content == "drums":
-        return content, [{"name": "drums", "audio": input_wav, "role": "drums", "transcriber": "onsets"}], warns
-    # layered: vocals -> melody; htdemucs_6s bass / piano / guitar / other / drums
-    plan = [{"name": "melody", "audio": voc or input_wav, "role": "melody", "transcriber": "bytedance_piano" if opts.bytedance else "basic_pitch"}]
     hd = {k.split("-", 1)[1]: v for k, v in stems.items() if k.startswith("htdemucs_6s-")}
-    if not hd:
-        warns.append("layered but no htdemucs_6s stems (separate=none/vocals): only the melody was transcribed")
-        return content, plan, warns
+    voc = hd.get("vocals")
+    solo = analysis.get("line", {}).get("clarity", 0) >= LINE_CLARITY
     e = {k: energy(v) for k, v in hd.items() if k != "vocals"}
     tot = sum(e.values()) + 1e-12
+    content = mode
+    if mode == "auto":
+        if is_drums(analysis):
+            content = "drums"
+        elif solo:
+            content = "hum"
+        elif voc and e:
+            ev = energy(voc)
+            share = ev / (ev + tot)
+            analysis["vocal_share"] = round(share, 3)
+            content = "hum" if share > VOCAL_HUM else "instrument" if share < VOCAL_INSTRUMENT else "layered"
+        else:
+            content = "instrument"
+    if content == "instrument":  # bass or keys (a single line was caught by `solo`)
+        content = "bass" if e.get("bass", 0) / tot >= BASS_STEM else "keys"
+    if content == "hum":  # the whole recording, cleaned in run(): as good as the Demucs vocal stem, and faster
+        return content, [{"name": "melody", "audio": input_wav, "role": "melody", "transcriber": "pyin", "denoise": True}], warns
+    if content == "bass":
+        return content, [{"name": "bass", "audio": hd.get("bass") or input_wav, "role": "bass", "transcriber": "pyin"}], warns
+    if content == "keys":
+        return content, [keys_part(input_wav, warns)], warns
+    if content == "drums":
+        return content, [{"name": "drums", "audio": input_wav, "role": "drums", "transcriber": "onsets"}], warns
+    # layered: vocals -> melody; bass / piano / guitar / other / drums from the same htdemucs_6s run
+    plan = [{"name": "melody", "audio": voc or input_wav, "role": "melody", "transcriber": "pyin"}]
+    if not hd:
+        warns.append("layered but no stems (separate=none): only the melody was transcribed")
+        return content, plan, warns
     analysis["stem_shares"] = {k: round(v / tot, 3) for k, v in e.items()}
     if e.get("bass", 0) / tot > 0.08:
-        plan.append({"name": "bass", "audio": hd["bass"], "role": "bass", "transcriber": "basic_pitch"})  # 0.93 vs pyin 0.83 after cleanup
+        plan.append({"name": "bass", "audio": hd["bass"], "role": "bass", "transcriber": "pyin"})
     # one chords/keys part: htdemucs splits a phone piano between "piano" and "other" (and
-    # sometimes "guitar"); transcribing each gave duplicate tracks, so sum the ones that carry energy
+    # sometimes "guitar"), so sum the ones that carry energy
     harm = [k for k in ("piano", "guitar", "other") if e.get(k, 0) / tot > 0.05]
     if sum(e.get(k, 0) for k in harm) / tot > 0.15:
         dest = Path(hd[harm[0]]).with_name("htdemucs_6s-keys_sum.wav")
@@ -267,12 +242,20 @@ def plan_stems(mode: str, stems: dict[str, str], input_wav: str, analysis: dict,
         else:
             dest = Path(hd[harm[0]])
         analysis["keys_from"] = harm
-        plan.append({"name": "keys", "audio": str(dest), "role": "keys", "transcriber": "yourmt3" if opts.yourmt3 else "basic_pitch"})
+        plan.append(keys_part(str(dest), warns))
     # htdemucs puts plucks and consonants in "drums" on non-drum notes: only trust it when the
     # mix itself is percussive
     if e.get("drums", 0) / tot > 0.15 and analysis.get("percussive_ratio", 0) > 0.25:
         plan.append({"name": "drums", "audio": hd["drums"], "role": "drums", "transcriber": "onsets"})
     return content, plan, warns
+
+
+def keys_part(audio: str, warns: list[str]) -> dict:
+    """A single line on keys still becomes notes; chords stay audio (no Meta chord transcriber)."""
+    if line_stats(audio)["clarity"] >= LINE_CLARITY:
+        return {"name": "keys", "audio": audio, "role": "keys", "transcriber": "pyin"}
+    warns.append("keys: chords stay audio, because there is no Meta model that transcribes chords (split_stems puts the stem on a track)")
+    return {"name": "keys", "audio": audio, "role": "keys", "transcriber": "none"}
 
 
 def run(src: str, out_dir: str, opts) -> dict:
@@ -296,69 +279,21 @@ def run(src: str, out_dir: str, opts) -> dict:
     t = time.time()
     stems: dict[str, str] = {}
     models: list[str] = []
-    if opts.separate != "none" and opts.mode != "drums":
-        models = ["mel_roformer"]
-    if opts.separate == "full" or (opts.mode == "layered" and opts.separate != "none" and opts.separate != "vocals"):
-        models.append("htdemucs_6s")
-    if models:
+    if opts.mode == "auto" and not is_drums(analysis):
+        analysis["line"] = line_stats(input_wav)
+    solo = opts.mode == "hum" or analysis.get("line", {}).get("clarity", 0) >= LINE_CLARITY
+    if opts.separate != "none" and opts.mode != "drums" and not solo and not (opts.mode == "auto" and is_drums(analysis)):
+        models = ["htdemucs_6s"]
         stems = separate(input_wav, out / "stems", models)
     timing["separate"] = round(time.time() - t, 1)
-    if opts.mode == "auto" and opts.separate == "auto" and "htdemucs_6s" not in models:
-        # second pass only when the first one says the note is layered
-        pre_content, _, _ = plan_stems("auto", stems, input_wav, dict(analysis), opts) if stems else ("", [], [])
-        if pre_content == "layered":
-            t = time.time()
-            stems.update(separate(input_wav, out / "stems", ["htdemucs_6s"]))
-            models.append("htdemucs_6s")
-            timing["separate"] += round(time.time() - t, 1)
-    content, plan, w = plan_stems(opts.mode, stems, input_wav, analysis, opts)
+    content, plan, w = plan_stems(opts.mode, stems, input_wav, analysis)
     warns += w
-
-    # MuScriptor for the pitched stems the router gave to basic-pitch / pyin (opt-ins keep theirs),
-    # except a layered note's melody: basic-pitch + cleanup scored 0.89 on the Mel-RoFormer vocal stem
-    # vs 0.82 for MuScriptor (synthetic phone set, Oct 27)
-    ms = [p for p in plan if p["transcriber"] in ("basic_pitch", "pyin") and not (content == "layered" and p["role"] == "melody")
-          ] if opts.transcriber == "muscriptor" else []
-    if ms:
-        t = time.time()
-        free = T.free_vram_mb()
-        res = None
-        if shutil.which("nvidia-smi") and free < MUSCRIPTOR_MIN_FREE_MB:
-            warns.append(f"MuScriptor skipped: {free} MB VRAM free (< {MUSCRIPTOR_MIN_FREE_MB}); classic transcribers used")
-        else:
-            # a hum-only note goes in whole: on the Mel-RoFormer vocal stem MuScriptor more often hears
-            # nothing (medium F1 0.25 vs 0.76 on the raw recording, j_evals synthetic set)
-            src_of = {p["name"]: input_wav if content == "hum" else p["audio"] for p in ms}
-            res = muscriptor([(src_of[p["name"]], str(out / "midi" / f"{p['name']}.muscriptor.mid")) for p in ms])
-            if res is None:
-                warns.append("MuScriptor failed or is not installed (j_evals `muscriptor` env); classic transcribers used")
-        for p in ms:
-            r = (res or {}).get(str(out / "midi" / f"{p['name']}.muscriptor.mid"))
-            if r and r["notes"]:
-                p["transcriber"] = "muscriptor"
-                p["muscriptor_retry"] = r["retry"]
-                p["audio"] = src_of[p["name"]]
-            elif res is not None:
-                warns.append(f"{p['name']}: MuScriptor found no notes; {p['transcriber']} used instead")
-        timing["muscriptor"] = round(time.time() - t, 1)
-
-    # YourMT3+ gate
-    if any(p["transcriber"] == "yourmt3" for p in plan):
-        free = T.free_vram_mb()
-        if free < YOURMT3_MIN_FREE_MB:
-            warns.append(f"YourMT3+ skipped: {free} MB VRAM free (< {YOURMT3_MIN_FREE_MB}); basic-pitch used instead")
-            for p in plan:
-                if p["transcriber"] == "yourmt3":
-                    p["transcriber"] = "basic_pitch"
-        else:
+    for p in plan:
+        if p.get("denoise"):
             t = time.time()
-            jobs = [(p["audio"], str(out / "midi" / f"{p['name']}.yourmt3.mid")) for p in plan if p["transcriber"] == "yourmt3"]
-            if not yourmt3(jobs, out):
-                warns.append("YourMT3+ failed; basic-pitch used instead")
-                for p in plan:
-                    if p["transcriber"] == "yourmt3":
-                        p["transcriber"] = "basic_pitch"
-            timing["yourmt3"] = round(time.time() - t, 1)
+            p["audio"] = str(out / "stems" / "voice_cleaned.wav")
+            noise_clean(input_wav, p["audio"])
+            timing["noise_clean"] = round(time.time() - t, 1)
 
     # transcribe + clean each stem
     hint = analysis.get("beat_tracker_bpm")
@@ -373,14 +308,8 @@ def run(src: str, out_dir: str, opts) -> dict:
             # melody: fmin 80 Hz keeps pyin off 50/60 Hz mains hum; bass: down to D#1
             fmin = 38 if p["role"] == "bass" else 80
             raw_by_stem[p["name"]] = T.pyin(load_audio(p["audio"], 22050), 22050, fmin=fmin)
-        elif p["transcriber"] == "basic_pitch":
-            raw_by_stem[p["name"]] = T.basic_pitch(p["audio"])
-        elif p["transcriber"] == "bytedance_piano":
-            raw_by_stem[p["name"]] = T.bytedance_piano(p["audio"])
-        elif p["transcriber"] == "yourmt3":
-            raw_by_stem[p["name"]] = notes_from_midi(str(out / "midi" / f"{p['name']}.yourmt3.mid"))
-        elif p["transcriber"] == "muscriptor":
-            raw_by_stem[p["name"]] = notes_from_midi(str(out / "midi" / f"{p['name']}.muscriptor.mid"))
+        else:
+            raw_by_stem[p["name"]] = []
         timing[f"transcribe_{p['name']}"] = round(time.time() - t, 1)
 
     # one tempo for the whole note: estimated from all pitched + drum onsets together
@@ -403,6 +332,14 @@ def run(src: str, out_dir: str, opts) -> dict:
 
     out_stems, all_clean = [], []
     for p in plan:
+        if p["transcriber"] == "none":
+            out_stems.append({
+                "name": p["name"], "role": p["role"], "instrument": "piano", "is_drum": False,
+                "audio": os.path.relpath(p["audio"], out), "transcriber": "none", "audio_only": True,
+                "midi": None, "raw_midi": None, "raw_notes": 0, "notes_count": 0, "range": None,
+                "confidence": 0.0, "notes": [],
+            })
+            continue
         raw = raw_by_stem[p["name"]]
         is_drum = p["role"] == "drums"
         write_midi(raw, out / "midi" / f"{p['name']}.raw.mid", tempo["bpm"] if tempo else 120, is_drum, p["name"])
@@ -426,8 +363,7 @@ def run(src: str, out_dir: str, opts) -> dict:
             "audio": os.path.relpath(p["audio"], out), "transcriber": p["transcriber"],
             "midi": f"midi/{p['name']}.mid", "raw_midi": f"midi/{p['name']}.raw.mid",
             "raw_notes": len(raw), "notes_count": len(notes), "range": note_range(notes) if not is_drum else None,
-            "confidence": round(conf, 3), "cleanup": res.steps,
-            **({"muscriptor_retry": True} if p.get("muscriptor_retry") else {}),
+            "confidence": round(conf, 3), "cleanup": res.steps, **({"denoised": "noisereduce"} if p.get("denoise") else {}),
             **({"drum_classes": {c: sum(1 for n in notes if n.pitch == D.GM[c]) for c in D.GM}} if is_drum else {}),
             "notes": [{"pitch": int(n.pitch), "start": round(n.start, 4), "end": round(n.end, 4), "velocity": int(n.velocity)} for n in notes],
         })
@@ -438,7 +374,7 @@ def run(src: str, out_dir: str, opts) -> dict:
         "version": 1, "input": Path(src).name, "duration": round(len(y) / SR, 3), "mode": opts.mode, "content": content,
         "analysis": analysis, "tempo": tempo, "key": key,
         "settings": {"min_tempo_confidence": MIN_TEMPO_CONF, "separate": opts.separate, "denoise": opts.denoise, "grid": opts.grid, "strength": opts.strength,
-                     "key_snap": not opts.no_key_snap, "transcriber": opts.transcriber, "yourmt3": opts.yourmt3, "bytedance": opts.bytedance},
+                     "key_snap": not opts.no_key_snap},
         "separation": [{"model": m, "licence": "MIT"} for m in models], "warnings": warns,
         "timing": {**timing, "total": round(time.time() - t0, 1)}, "stems": out_stems,
     }
@@ -451,7 +387,7 @@ def parse(argv=None):
     ap.add_argument("src")
     ap.add_argument("out_dir")
     ap.add_argument("--mode", default="auto", choices=["auto", "hum", "keys", "bass", "drums", "layered"])
-    ap.add_argument("--separate", default="auto", choices=["auto", "none", "vocals", "full"])
+    ap.add_argument("--separate", default="auto", choices=["auto", "none"])
     ap.add_argument("--denoise", action="store_true")
     ap.add_argument("--grid", default="1/16", choices=["off", *C.GRIDS])
     ap.add_argument("--strength", type=float, default=1.0)
@@ -459,9 +395,6 @@ def parse(argv=None):
     ap.add_argument("--always-quantize", action="store_true", help="quantize even when the tempo estimate is unsure")
     ap.add_argument("--no-key-snap", action="store_true")
     ap.add_argument("--min-len", type=float, default=None)
-    ap.add_argument("--transcriber", default="muscriptor", choices=["muscriptor", "classic"])
-    ap.add_argument("--yourmt3", action="store_true")
-    ap.add_argument("--bytedance", action="store_true")
     return ap.parse_args(argv)
 
 

@@ -5,7 +5,7 @@ import { searchForWorkspaceRoot, type Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import { audioMime, loadLibrary, type Library } from './src/node/library.ts';
 import { putAudio, runSourcePrep, sourcePrepConfig } from './src/node/sourcePrep.ts';
-import { runAnalysis, runEngineer } from './src/node/engineer.ts';
+import { runAnalysis, runEngineer, runSplit } from './src/node/engineer.ts';
 import { config as loadDotenv } from 'dotenv';
 import { transcriberFromEnv } from './src/node/stt.ts';
 import type { Transcribe } from './src/core/stt.ts';
@@ -50,6 +50,24 @@ function sidecarMiddleware(): Plugin {
           } catch (e) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
+          }
+        });
+      });
+      // split_stems: POST /api/sidecar/split?args={"sourceId"} with the source's WAV -> the stems, WAVs in base64
+      server.middlewares.use('/api/sidecar/split', (req, res) => {
+        const chunks: Buffer[] = [];
+        req.on('data', (c: Buffer) => chunks.push(c));
+        req.on('end', async () => {
+          res.setHeader('Content-Type', 'application/json');
+          try {
+            if (req.method !== 'POST') throw new Error('POST only');
+            const job = JSON.parse(new URL(req.url ?? '/', 'http://x').searchParams.get('args') ?? '{}');
+            putAudio(cfg, job.sourceId, Buffer.concat(chunks));
+            const r = await runSplit(cfg, job.sourceId, { mock: process.env.LATTICE_ENGINEER_MOCK === '1' });
+            res.end(JSON.stringify({ ...r, stems: r.stems.map((x) => ({ ...x, wav: Buffer.from(x.wav).toString('base64') })) }));
+          } catch (e) {
+            res.statusCode = 500;
             res.end(JSON.stringify({ error: e instanceof Error ? e.message : String(e) }));
           }
         });

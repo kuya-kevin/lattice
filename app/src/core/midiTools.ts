@@ -7,7 +7,7 @@ import { detectKey, type KeyGuess } from './key';
 import { SAMPLE_ROOT } from './musicalTyping';
 import * as S from './session';
 import { librarySources } from './shelfTools';
-import type { ExtractMode } from './sidecar';
+import type { ExtractMode, SplitStemsResult } from './sidecar';
 import type { ToolContext, ToolDef } from './tools';
 
 const str = (description: string, extra: object = {}) => ({ type: 'string', description, ...extra });
@@ -55,7 +55,7 @@ export function importManifest(s: S.Session, clipId: string, m: PrepManifest, se
   }
   for (const stem of m.stems) {
     if (!stem.notes.length) {
-      skipped.push(`${stem.name} (no notes)`);
+      skipped.push(stem.audio_only ? `${stem.name} (chords: stays audio, split_stems puts it on a track)` : `${stem.name} (no notes)`);
       continue;
     }
     const name = `${clip.name} ${stem.name}`;
@@ -73,6 +73,27 @@ export function importManifest(s: S.Session, clipId: string, m: PrepManifest, se
   }
   if (added.length) next = S.select(next, added[0].track_id, added[0].clip_id);
   return { session: next, added, skipped, applied };
+}
+
+/** Pure: add one audio track per Demucs stem, lined up with `clipId`, and mute the clip's track
+ *  when nothing else is on it, so the stems don't double it. Exported for tests. */
+export function importStems(s: S.Session, clipId: string, r: SplitStemsResult) {
+  const { track, clip } = S.findClip(s, clipId);
+  const src = s.sources[clip.sourceId];
+  const added: { track_id: string; clip_id: string; stem: string; share: number }[] = [];
+  let next = s;
+  for (const stem of r.stems) {
+    const name = `${clip.name} ${stem.name}`;
+    const withSource = S.addSource(next, { id: stem.source_id, name, duration: src?.duration ?? clip.offset + clip.duration, origin: 'processed', processed: `${stem.name} stem (Meta Demucs)` });
+    const [s1, t] = S.addTrack(withSource, name);
+    const [s2, c] = S.addClip(s1, t.id, stem.source_id, clip.start);
+    next = S.mapTrack(s2, t.id, (x) => ({ ...x, clips: x.clips.map((k) => (k.id === c.id ? { ...k, offset: clip.offset, duration: clip.duration } : k)) }));
+    added.push({ track_id: t.id, clip_id: c.id, stem: stem.name, share: stem.share });
+  }
+  const mute = added.length > 0 && track.clips.length === 1;
+  if (mute) next = S.mapTrack(next, track.id, (t) => ({ ...t, muted: true }));
+  if (added.length) next = S.select(next, added[0].track_id, added[0].clip_id);
+  return { session: next, added, muted: mute ? track.id : null };
 }
 
 /** Check a sampler instrument against the session: a region inside a real (audio) source. */
@@ -210,15 +231,15 @@ export const MIDI_TOOLS: ToolDef[] = [
   {
     name: 'extract_midi',
     description:
-      'Turn an audio clip (e.g. a phone voice note: a hum, an instrument, or layers) into MIDI: optional separation into stems ' +
-      '(Mel-RoFormer vocals, htdemucs bass/piano/drums), a transcriber per stem, then cleanup (blips, repeats, octave slips, key snap, ' +
-      'quantize when the tempo is clear). Adds one MIDI track per stem under the audio, aligned with it. Takes 10-60 s. ' +
+      'Turn an audio clip (e.g. a phone voice note: a hum, an instrument, or layers) into MIDI. A solo voice or whistle gets noise cleanup, then pyin. Anything with more parts goes through Meta Demucs first, ' +
+      'then notes from each single-line part (pyin) and from drums (onsets). Then note cleanup (blips, repeats, octave slips, key snap, ' +
+      'quantize when the tempo is clear). Adds one MIDI track per part under the audio, aligned with it. Chords cannot become notes: that part stays audio, and the result says so. Takes 5-60 s. ' +
       'mode "auto" decides hum/keys/bass/drums/layered from the audio; set it when the user says what it is.',
     parameters: obj({
       clip_id: str('Audio clip id; omit to use the selected clip'),
       mode: str('What the recording is', { enum: MODES }),
       grid: str('Quantize grid (default 1/16; "off" keeps the timing as played)', { enum: GRID_ENUM }),
-      separate: str('auto (default), none, vocals (Mel-RoFormer only), full (+ htdemucs_6s)', { enum: ['auto', 'none', 'vocals', 'full'] }),
+      separate: str('auto (default: Meta Demucs unless it is a solo voice or drums), none (never)', { enum: ['auto', 'none'] }),
       key_snap: bool('Snap rare out-of-key notes to the detected key (default true)'),
       use_session_tempo: bool('Quantize at the session tempo instead of the detected one (default false)'),
       set_tempo: bool('Set the session tempo/key from the recording; other regions keep their bars (default: only when the session has nothing else)'),
@@ -249,6 +270,26 @@ export const MIDI_TOOLS: ToolDef[] = [
         applied_to_session: r.applied,
         warnings: m.warnings,
       };
+    },
+  },
+  {
+    name: 'split_stems',
+    description:
+      'Split an audio clip into stems with Meta Demucs (htdemucs_6s, on this computer): vocals, drums, bass, guitar, piano, other. ' +
+      'Adds one audio track per stem that has sound, lined up with the clip, and mutes the original track if the clip is alone on it. ' +
+      'The stems are ordinary audio: clean, quantize or add effects to them. Takes about a minute per minute of audio.',
+    parameters: obj({ clip_id: str('Audio clip id; omit to use the selected clip') }),
+    logText: (_a, r) => `split ${r.from_clip} into stems: ${r.tracks.map((t: any) => `${t.stem} -> ${t.track_id}`).join(', ') || 'nothing'}`,
+    run: async (ctx: ToolContext, a) => {
+      const { clip } = targetClip(ctx.store.get(), a.clip_id);
+      if (clip.midi) throw new S.SessionError(`clip ${clip.id} is MIDI, not audio`);
+      const newSourceId = `src-${Math.random().toString(36).slice(2, 10)}`;
+      const r = await ctx.sidecar.splitStems({ sourceId: clip.sourceId, newSourceId });
+      if (r.stub) return { from_clip: clip.id, model: r.model, tracks: [], status: 'stub: nothing was split, no tracks added', stub: true };
+      // the session may have changed while the sidecar ran: apply to the current one
+      const out = importStems(ctx.store.get(), clip.id, r);
+      ctx.store.set(out.session);
+      return { from_clip: clip.id, model: `Meta Demucs ${r.model}`, tracks: out.added, muted_original: out.muted, dropped: r.dropped, ...(r.seconds !== undefined ? { seconds: r.seconds } : {}) };
     },
   },
   {

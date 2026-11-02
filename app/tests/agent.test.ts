@@ -7,7 +7,6 @@ import { StubSidecar } from '../src/core/sidecar';
 import { SessionStore } from '../src/core/store';
 import engineer from './fixtures/engineer.json';
 import feedback from './fixtures/feedback.json';
-import sound from './fixtures/sound.json';
 import tempo from './fixtures/tempo.json';
 
 async function replay(f: Fixture) {
@@ -45,15 +44,6 @@ describe('agent loop (recorded Muse fixtures)', () => {
     expect(userTurns[0]).not.toContain('user_edits_since_last_turn');
     expect(userTurns[1]).toContain('set_gain {"track_id":"t3","gain_db":-2}');
     expect(results[1].steps.map((x) => x.tool)).toEqual(expect.arrayContaining(['cleanup_noise', 'quantize_drums']));
-  });
-
-  it('sound: searches Freesound with timbre filters and sets synth knobs (stub)', async () => {
-    const { results } = await replay(sound as Fixture);
-    const steps = results[0].steps;
-    const search = steps.filter((x) => x.tool === 'search_freesound');
-    expect(search.length).toBeGreaterThan(0);
-    expect(steps.some((x) => x.tool === 'set_synth_knobs' && x.outcome.ok)).toBe(true);
-    expect(results[0].reply).toMatch(/freesound\.org/);
   });
 
   it('tempo: sets tempo, key and click, and quantizes at the session tempo', async () => {

@@ -89,11 +89,6 @@ export const SCENARIOS: Scenario[] = [
     setup: [imp('src-drums', 'Drum loop', 8)],
     turns: [{ user: 'This beat is 92 BPM in G minor. Set that up, turn the click on with a count-in, then tighten the drums to 8ths.' }],
   },
-  {
-    name: 'sound',
-    setup: [imp('src-hum', 'Hum voice note', 6)],
-    turns: [{ user: 'I want a dark, warm synth bass for this hum. Find a few short candidates on Freesound and set up a starting patch on our synth.' }],
-  },
   // B16: the instruction eval (core/instructionEval.ts), one scenario per phrase, "instr-<id>"
   ...instructionScenarios(),
 ];

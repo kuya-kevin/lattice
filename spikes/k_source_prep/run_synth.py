@@ -5,8 +5,7 @@
 Writes $LATTICE_BIGDISK/out-k/<out name>/<clip>/ (manifest, MIDI, stems) and appends one JSON line
 per clip to $LATTICE_BIGDISK/out-k/<out name>/progress.log: content, transcriber per stem, F1 of
 the cleaned stem against its part, warnings, seconds. Longest clip first; --pilot runs only that
-one; --only hum runs only the clips whose name starts with hum. Stops on the first crash. Example: `run_synth.py synth_muscriptor` (default transcriber) or
-`run_synth.py synth --transcriber classic`.
+one; --only hum runs only the clips whose name starts with hum. Stops on the first crash. Example: `run_synth.py synth_meta`.
 """
 import json
 import os
@@ -54,6 +53,9 @@ def main():
             parts = {i.name: i.notes for i in pretty_midi.PrettyMIDI(str(TRUTH / f"{clip}.mid")).instruments}
             stems = {}
             for s in m["stems"]:
+                if s.get("audio_only"):
+                    stems[s["name"]] = {"transcriber": "none (audio only)"}
+                    continue
                 part = cat if cat != "layered" else PART.get(s["name"])
                 notes = pretty_midi.PrettyMIDI(str(root / clip / s["midi"])).instruments[0].notes
                 stems[s["name"]] = {"transcriber": s["transcriber"], "notes": len(notes),

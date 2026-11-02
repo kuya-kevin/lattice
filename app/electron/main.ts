@@ -16,7 +16,7 @@ import { FileSetupLibrary } from '../src/node/setupFile'; // Oct 30
 import { loadLibrary, type Library } from '../src/node/library';
 import { liveChat, loadEnv } from '../src/node/muse';
 import { putAudio, runSourcePrep, sourcePrepConfig } from '../src/node/sourcePrep'; // [S3 midi]
-import { runDrumHits, runEngineer, runSoundRegions } from '../src/node/engineer'; // B3, B13
+import { runDrumHits, runEngineer, runSoundRegions, runSplit } from '../src/node/engineer'; // B3, B13
 import { transcriberFromEnv } from '../src/node/stt'; // B2
 import type { ExtractMidiArgs, QuantizeDrumsArgs } from '../src/core/sidecar';
 import type { Features } from '../src/core/ears';
@@ -29,8 +29,8 @@ if (process.env.LATTICE_USER_DATA) app.setPath('userData', resolve(process.env.L
 // B11: autosave, versions, audio refs, per project (Oct 30: several, listed in projects.json)
 const projects = new FileProjectLibrary(app.getPath('userData'));
 
-// [S3 midi] extract_midi, (B3) cleanup_noise / quantize_drums and (B13) slice_drums / find_sound run the Python sidecar as a
-// child process; the synth and MRT2 methods are still stubs. Processed audio is kept under its
+// [S3 midi] extract_midi, (B3) cleanup_noise / quantize_drums and (B13) slice_drums / find_sound and split_stems run the Python sidecar
+// as a child process. Processed audio is kept under its
 // new source id, where the renderer loads it (source:load).
 const prepCfg = sourcePrepConfig(resolve(appDir, '..'));
 const engineerMock = { mock: process.env.LATTICE_ENGINEER_MOCK === '1' };
@@ -47,6 +47,15 @@ class AppSidecar extends StubSidecar {
     const { result, wav } = await runEngineer(prepCfg, { op: 'quantize', ...a }, engineerMock);
     sourceAudio.keep(newSourceId, { bytes: wav });
     return result;
+  }
+  override async splitStems(a: { sourceId: string; newSourceId: string }) {
+    const r = await runSplit(prepCfg, a.sourceId, engineerMock);
+    const stems = r.stems.map(({ name, share, wav }) => {
+      const source_id = `${a.newSourceId}-${name}`;
+      sourceAudio.keep(source_id, { bytes: wav });
+      return { name, share, source_id };
+    });
+    return { ...r, stems };
   }
   override drumHits(a: { sourceId: string }) {
     return runDrumHits(prepCfg, a.sourceId, engineerMock); // B13
@@ -67,7 +76,7 @@ let sourceAudio = new SourceAudioFiles(join(projects.dir(), 'audio')); // the op
 
 const ctx: ToolContext = {
   store,
-  sidecar: new AppSidecar(), // TODO(sidecar): the synth and MRT2 methods are stubs
+  sidecar: new AppSidecar(),
   searchFreesound: async (q, f, n) => {
     const token = process.env.FREESOUND_API_KEY;
     if (!token) throw new Error('FREESOUND_API_KEY is not set');

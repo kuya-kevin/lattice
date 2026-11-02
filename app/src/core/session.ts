@@ -21,7 +21,7 @@ export interface Source {
   /** Attribution for library sounds (CC-BY needs it), e.g. '"Kick" by x (url), CC-BY-4.0'. */
   credit?: string;
   /** B3: audio made by the sidecar from another source (origin 'processed'): which one, and
-   *  what was done, e.g. "noise cleaned (Mel-RoFormer denoise)". Shown to Muse on the clip. */
+   *  what was done, e.g. "noise cleaned (noisereduce)". Shown to Muse on the clip. */
   derivedFrom?: string;
   processed?: string;
 }

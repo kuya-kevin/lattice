@@ -25,8 +25,8 @@ Parallel lanes, branches and merging: `docs/parallel-work.md`.
 - **Rights.** Copyrighted reference audio stays local (`data/`, `out/`, both git-ignored) and out of
   the repo and demo. Freesound material is CC0/CC-BY only; attribution lives in `data/freesound/README.md`.
   Flag licences of any new model or library (several current ones are GPL or non-commercial, see below).
-- **Meta models stay central** in the story: Muse plans, and Meta's Demucs / SAM Audio / PE-AV do the
-  listening and separation where possible.
+- **Every model called at runtime must be a Meta model** (hackathon rule; `README.md` lists them). Non-ML
+  code is fine. Don't wire a non-Meta model into the app or sidecar, even behind a flag.
 - Docs are Markdown files in the repo, not published artifacts or claude.ai links.
 
 ## Layout
@@ -91,8 +91,7 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
   restore from where each source was kept (B11: original path, library id, or bytes in userData;
   `renderer/sourceAudio.ts`). The web build has no autosave. Electron tests set `LATTICE_USER_DATA`
   to a fresh folder so autosaves don't leak between launches.
-- Python model calls go through a separate process (the app never imports GPL code; YourMT3+ is
-  treated as GPL). Stub sidecar tools must say "stub" in their result so Muse reports them honestly.
+- Python model calls go through a separate process. Stub sidecar tools must say "stub" in their result so Muse reports them honestly.
 - When you finish a backlog entry, say so in your lane note (`docs/lane-notes/<branch>.md`); the
   merge step moves it to Done in `docs/backlog.md` and updates `HANDOFF.md`. Keep docs short and
   dated. New spikes get a row in `spikes/README.md`.
@@ -104,13 +103,12 @@ Secrets are in `.env` (see `.env.example`): `META_MODEL_API_KEY`, `FREESOUND_API
 
 | Piece | Licence | Note |
 |---|---|---|
-| waveform-playlist, Signalsmith Stretch, Mel-RoFormer, htdemucs | MIT | fine |
-| basic-pitch, Magenta RT2 code, PE-AV | Apache-2.0 | MRT2 weights are CC-BY-4.0 |
+| waveform-playlist, Signalsmith Stretch, htdemucs | MIT | fine |
+| PE-AV | Apache-2.0 | research only so far |
 | Faust devices | ours + STK-4.3 / zita_rev1 | no GPL `compressors.lib` / `limiter_lad` |
-| YourMT3+ | treat as GPL-3.0 | opt-in, separate process only |
-| ByteDance piano transcription | no licence file | opt-in only |
 | SAM Audio | SAM License | evaluated via audio.cpp GGUF, dropped Oct 27 (`spikes/l_sam_audio`) |
-| Mel-RoFormer denoise (aufr33) | community weights, no stated licence | `cleanup_noise` default (B3), separate process; noisereduce (MIT) fallback (`spikes/m_cleanup_models`) |
-| MuScriptor medium | code MIT, weights CC BY-NC 4.0 | non-commercial; sidecar default transcriber, separate process (`spikes/k_source_prep`) |
 | MMS-TTS English (`facebook/mms-tts-eng`, ONNX `Xenova/mms-tts-eng`) | weights CC BY-NC 4.0 | non-commercial; spoken replies (B14), downloaded at runtime to the app cache, not in the repo; Transformers.js is Apache-2.0 |
 | pedalboard | GPL-3.0 | not used (decided) |
+
+Non-Meta models evaluated earlier (Mel-RoFormer, MuScriptor, basic-pitch, YourMT3+, ByteDance piano,
+Magenta RT2) were removed from the app on Nov 1; their results stay under `spikes/` as research.

@@ -7,54 +7,80 @@ Lattice calls it through the `extract_midi` tool (see "App wiring" below).
 voice note (wav / m4a)
   └─ load, mono 44.1 kHz, (--denoise: spectral gating from the quietest 0.5 s)
   └─ analyse: percussive ratio (HPSS), pyin voiced fraction, beat-tracker BPM
-       ├─ percussive + unvoiced ─────────────────────────────────────→ drums
-       └─ Mel-RoFormer vocals / other (sep env, MIT)
-            vocal share > 0.7 → hum      whole recording ──→ MuScriptor (classic: vocals → pyin)
-            vocal share < 0.2 → instrument: basic-pitch on "other" decides which
-                 median < E3-ish, mono-ish → bass ──→ MuScriptor
-                 polyphony ≥ 1.3          → keys ──→ MuScriptor (YourMT3+ if --yourmt3 and ≥ 14 GB free)
-                 else                     → melody ─→ MuScriptor
-            otherwise → layered: + htdemucs_6s (MIT)
-                 vocals ───────────────→ melody: basic-pitch (ByteDance if --bytedance)
-                 bass ─────────────────→ bass: MuScriptor
-                 piano+guitar+other (summed) → keys: MuScriptor / YourMT3+
+       ├─ percussive + unvoiced ─────────────────────────────────────→ drums (no separation)
+       ├─ pyin clarity ≥ 0.5 (solo voice, whistle) → hum: noisereduce ──→ pyin (no separation)
+       └─ Meta Demucs htdemucs_6s (sep env, MIT)
+            vocal share > 0.7 → hum: noisereduce ──→ pyin
+            vocal share < 0.2 → instrument:
+                 bass stem ≥ 0.6 of the rest → bass: bass stem ──→ pyin
+                 else                        → keys: stays audio
+            otherwise → layered:
+                 vocals ───────────────→ melody: pyin
+                 bass ─────────────────→ bass: pyin
+                 piano+guitar+other (summed) → keys: stays audio (pyin if one clear line)
                  drums (only if the mix is percussive) → onset drum detector
   └─ one tempo for the note: 1/8-grid fit of all onsets (+ beat-tracker hint), with a confidence
   └─ cleanup per stem (cleanup.py): range limits → octave fix (melody) → confidence/velocity
-     pruning → merge split notes (melody) / overlapping duplicates (bass, keys) → mono overlap
-     resolution (melody, bass) → min length → key detect + snap rare out-of-key notes →
+     pruning → merge split notes (melody) / overlapping duplicates (bass) → mono overlap
+     resolution (melody, bass) → min length → stray notes (melody) → key detect + snap rare out-of-key notes →
      quantize (grid, strength) only when tempo confidence ≥ 0.45 (or --bpm / --always-quantize)
   └─ midi/<stem>.mid (+ .raw.mid), stems/*.wav, manifest.json
 ```
+
+Demucs is the only model. Since Nov 1 every other model is gone from this folder (hackathon rule:
+Meta models only at runtime). Results from before then are kept below as history.
 
 ## Run
 
 ```bash
 export LATTICE_BIGDISK=<bigdisk>
 spikes/k_source_prep/run.sh <in audio> <out_dir> [--mode auto|hum|keys|bass|drums|layered]
-    [--separate auto|none|vocals|full] [--denoise] [--grid off|1/4|1/8|1/8T|1/16|1/16T|1/32]
-    [--strength 0-1] [--bpm N] [--always-quantize] [--no-key-snap] [--min-len S] [--yourmt3] [--bytedance]
+    [--separate auto|none] [--denoise] [--grid off|1/4|1/8|1/8T|1/16|1/16T|1/32]
+    [--strength 0-1] [--bpm N] [--always-quantize] [--no-key-snap] [--min-len S]
 ```
 
-`run.sh` runs `prep.py` in the j_evals `amt` env; separation (`separate.py`) runs in the `sep`
-env and YourMT3+ in the `yourmt3` env, each as a separate process (YourMT3+ is treated as GPL,
-so it is never imported). It prints `MANIFEST <path>` last. Manifest schema: see `prep.py`.
+`run.sh` runs `prep.py` in the j_evals `amt` env; separation (`separate.py`) runs in the `sep` env as
+a separate process. It prints `MANIFEST <path>` last. Manifest schema: see `prep.py`.
 
 | Script | Env | What it does |
 |---|---|---|
 | `prep.py` / `run.sh` | amt | the sidecar CLI (above) |
+| `engineer.py` / `run_engineer.sh` | sep | `cleanup_noise`, `quantize_drums`, `split_stems`, drum hits, sound regions |
+| `test_cleanup.py` | amt | known-answer test for the stray-note filter |
 | `cleanup.py` | any (numpy) | note cleanup, key detection, tempo estimate, quantize |
 | `drums.py` | amt | onset drum/beatbox → kick 36 / snare 38 / hat 42 (multi-label per onset) |
-| `transcribers.py` | amt | pyin, basic-pitch, ByteDance (opt-in), free-VRAM check |
-| `separate.py` | sep | Mel-RoFormer / htdemucs_6s on one file |
-| `score_cleanup.py` | amt | F1 before/after cleanup on the j_evals synthetic set → `<bigdisk>/out-k/cleanup_f1.md` |
-| `drum_eval.py` | amt | synthetic phone drum set + per-class onset F1; `tune` grid-searches `drums.TH` |
-| `renders.py` | amt | listening renders (piano / GM kit, A/B against the input) → `<bigdisk>/out-k/listen/` |
-| `muscriptor_stems.py` | muscriptor | MuScriptor medium on the stems prep.py hands it (one model load; retry with CFG 3 when empty) |
-| `run_synth.py` | amt | prep.py on the 16 synthetic phone clips, one log line per clip → `<bigdisk>/out-k/<name>/` |
-| `listen_compare.py` | amt | two sidecar runs side by side (old vs MuScriptor) → `<bigdisk>/out-k/listen_compare/index.html` |
+| `transcribers.py` | amt | pyin |
+| `separate.py` | sep | Demucs htdemucs_6s on one file |
+| `run_synth.py` | amt | prep.py on the 16 synthetic phone clips, one log line per clip |
+| `score_cleanup.py`, `drum_eval.py`, `renders.py` | amt | scoring and listening renders |
 
-## Results (2026-10-27)
+## Results, Meta-only route (2026-11-01)
+
+Note F1 at onset ±50 ms on the same 16 synthetic phone clips. The router picked a sensible category
+on 16/16. Solo voice and whistle use noisereduce (the `cleanup_noise` step) then pyin, with no Demucs.
+Demucs output varies a little from run to run, so its rows can move by about 0.03.
+
+| category | route | F1 | before Nov 1 |
+|---|---|---|---|
+| hum | noisereduce → pyin | 0.67 | 0.84 |
+| bass | Demucs bass → pyin | 0.91 | 0.97 |
+| keys | stays audio | no MIDI | 0.90 |
+| layered → hum | Demucs vocals → pyin | 0.81 | 0.89 |
+| layered → bass | Demucs bass → pyin | 0.81 | 0.96 |
+| layered → keys | stays audio | no MIDI | 0.68 |
+
+- The hum average understates the result: `hum_2` scores 0.00 with the right pitches, because every
+  note lands about 60 ms late, past the ±50 ms window. The other three score 0.77, 0.95 and 0.95.
+- Bass reads better from the Demucs stem (0.89-0.91) than from the recording (0.81).
+- On hums, noisereduce → pyin tied the Demucs vocal stem → pyin on three clips and beat it on the whistle (0.95 vs 0.52).
+- pyin clarity can't tell a low bass from chords (both under 0.27), so the bass stem's share decides
+  first (0.92-0.96 on bass clips, at most 0.58 elsewhere).
+- Demucs takes about 7 s on a 20 s clip on the Mac. A whole run takes about 12 s for a solo voice, 16 s for bass or keys, 25 s for layers.
+- A real acapella with room noise (18.9 s, pyin clarity 0.67) routed to `hum`: 51 notes, B2-A3, in 12 s.
+  noisereduce took its noise floor from -37.7 to -62.9 dB; the Demucs vocal stem stayed at -37.8 dB.
+  The two routes name the same pitch wherever both have a note. Whether the notes are right is for the ear to judge.
+
+## History: results with non-Meta models (2026-10-27)
 
 ### Cleanup on the synthetic phone set (mir_eval note F1, onset ±50 ms, 4 clips per row)
 
@@ -144,9 +170,4 @@ session tempo (`quantize_midi`).
 
 ## Licences
 
-MuScriptor (default transcriber): code MIT, weights CC BY-NC 4.0, non-commercial, HF licence
-click-through needed per user; a separate process.
-
-Mel-RoFormer (MIT), htdemucs_6s (MIT), basic-pitch (Apache-2.0), pyin/librosa (ISC) are the
-defaults. ByteDance piano transcription has no licence file upstream: opt-in only (`--bytedance`).
-YourMT3+: treat as GPL-3.0; opt-in (`--yourmt3`), separate process only, skipped below 14 GB free VRAM.
+htdemucs_6s (MIT), pyin/librosa (ISC), noisereduce (MIT), audio-separator (MIT, runs Demucs).

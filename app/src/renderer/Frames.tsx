@@ -153,7 +153,7 @@ function layoutFrames(world: HTMLElement, canvas: HTMLElement, l: FrameLayout, s
 
   const sizesNow = Object.fromEntries(FRAME_IDS.map((f) => [f, has(f) ? sizeOf(el[f]) : { w: 0, h: 0 }])) as Record<FrameId, Size>;
   const { rects, origin, extent } = resolveFrames(l, sizesNow);
-  // centred in the window when there's room, but clear of the Muse panel (padL) and the tool rail (padR)
+  // centred in the window when there's room, but clear of the canvas padding (padL) and the tool rail (padR)
   const W = canvas.clientWidth;
   const left = Math.round(Math.max(padL, Math.min((W - extent.w) / 2, W - padR - extent.w)));
   for (const f of FRAME_IDS) {

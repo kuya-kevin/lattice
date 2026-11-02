@@ -50,6 +50,33 @@ test('cleanup and quantize replace the track audio with a processed take; undo r
   expect(errors).toEqual([]);
 });
 
+test('split_stems adds lined-up audio tracks the page can load, and mutes the original; undo restores it', async ({ page }) => {
+  await page.goto('/');
+  await page.getByTestId('file-input').setInputFiles({ name: 'jam.wav', mimeType: 'audio/wav', buffer: noiseWav() });
+  await expect(page.getByTestId('track-t1')).toContainText('jam');
+  const original = (await session(page)).tracks[0].clips[0].sourceId;
+  await expect.poll(() => audioIds(page)).toContain(original);
+
+  const r = await tool(page, 'split_stems', {});
+  expect(r).toMatchObject({ ok: true, result: { model: expect.stringMatching(/Demucs/), muted_original: 't1' } });
+  const s = await session(page);
+  expect(s.tracks.map((t) => t.name)).toEqual(['jam', 'jam drums', 'jam bass']);
+  expect(s.tracks[0].muted).toBe(true);
+  for (const t of s.tracks.slice(1)) {
+    expect(t.clips[0]).toMatchObject({ start: 0, offset: 0, duration: 2 });
+    await expect.poll(() => audioIds(page)).toContain(t.clips[0].sourceId);
+  }
+  // a stem is ordinary audio: "split it, then quantize the drums"
+  const q = await tool(page, 'quantize_drums', { track_id: s.tracks[1].id, grid: '1/16', strength: 1 });
+  expect(q).toMatchObject({ ok: true, result: { hits: 16 } });
+
+  await tool(page, 'undo', {});
+  await tool(page, 'undo', {});
+  const back = await session(page);
+  expect(back.tracks).toHaveLength(1);
+  expect(back.tracks[0].muted).toBe(false);
+});
+
 test('a cleaned sound stacks on its card: the Versions list plays the original and switches back to it', async ({ page }) => {
   await page.goto('/');
   await page.getByTestId('file-input').setInputFiles({ name: 'vocal.wav', mimeType: 'audio/wav', buffer: noiseWav() });

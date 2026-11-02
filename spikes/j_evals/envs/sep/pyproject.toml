@@ -2,12 +2,12 @@
 name = "j-evals-sep"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-# python-audio-separator (MIT): BS-RoFormer / Mel-RoFormer / htdemucs_6s behind one API.
+# python-audio-separator (MIT), used only to run Meta Demucs htdemucs_6s.
 dependencies = [
     "audio-separator[gpu]; sys_platform == 'linux'",  # CUDA onnxruntime (3090 box)
     "audio-separator[cpu]; sys_platform == 'darwin'",  # Mac: torch uses MPS, onnxruntime CPU
     "soundfile",
     "audioread",
     "imageio-ffmpeg",  # static ffmpeg binary; separate.py puts it on PATH (no system ffmpeg)
-    "noisereduce",  # MIT; cleanup_noise fallback (k_source_prep/engineer.py)
+    "noisereduce",  # MIT; cleanup_noise (k_source_prep/engineer.py)
 ]

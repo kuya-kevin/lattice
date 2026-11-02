@@ -66,6 +66,9 @@ class CleanupOptions:
     quantize: str | None = "1/16"  # a GRIDS key or None/"off"
     strength: float = 1.0  # 0 = no move, 1 = hard snap
     quantize_ends: bool = True
+    # Melody: a short note this far from the median is noise pyin locked onto (a D#6 blip on a take sung around A2).
+    stray_semitones: int = 18
+    stray_max_len: float = 0.25
 
 
 @dataclass
@@ -258,6 +261,12 @@ def clean(notes: list[Note], opt: CleanupOptions | None = None, onset_hint_bpm: 
     before = len(ns)
     ns = [n for n in ns if n.dur >= min_len]
     steps["too_short"] = before - len(ns)
+    steps["stray"] = 0
+    if opt.role == "melody" and ns:
+        mid = float(np.median([n.pitch for n in ns]))
+        kept = [n for n in ns if abs(n.pitch - mid) <= opt.stray_semitones or n.dur >= opt.stray_max_len]
+        steps["stray"] = len(ns) - len(kept)
+        ns = kept
     if mono:  # removing blips can expose new same-pitch neighbours
         ns, m2 = _merge(ns, merge_gap)
         steps["merged"] += m2

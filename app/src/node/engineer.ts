@@ -1,4 +1,4 @@
-// B3: Node side of the engineer sidecar (cleanup_noise, quantize_drums; B13 drum hits, sound regions). Runs
+// B3: Node side of the engineer sidecar (cleanup_noise, quantize_drums; B13 drum hits, sound regions; split_stems). Runs
 // spikes/k_source_prep/run_engineer.sh (a one-shot child process) on a source's uploaded WAV
 // (sourcePrep.audioPath) and returns the processed WAV's bytes with the result. Used by
 // Electron main and the Vite dev middleware. With $LATTICE_ENGINEER_MOCK=1 the input comes
@@ -53,6 +53,19 @@ export async function runSoundRegions(cfg: SourcePrepConfig, sourceId: string, o
   if (opts.mock) return { regions: [[0.25, 1.75]], threshold_db: -50 };
   const { regions, threshold_db } = (await spawnEngineer(cfg, ['regions', input], opts.timeoutMs)) as SoundRegionsResult;
   return { regions, threshold_db };
+}
+
+/** split_stems: Meta Demucs stems of a source, with each stem's WAV bytes. Mock: the input twice. */
+export async function runSplit(cfg: SourcePrepConfig, sourceId: string, opts: { mock?: boolean; timeoutMs?: number } = {}): Promise<{ model: string; dropped: string[]; seconds?: number; stems: { name: string; share: number; wav: Uint8Array }[] }> {
+  const input = inputOf(cfg, sourceId);
+  if (opts.mock) {
+    const wav = new Uint8Array(readFileSync(input));
+    return { model: 'htdemucs_6s', dropped: ['piano'], stems: [{ name: 'drums', share: 0.6, wav }, { name: 'bass', share: 0.4, wav }] };
+  }
+  const outDir = join(cfg.workDir, 'runs', `${sourceId}-split-${Date.now().toString(36)}`);
+  mkdirSync(outDir, { recursive: true });
+  const r = (await spawnEngineer(cfg, ['split', input, outDir], opts.timeoutMs)) as { model: string; dropped: string[]; seconds: number; stems: { name: string; share: number; path: string }[] };
+  return { ...r, stems: r.stems.map(({ name, share, path }) => ({ name, share, wav: new Uint8Array(readFileSync(path)) })) };
 }
 
 /** B13: the analysis ops by name, for the dev:web middleware */

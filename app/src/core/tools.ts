@@ -3,7 +3,6 @@
 // behalf, and those user calls are logged as feedback for Muse's next turn.
 import * as S from './session';
 import type { Sidecar } from './sidecar';
-import { SYNTH_KNOBS } from './sidecar';
 import type { Actor, SessionStore } from './store';
 import type { FreesoundFilters, FreesoundHit } from './freesound';
 import { FX_TOOLS } from '../fx/tools';
@@ -592,8 +591,8 @@ export const TOOLS: ToolDef[] = [
   {
     name: 'cleanup_noise',
     description:
-      'Remove steady background noise (hiss, hum, room tone) from a track\'s audio: Mel-RoFormer denoise, or noisereduce when the model is not installed. ' +
-      'Replaces the track\'s audio with the cleaned take (undo brings the original back). Takes about as long as the audio; the result says which method ran.',
+      'Remove steady background noise (hiss, hum, room tone) from a track\'s audio with noisereduce (DSP, not a model). ' +
+      'Replaces the track\'s audio with the cleaned take (undo brings the original back). Takes a few seconds.',
     parameters: obj({ track_id: str('Track id') }, ['track_id']),
     run: async (ctx, a) => {
       const r = await processTrackAudio(
@@ -689,51 +688,6 @@ export const TOOLS: ToolDef[] = [
       return r.count ? r : { ...r, hint: 'no matches: try fewer query words (e.g. "synth bass") and move adjectives like "dark" into filters, or widen the ranges' };
     },
   },
-  {
-    name: 'generate_mrt2',
-    description:
-      'Generate audio with Magenta RT2 (local) from a style: a text description and/or a reference clip used as the style prompt. ' +
-      'Good for "in the style of" textures, not exact recreation. The user judges the result by ear.',
-    parameters: obj({
-      style_text: str('Style description, e.g. "warm analog synth lead"'),
-      reference_clip_id: str('Clip to use as the audio style prompt'),
-      notes: str('What to play, e.g. "A2 for 2 beats, then C3"'),
-      seconds: num('Length to generate (default 8)'),
-    }),
-    run: async (ctx, a) => {
-      if (!a.style_text && !a.reference_clip_id) throw new S.SessionError('give style_text or reference_clip_id');
-      const ref = a.reference_clip_id ? S.findClip(ctx.store.get(), a.reference_clip_id).clip.sourceId : undefined;
-      return { ...(await ctx.sidecar.generateMrt2({ styleText: a.style_text, referenceSourceId: ref, notes: a.notes, seconds: a.seconds ?? 8 })), stub: true };
-    },
-  },
-  {
-    name: 'set_synth_knobs',
-    description:
-      'Set knobs on our 15-knob subtractive synth. Unspecified knobs keep defaults. Knobs: ' +
-      Object.entries(SYNTH_KNOBS).map(([k, v]) => `${k} (${v.lo}-${v.hi} ${v.unit})`).join(', '),
-    parameters: obj(
-      {
-        patch: {
-          type: 'object',
-          description: 'Knob name -> value',
-          properties: Object.fromEntries(Object.entries(SYNTH_KNOBS).map(([k, v]) => [k, num(v.doc, { minimum: v.lo, maximum: v.hi })])),
-          additionalProperties: false,
-        },
-      },
-      ['patch'],
-    ),
-    run: async (ctx, a) => ({ ...(await ctx.sidecar.setSynthKnobs(a.patch)), stub: true }),
-  },
-  {
-    name: 'fit_synth_to_reference',
-    description: 'Fit the synth\'s knobs to a reference clip with an optimizer (CMA-ES over a spectral distance, ~30 s). Returns an editable patch.',
-    parameters: obj({ clip_id: str('Reference clip id') }, ['clip_id']),
-    run: async (ctx, a) => {
-      const { clip } = S.findClip(ctx.store.get(), a.clip_id);
-      return { ...(await ctx.sidecar.fitSynthToReference({ sourceId: clip.sourceId })), stub: true };
-    },
-  },
-
   // ---- effect chain tools (fx/tools.ts) ----
   ...FX_TOOLS,
 

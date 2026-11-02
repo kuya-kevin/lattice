@@ -21,8 +21,9 @@ async function withTrack(c = ctx()) {
 describe('tool layer', () => {
   it('exposes only Muse tools with valid schemas', () => {
     const names = museToolSpecs().map((t) => t.function.name);
-    expect(names).toEqual(expect.arrayContaining(['list_tracks', 'trim_clip', 'set_gain', 'mute', 'solo', 'arm_punch_in', 'play', 'stop', 'quantize_drums', 'cleanup_noise', 'search_freesound', 'generate_mrt2', 'set_synth_knobs', 'fit_synth_to_reference', 'add_track']));
+    expect(names).toEqual(expect.arrayContaining(['list_tracks', 'trim_clip', 'set_gain', 'mute', 'solo', 'arm_punch_in', 'play', 'stop', 'quantize_drums', 'cleanup_noise', 'search_freesound', 'split_stems', 'add_track']));
     expect(names).not.toContain('import_audio');
+    for (const gone of ['generate_mrt2', 'set_synth_knobs', 'fit_synth_to_reference']) expect(names).not.toContain(gone);
     for (const t of TOOLS) {
       expect(t.parameters.type).toBe('object');
       expect(t.name).toMatch(/^[a-zA-Z0-9_-]+$/);
@@ -66,8 +67,6 @@ describe('tool layer', () => {
     const c = await withTrack();
     const q = await runTool(c, 'quantize_drums', { track_id: 't1', grid: '1/16', strength: 0.5 }, 'muse');
     expect(q).toMatchObject({ ok: true, result: { stub: true, moved: 14 } });
-    const k = await runTool(c, 'set_synth_knobs', { patch: { cutoff: 99999, drive: 0.4 } }, 'muse');
-    expect(k).toMatchObject({ ok: true, result: { patch: { cutoff: 16000, drive: 0.4 }, clamped: ['cutoff'] } });
     expect((await runTool(c, 'quantize_drums', { track_id: 't1', grid: '1/5', strength: 1 }, 'muse')).error).toMatch(/one of/);
   });
 

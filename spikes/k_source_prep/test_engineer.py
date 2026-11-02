@@ -63,7 +63,7 @@ def test_cleanup_nr():
     for name, s in {"sine": np.sin(2 * np.pi * 220 * t), "harmonic": saw}.items():
         tone = 0.3 * s / np.max(np.abs(s)) * on
         noisy = (tone + rng.normal(0, 0.02, len(t))).astype(np.float32)
-        out, info = cleanup(noisy, SR, method="nr")
+        out, info = cleanup(noisy, SR)
         assert len(out) == len(noisy)
         assert info["method"] == "noisereduce"
         drop = info["noise_floor_db"]["before"] - info["noise_floor_db"]["after"]

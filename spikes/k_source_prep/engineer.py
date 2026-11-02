@@ -2,33 +2,32 @@
 Also two analyses that write no audio: the hit list for slice_drums and the sound regions for
 find_sound (B13).
 
-    LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh cleanup  <in.wav> <out.wav> [--method auto|model|nr]
+    LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh cleanup  <in.wav> <out.wav>
     LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh quantize <in.wav> <out.wav> --bpm 120 --grid 16 \
         [--strength 1] [--phase 0]
     LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh hits <in.wav>
     LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh regions <in.wav>
+    LATTICE_BIGDISK=<bigdisk> spikes/k_source_prep/run_engineer.sh split <in.wav> <out_dir>
 
 Writes <out.wav> (mono, the input's sample rate and length, so the app's clip offsets still
 hold) and prints one line `RESULT <json>`. Runs in the j_evals `sep` env.
 
-cleanup: Mel-RoFormer denoise (aufr33, via audio-separator; the default, preferred by ear in
-  spikes/m_cleanup_models) or noisereduce stationary with a profile from the quietest 0.5 s
-  (the fallback when the model isn't installed or fails). The result says which ran and why.
+cleanup: noisereduce stationary with a profile from the quietest 0.5 s. DSP, no model.
 quantize: f_engineer/quantize.py (slice at hits, move each slice toward the grid, no stretch).
   --phase puts the grid where the app's bars are (source seconds of a grid line); without
   it the phase is fitted to the hits.
 hits: drums.py slice_points (one entry per hit: time in source seconds, kind kick/snare/hat).
   No output file; the RESULT line carries the list.
 regions: where there is sound (sound_regions). No output file.
+split: Meta Demucs (htdemucs_6s) stems, written to <out_dir>/<stem>.wav at the input's length and
+  rate. The RESULT line lists the stems with their share of the energy; near-silent ones are dropped.
 """
 from __future__ import annotations
 
 import argparse
 import json
-import os
-import shutil
+import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -40,8 +39,7 @@ from quantize import deviation_ms, fit_grid, hits, move_slices, snap  # noqa: E4
 
 from drums import slice_points  # noqa: E402
 
-MODEL_SR = 44100
-DENOISE = "denoise_mel_band_roformer_aufr33_sdr_27.9959.ckpt"  # keep the "dry" stem
+MIN_STEM_SHARE = 0.005  # a stem with less of the energy than this is silence and bleed
 
 
 def read_mono(path: str) -> tuple[np.ndarray, int]:
@@ -70,35 +68,6 @@ def floor_db(y: np.ndarray, sr: int) -> float:
     return db(quietest_window(y, sr))
 
 
-def denoise_model(y: np.ndarray, sr: int) -> np.ndarray:
-    import imageio_ffmpeg  # audio-separator shells out to ffmpeg; use the static one (as m_cleanup_models)
-    import librosa
-    from audio_separator.separator import Separator
-
-    weights = Path(os.environ["LATTICE_BIGDISK"]) / "models" / "audio-separator"
-    if not (weights / DENOISE).exists():
-        raise FileNotFoundError(f"{DENOISE} not in {weights}")
-    tmp = Path(tempfile.mkdtemp(dir=os.environ.get("TMPDIR")))
-    try:
-        (tmp / "bin").mkdir()
-        (tmp / "bin" / "ffmpeg").symlink_to(imageio_ffmpeg.get_ffmpeg_exe())
-        os.environ["PATH"] = f"{tmp / 'bin'}:{os.environ['PATH']}"
-        x = librosa.resample(y, orig_sr=sr, target_sr=MODEL_SR) if sr != MODEL_SR else y
-        stereo = tmp / "in.wav"  # Roformer configs expect 2 channels
-        sf.write(stereo, np.stack([x, x], axis=1), MODEL_SR)
-        sep = Separator(output_dir=str(tmp), model_file_dir=str(weights), output_format="WAV", log_level=30)
-        sep.load_model(model_filename=DENOISE)
-        outs = [tmp / Path(o).name for o in sep.separate(str(stereo))]
-        dry = [o for o in outs if "_(dry)_" in o.name.lower()]
-        if len(dry) != 1:
-            raise RuntimeError(f"can't find the dry stem in {[o.name for o in outs]}")
-        d, dsr = read_mono(str(dry[0]))
-        d = librosa.resample(d, orig_sr=dsr, target_sr=sr) if dsr != sr else d
-        return fit_length(d, len(y))
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
-
-
 def denoise_nr(y: np.ndarray, sr: int) -> np.ndarray:
     import noisereduce as nr
 
@@ -108,28 +77,45 @@ def denoise_nr(y: np.ndarray, sr: int) -> np.ndarray:
     return fit_length(out.astype(np.float32), len(y))
 
 
-def cleanup(y: np.ndarray, sr: int, method="auto") -> tuple[np.ndarray, dict]:
+def cleanup(y: np.ndarray, sr: int) -> tuple[np.ndarray, dict]:
     t = time.time()
-    fallback = None
-    if method in ("auto", "model"):
-        try:
-            out, used = denoise_model(y, sr), "Mel-RoFormer denoise"
-        except Exception as e:  # noqa: BLE001 - any model failure falls back, and the result says why
-            if method == "model":
-                raise
-            fallback = f"{type(e).__name__}: {e}"[:300]
-            out, used = denoise_nr(y, sr), "noisereduce (fallback)"
-    else:
-        out, used = denoise_nr(y, sr), "noisereduce"
+    out = denoise_nr(y, sr)
     info = {
-        "method": used,
+        "method": "noisereduce",
         "noise_floor_db": {"before": round(floor_db(y, sr), 1), "after": round(floor_db(out, sr), 1)},
         "level_change_db": round(db(out) - db(y), 2),  # how much of the performance's level changed
         "seconds": round(time.time() - t, 1),
     }
-    if fallback:
-        info["fallback_reason"] = fallback
     return out, info
+
+
+def split(src: str, out_dir: str) -> dict:
+    t = time.time()
+    y, sr = read_mono(src)
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    p = subprocess.run([sys.executable, str(Path(__file__).with_name("separate.py")), src, str(out / "raw"), "htdemucs_6s"], capture_output=True, text=True)
+    line = next((x for x in p.stdout.splitlines() if x.startswith("RESULT ")), None)
+    if not line:
+        raise RuntimeError(f"Demucs failed ({p.returncode}): {p.stderr[-1500:]}")
+    audio = {k.split("-", 1)[1]: read_mono(v) for k, v in json.loads(line[7:]).items()}
+    energy = {k: float(np.mean(a.astype(np.float64) ** 2)) for k, (a, _) in audio.items()}
+    total = sum(energy.values()) + 1e-12
+    stems, dropped = [], []
+    for name, (a, stem_sr) in audio.items():
+        share = energy[name] / total
+        if share < MIN_STEM_SHARE:
+            dropped.append(name)
+            continue
+        if stem_sr != sr:
+            import librosa
+
+            a = librosa.resample(a, orig_sr=stem_sr, target_sr=sr)
+        path = out / f"{name}.wav"
+        sf.write(path, fit_length(a, len(y)).astype(np.float32), sr, subtype="FLOAT")
+        stems.append({"name": name, "path": str(path), "share": round(share, 3)})
+    stems.sort(key=lambda x: -x["share"])
+    return {"model": "htdemucs_6s", "stems": stems, "dropped": dropped, "seconds": round(time.time() - t, 1)}
 
 
 def sound_regions(y: np.ndarray, sr: int, gap: float = 0.25) -> tuple[list[list[float]], float]:
@@ -180,15 +166,19 @@ def quantize(y: np.ndarray, sr: int, bpm: float, grid=16, strength=1.0, phase: f
 
 def main(argv=None):
     ap = argparse.ArgumentParser()
-    ap.add_argument("op", choices=["cleanup", "quantize", "hits", "regions"])
+    ap.add_argument("op", choices=["cleanup", "quantize", "hits", "regions", "split"])
     ap.add_argument("src")
     ap.add_argument("dst", nargs="?")
-    ap.add_argument("--method", choices=["auto", "model", "nr"], default="auto")
     ap.add_argument("--bpm", type=float)
     ap.add_argument("--grid", type=int, default=16)
     ap.add_argument("--strength", type=float, default=1.0)
     ap.add_argument("--phase", type=float)
     a = ap.parse_args(argv)
+    if a.op == "split":
+        if not a.dst:
+            ap.error("split needs an output folder")
+        print("RESULT " + json.dumps(split(a.src, a.dst)), flush=True)
+        return
     y, sr = read_mono(a.src)
     if a.op == "hits":
         pts = slice_points(y, sr)
@@ -201,7 +191,7 @@ def main(argv=None):
     if not a.dst:
         ap.error(f"{a.op} needs an output path")
     if a.op == "cleanup":
-        out, info = cleanup(y, sr, a.method)
+        out, info = cleanup(y, sr)
     else:
         if not a.bpm:
             ap.error("quantize needs --bpm")

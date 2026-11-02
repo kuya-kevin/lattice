@@ -1,26 +1,12 @@
-"""Transcribers used by the router. Each returns a list of cleanup.Note with a confidence 0-1.
-
-- pyin (librosa, ISC): monophonic; conf = mean voiced probability of the note's frames.
-- basic-pitch (Spotify, Apache-2.0, ONNX on CPU): polyphonic; conf = note amplitude.
-- bytedance_piano (Kong et al.): opt-in only, the repo has no licence file.
-- YourMT3+ (treated as GPL-3.0): never imported; run as a separate process in its own env,
-  only when enabled and >= 14 GB of VRAM is free (see prep.py).
+"""The melodic transcriber used by the router: pyin (librosa, ISC), DSP, monophonic. Returns a list
+of cleanup.Note with a confidence 0-1 (the mean voiced probability of the note's frames).
 """
 from __future__ import annotations
 
-import logging
-import os
-import subprocess
-
 import librosa
 import numpy as np
-import scipy.signal
 
 from cleanup import Note
-
-if not hasattr(scipy.signal, "gaussian"):  # basic-pitch 0.4 uses the pre-1.13 scipy name
-    scipy.signal.gaussian = scipy.signal.windows.gaussian
-logging.getLogger().setLevel(logging.ERROR)
 
 
 def pyin(y: np.ndarray, sr: int, fmin: float = 55, fmax: float = 1400, hop: int = 256) -> list[Note]:
@@ -53,38 +39,3 @@ def pyin(y: np.ndarray, sr: int, fmin: float = 55, fmax: float = 1400, hop: int 
             start, cur = i, r
     close(len(rounded))
     return notes
-
-
-_BP = None
-
-
-def basic_pitch(path: str) -> list[Note]:
-    global _BP
-    from basic_pitch import ICASSP_2022_MODEL_PATH
-    from basic_pitch.inference import Model, predict
-    if _BP is None:
-        _BP = Model(ICASSP_2022_MODEL_PATH)
-    _, _, events = predict(path, _BP)
-    return [Note(int(p), float(s), float(e), int(np.clip(a * 127, 1, 127)), float(a)) for s, e, p, a, _ in events]
-
-
-def bytedance_piano(path: str) -> list[Note]:
-    from pathlib import Path
-
-    import torch
-    from piano_transcription_inference import PianoTranscription, sample_rate
-    ckpt = Path(os.environ["TORCH_HOME"]) / "piano_transcription" / "note_F1=0.9677_pedal_F1=0.9186.pth"
-    t = PianoTranscription(device="cuda" if torch.cuda.is_available() else "cpu", checkpoint_path=str(ckpt))
-    y, _ = librosa.load(path, sr=sample_rate, mono=True)
-    tmp = Path(os.environ.get("TMPDIR", "/tmp")) / f"bd_{os.getpid()}.mid"
-    out = t.transcribe(y, str(tmp))
-    return [Note(int(n["midi_note"]), float(n["onset_time"]), float(n["offset_time"]), int(n["velocity"]), float(n["velocity"]) / 127)
-            for n in out["est_note_events"]]
-
-
-def free_vram_mb() -> int:
-    try:
-        out = subprocess.run(["nvidia-smi", "--query-gpu=memory.free", "--format=csv,noheader,nounits"], capture_output=True, text=True, timeout=10)
-        return int(out.stdout.strip().splitlines()[0])
-    except Exception:
-        return 0

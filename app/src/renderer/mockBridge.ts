@@ -4,7 +4,7 @@
 import { MuseAgent, type ChatFn } from '../core/agent';
 import type { Bridge } from '../core/bridge';
 import type { PrepManifest } from '../core/midi';
-import { StubSidecar, type CleanupNoiseResult, type DrumHitsResult, type ExtractMidiArgs, type QuantizeDrumsArgs, type QuantizeDrumsResult, type SoundRegionsResult } from '../core/sidecar';
+import { StubSidecar, type CleanupNoiseResult, type DrumHitsResult, type ExtractMidiArgs, type QuantizeDrumsArgs, type QuantizeDrumsResult, type SoundRegionsResult, type SplitStemsResult } from '../core/sidecar';
 import { SessionStore } from '../core/store';
 import { runTool, type ToolContext } from '../core/tools';
 import { MemoryChainLibrary } from '../fx/savedChains';
@@ -60,6 +60,20 @@ class WebSidecar extends StubSidecar {
   }
   override quantizeDrums({ newSourceId, ...a }: QuantizeDrumsArgs): Promise<QuantizeDrumsResult> {
     return this.engineer(newSourceId, { op: 'quantize', ...a });
+  }
+  /** split_stems through the Vite middleware (/api/sidecar/split); the stems' WAVs come back base64 */
+  override async splitStems(a: { sourceId: string; newSourceId: string }): Promise<SplitStemsResult> {
+    const wav = this.audio.get(a.sourceId);
+    if (!wav) throw new Error(`no audio for source ${a.sourceId} yet`);
+    const r = await fetch(`/api/sidecar/split?args=${encodeURIComponent(JSON.stringify({ sourceId: a.sourceId }))}`, { method: 'POST', body: wav });
+    const body = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    if (!r.ok) throw new Error(body.error ?? `HTTP ${r.status}`);
+    const stems = (body.stems as { name: string; share: number; wav: string }[]).map(({ name, share, wav: b64 }) => {
+      const source_id = `${a.newSourceId}-${name}`;
+      this.processed.set(source_id, Uint8Array.from(atob(b64), (ch) => ch.charCodeAt(0)).buffer);
+      return { name, share, source_id };
+    });
+    return { ...body, stems };
   }
   /** B13: analyses (no audio back) through the Vite middleware (/api/sidecar/analyze) */
   private async analyze<R>(op: string, sourceId: string): Promise<R> {

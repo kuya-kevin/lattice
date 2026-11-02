@@ -151,7 +151,7 @@ test('drag frames by their titles: dock, place freely, cancel; Layout menu and s
   expect(errors).toEqual([]);
 });
 
-test('frames sit centred in a wide window, clear of the Muse panel', async ({ page }) => {
+test('frames sit centred in a wide window; the Muse dock opens over them at the bottom centre', async ({ page }) => {
   await page.setViewportSize({ width: 2400, height: 1000 });
   await page.goto('/');
   await page.evaluate(() => localStorage.removeItem('lattice.frames.v1'));
@@ -164,9 +164,12 @@ test('frames sit centred in a wide window, clear of the Muse panel', async ({ pa
   const { l, r } = await edges();
   expect(Math.abs(l - (2400 - r))).toBeLessThanOrEqual(2); // board at its widest: room on both sides
   expect(l).toBeGreaterThan(100);
-  // the Muse panel opens on the left: the frames move clear of it
+  // the dock floats over the canvas, so opening it does not move the frames
   await page.getByRole('button', { name: 'Muse', exact: true }).click();
   await expect(page.locator('aside.chat')).toBeVisible();
+  expect(await edges()).toEqual({ l, r });
   const panel = await box(page.locator('aside.chat'));
-  await expect.poll(async () => (await edges()).l).toBeGreaterThan(panel.x + panel.width);
+  const free = (2400 - 32 - 200 - panel.width) / 2 + 32; // centred between --pl and --pr (.muse-dock)
+  expect(Math.abs(panel.x - free)).toBeLessThanOrEqual(2);
+  expect(panel.y + panel.height).toBeLessThan(1000);
 });

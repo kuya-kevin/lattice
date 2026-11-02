@@ -8,7 +8,7 @@ const bg = (page: Page, sel: string) => page.locator(sel).first().evaluate((e) =
 test('the theme button switches to light mode and back, and is remembered', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('html')).not.toHaveAttribute('data-theme', 'light'); // dark is the default
-  expect(await bg(page, 'body')).toBe('rgb(12, 13, 16)');
+  expect(await bg(page, 'body')).toBe('rgb(7, 8, 13)');
 
   await page.getByRole('button', { name: 'Light mode' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
@@ -21,5 +21,5 @@ test('the theme button switches to light mode and back, and is remembered', asyn
 
   await page.getByRole('button', { name: 'Dark mode' }).click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  expect(await token(page, '--track-0')).toBe('#f08a6c');
+  expect(await token(page, '--track-0')).toBe('#ff3d5e');
 });
