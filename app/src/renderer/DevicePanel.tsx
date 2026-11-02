@@ -6,6 +6,7 @@ import { CATALOG, formatValue, fromNorm, getDevice, toNorm, type ParamDef, type 
 import { previewParam, syncFx, trackLatency, trackMeters, warmUp, withTrackFx } from '../fx/engine/live';
 import type { DeviceInstance, Session } from '../core/session';
 import { exportSound } from './Shelves'; // B17: says where the sound went
+import { useDeviceDrag } from './deviceDrag';
 import './DevicePanel.css';
 
 type Run = (tool: string, args?: Record<string, unknown>) => Promise<{ ok: boolean; result?: unknown; error?: string }>;
@@ -26,6 +27,8 @@ export function DevicePanel({ session, run }: { session: Session; run: Run }) {
   const track = session.tracks.find((t) => t.id === session.selection.trackId) ?? session.tracks[0];
   const [open, setOpen] = useState(true);
   const meters = useMeters(track?.id);
+  const chainRef = useRef<HTMLDivElement>(null);
+  const drag = useDeviceDrag(chainRef, track?.id ?? '', run);
   if (!track) return null;
   const latencyMs = Math.round(trackLatency(track.id) * 10000) / 10;
   return (
@@ -55,11 +58,12 @@ export function DevicePanel({ session, run }: { session: Session; run: Run }) {
         </button>
       </header>
       {open && (
-        <div className="fx-chain">
+        <div className={`fx-chain${drag.dragging ? ' reordering' : ''}`} ref={chainRef}>
           {track.devices.length === 0 && <div className="fx-empty">No devices. Add one, or ask Muse (e.g. "make the vocal brighter").</div>}
           {track.devices.map((d, i) => (
-            <DeviceCard key={d.id} trackId={track.id} dev={d} index={i} count={track.devices.length} run={run} meters={meters[d.id]} />
+            <DeviceCard key={d.id} trackId={track.id} dev={d} index={i} count={track.devices.length} run={run} meters={meters[d.id]} dragging={drag.dragging === d.id} onHeadPointerDown={drag.onHeadPointerDown} />
           ))}
+          {drag.line && <div className="fx-drop-line" data-testid="fx-drop-line" style={drag.line} />}
         </div>
       )}
     </section>
@@ -141,7 +145,7 @@ function useMeters(trackId: string | undefined) {
   return m;
 }
 
-function DeviceCard({ trackId, dev, index, count, run, meters }: { trackId: string; dev: DeviceInstance; index: number; count: number; run: Run; meters?: Record<string, number> }) {
+function DeviceCard({ trackId, dev, index, count, run, meters, dragging, onHeadPointerDown }: { trackId: string; dev: DeviceInstance; index: number; count: number; run: Run; meters?: Record<string, number>; dragging: boolean; onHeadPointerDown: (e: React.PointerEvent, deviceId: string, index: number) => void }) {
   const def = getDevice(dev.kind);
   const groups = useMemo(() => {
     const g = new Map<string, ParamDef[]>();
@@ -155,8 +159,8 @@ function DeviceCard({ trackId, dev, index, count, run, meters }: { trackId: stri
   const gr = meters?.gr_db;
   const grDb = gr === undefined ? undefined : dev.kind === 'comp' || dev.kind === 'deess' ? -gr : gr;
   return (
-    <div className={`fx-device${dev.on ? '' : ' off'}`} data-testid={`device-${dev.id}`}>
-      <div className="fx-device-head">
+    <div className={`fx-device${dev.on ? '' : ' off'}${dragging ? ' dragging' : ''}`} data-testid={`device-${dev.id}`}>
+      <div className="fx-device-head" title="Drag to reorder the chain" onPointerDown={(e) => onHeadPointerDown(e, dev.id, index)}>
         <label className="fx-power" title={dev.on ? 'Bypass' : 'Enable'}>
           <input type="checkbox" checked={dev.on} onChange={(e) => run('bypass_device', { track_id: trackId, device_id: dev.id, on: e.target.checked })} />
         </label>

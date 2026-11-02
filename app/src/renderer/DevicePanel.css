@@ -10,7 +10,9 @@
 .fx-chains input { width: 140px; }
 .fx-chain-error { color: var(--rec); font-size: 11px; }
 .fx-latency { color: var(--muted); font: 11px var(--font-data); margin-left: auto; }
-.fx-chain { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 4px; }
+.fx-chain { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; padding-bottom: 4px; position: relative; }
+.fx-chain.reordering, .fx-chain.reordering * { cursor: grabbing !important; }
+.fx-drop-line { position: absolute; border-radius: 2px; background: var(--accent); pointer-events: none; z-index: 2; }
 .fx-empty { color: var(--muted); padding: 16px; border: 1.5px dashed var(--line-strong); border-radius: var(--r-card); }
 .fx-device {
   flex: 0 0 auto; width: 300px; background: var(--island); border: 1px solid var(--line);
@@ -21,9 +23,10 @@
   content: ''; position: absolute; left: -15px; top: 21px; width: 14px; height: 2px; background: var(--line-strong);
 }
 .fx-device.off { opacity: 0.5; }
-.fx-device-head { display: flex; gap: 6px; align-items: center; padding: 10px 10px 8px 12px; border-bottom: 1px solid var(--line); }
+.fx-device.dragging { opacity: 0.35; }
+.fx-device-head { cursor: grab; user-select: none; display: flex; gap: 6px; align-items: center; padding: 10px 10px 8px 12px; border-bottom: 1px solid var(--line); }
 .fx-device-head strong { font-weight: 600; }
-.fx-device-head button { width: 24px; height: 24px; padding: 0; border-radius: 999px; background: transparent; border-color: transparent; color: var(--muted); }
+.fx-device-head button { cursor: default; width: 24px; height: 24px; padding: 0; border-radius: 999px; background: transparent; border-color: transparent; color: var(--muted); }
 .fx-device-head button:hover:not(:disabled) { background: var(--island-3); color: var(--text); }
 .fx-power input { accent-color: var(--accent); width: 14px; height: 14px; margin: 0; }
 .fx-spacer { flex: 1; }

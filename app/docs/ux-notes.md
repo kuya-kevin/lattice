@@ -123,6 +123,7 @@ Logic's.
     removes only that region. (Logic's Project Audio browser asks the same way before deleting used files.)
   - **Arrangement board:** snap and Extract MIDI in the board's toolbar, then the tracks.
   - **Device chain:** Logic's Smart Controls, under the board. B shows and hides it. The effects agent mounts `DevicePanel` there (see the marked region in `App.tsx`).
+  - **Reordering devices:** drag a device by its title bar. Like moving a region, the card stays put and dims, a line shows where it lands, nothing changes until release (one `move_device`, one undo step), and Escape cancels. Logic reorders plug-ins the same way, by dragging them in the channel strip. The ‹ › buttons stay as the keyboard route.
 - **Top bar:**
   - Session pill on the left.
   - Transport island with the LCD in the centre: position, time, tempo, signature, key, then cycle, click and count-in.
